@@ -44,8 +44,8 @@
       "message_templates": {
         "description": "消息模板列表",
         "type": "text",
-        "default": "\"嗨，最近怎么样？\"\n\"有什么我可以帮助你的吗？\"\n\"好久不见，有什么新鲜事吗？\"\n\"今天过得如何？\"\n\"距离上次聊天已经过去了一段时间，AI上次主动发送是{last_sent_time}，你上次发消息是{user_last_message_time}\"",
-        "hint": "每行一个消息模板，用双引号包围，发送时会随机选择一个。支持占位符：{time}（当前时间）、{last_sent_time}（AI上次主动发送时间）、{user_last_message_time}（用户上次发送消息时间）"
+        "default": "\"嗨，最近怎么样？\"\n\"有什么我可以帮助你的吗？\"\n\"好久不见，有什么新鲜事吗？\"\n\"今天过得如何？\"\n\"距离上次聊天已经过去了一段时间，AI上次发送消息是{last_sent_time}\"",
+        "hint": "每行一个消息模板，用双引号包围，发送时会随机选择一个。支持占位符：{time}（当前时间）、{last_sent_time}（AI上次发送消息时间）"
       },
       "random_delay_enabled": {
         "description": "是否启用随机延迟发送",
@@ -97,14 +97,14 @@
         "items": {}
       },
       "last_sent_times": {
-        "description": "上次发送时间记录（内部数据）",
+        "description": "AI主动发送时间记录（内部数据）",
         "type": "object",
         "default": {},
         "invisible": true,
         "items": {}
       },
-      "user_last_message_times": {
-        "description": "用户最后消息时间记录（内部数据）",
+      "ai_last_sent_times": {
+        "description": "AI发送消息时间记录（内部数据）",
         "type": "object",
         "default": {},
         "invisible": true,

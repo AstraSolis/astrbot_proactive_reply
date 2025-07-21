@@ -32,7 +32,7 @@ class ProactiveReplyPlugin(Star):
                 "enabled": False,
                 "timing_mode": "fixed_interval",
                 "interval_minutes": 600,
-                "message_templates": "\"嗨，最近怎么样？\"\n\"有什么我可以帮助你的吗？\"\n\"好久不见，有什么新鲜事吗？\"\n\"今天过得如何？\"\n\"距离上次聊天已经过去了一段时间，AI上次主动发送是{last_sent_time}，你上次发消息是{user_last_message_time}\"",
+                "message_templates": "\"嗨，最近怎么样？\"\n\"有什么我可以帮助你的吗？\"\n\"好久不见，有什么新鲜事吗？\"\n\"今天过得如何？\"\n\"距离上次聊天已经过去了一段时间，AI上次发送消息是{last_sent_time}\"",
                 "sessions": "",
                 "active_hours": "9:00-22:00",
                 "random_delay_enabled": False,
@@ -41,8 +41,8 @@ class ProactiveReplyPlugin(Star):
                 "random_min_minutes": 600,
                 "random_max_minutes": 1200,
                 "session_user_info": {},
-                "last_sent_times": {},
-                "user_last_message_times": {}
+                "last_sent_times": {},  # AI主动发送消息的时间（保持向后兼容）
+                "ai_last_sent_times": {}  # AI发送消息的时间（包括主动发送和回复）
             }
         }
 
@@ -57,9 +57,17 @@ class ProactiveReplyPlugin(Star):
                 # 检查子配置项
                 for key, default_value in section_config.items():
                     if key not in self.config[section]:
-                        self.config[section][key] = default_value
+                        # 对于数据记录类型的配置项，只在真正缺失时添加空字典
+                        # 避免覆盖现有的历史数据
+                        if key in ["session_user_info", "last_sent_times", "ai_last_sent_times"]:
+                            self.config[section][key] = {}
+                        else:
+                            self.config[section][key] = default_value
                         config_updated = True
                         logger.info(f"添加缺失的配置项: {section}.{key}")
+
+        # 数据迁移：将现有的时间记录迁移到新的配置项
+        self._migrate_time_records()
 
         # 如果配置有更新，保存配置文件
         if config_updated:
@@ -68,6 +76,30 @@ class ProactiveReplyPlugin(Star):
                 logger.info("配置文件已更新并保存")
             except Exception as e:
                 logger.error(f"保存配置文件失败: {e}")
+
+    def _migrate_time_records(self):
+        """迁移时间记录数据到新的配置项"""
+        try:
+            proactive_config = self.config.get("proactive_reply", {})
+
+            # 如果新的ai_last_sent_times为空，但last_sent_times有数据，则进行迁移
+            ai_last_sent_times = proactive_config.get("ai_last_sent_times", {})
+            last_sent_times = proactive_config.get("last_sent_times", {})
+
+            if not ai_last_sent_times and last_sent_times:
+                logger.info("检测到历史时间记录，正在迁移数据...")
+                # 将last_sent_times的数据复制到ai_last_sent_times
+                self.config["proactive_reply"]["ai_last_sent_times"] = last_sent_times.copy()
+
+                # 保存配置
+                try:
+                    self.config.save_config()
+                    logger.info(f"成功迁移 {len(last_sent_times)} 条时间记录到新配置项")
+                except Exception as e:
+                    logger.warning(f"保存迁移数据失败: {e}")
+
+        except Exception as e:
+            logger.error(f"数据迁移失败: {e}")
 
     async def initialize(self):
         """插件初始化方法"""
@@ -157,8 +189,6 @@ class ProactiveReplyPlugin(Star):
                 self.config["proactive_reply"] = {}
             if "session_user_info" not in self.config["proactive_reply"]:
                 self.config["proactive_reply"]["session_user_info"] = {}
-            if "user_last_message_times" not in self.config["proactive_reply"]:
-                self.config["proactive_reply"]["user_last_message_times"] = {}
 
             # 记录用户信息
             self.config["proactive_reply"]["session_user_info"][session_id] = {
@@ -169,27 +199,51 @@ class ProactiveReplyPlugin(Star):
                 "last_active_time": current_time
             }
 
-            # 记录用户最后消息时间
-            self.config["proactive_reply"]["user_last_message_times"][session_id] = current_time
-
             # 保存配置（异步保存，避免阻塞）
             try:
                 self.config.save_config()
-                logger.debug(f"已记录会话 {session_id} 的用户信息和最后消息时间: {username} - {current_time}")
+                logger.debug(f"已记录会话 {session_id} 的用户信息: {username} - {current_time}")
             except Exception as e:
                 logger.warning(f"保存用户信息配置失败: {e}")
 
         except Exception as e:
             logger.error(f"记录用户信息失败: {e}")
 
+    @filter.after_message_sent()
+    async def record_ai_message_time(self, event: AstrMessageEvent):
+        """在AI发送消息后记录发送时间"""
+        try:
+            session_id = event.unified_msg_origin
+            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            # 确保配置结构存在
+            if "proactive_reply" not in self.config:
+                self.config["proactive_reply"] = {}
+            if "ai_last_sent_times" not in self.config["proactive_reply"]:
+                self.config["proactive_reply"]["ai_last_sent_times"] = {}
+
+            # 记录AI发送消息时间
+            self.config["proactive_reply"]["ai_last_sent_times"][session_id] = current_time
+
+            # 保存配置
+            try:
+                self.config.save_config()
+                logger.debug(f"已记录会话 {session_id} 的AI发送消息时间: {current_time}")
+            except Exception as e:
+                logger.warning(f"保存AI发送消息时间配置失败: {e}")
+
+        except Exception as e:
+            logger.error(f"记录AI发送消息时间失败: {e}")
+
     async def proactive_message_loop(self):
         """定时主动发送消息的循环"""
-        logger.info("定时主动发送消息循环已启动")
+        task_id = id(asyncio.current_task())
+        logger.info(f"定时主动发送消息循环已启动 (任务ID: {task_id})")
         loop_count = 0
         while True:
             try:
                 loop_count += 1
-                logger.info(f"定时循环第 {loop_count} 次执行")
+                logger.info(f"定时循环第 {loop_count} 次执行 (任务ID: {task_id})")
 
                 # 检查插件是否正在终止
                 if self._is_terminating:
@@ -280,7 +334,35 @@ class ProactiveReplyPlugin(Star):
                     else:
                         logger.info(f"本轮主动消息发送完成，成功发送 {sent_count}/{len(sessions)} 条消息，{base_interval//60} 分钟后进行下一轮")
 
-                await asyncio.sleep(total_interval)
+                # 分段等待，定期检查状态变化
+                logger.info(f"开始等待 {total_interval//60} 分钟...")
+                remaining_time = total_interval
+                check_interval = 60  # 每60秒检查一次状态
+
+                while remaining_time > 0:
+                    # 检查插件是否正在终止
+                    if self._is_terminating:
+                        logger.info("插件正在终止，退出等待")
+                        return
+
+                    # 检查任务是否被取消
+                    if self.proactive_task and self.proactive_task.cancelled():
+                        logger.info("定时主动发送任务已被取消，退出等待")
+                        break
+
+                    # 检查功能是否被禁用
+                    current_config = self.config.get("proactive_reply", {})
+                    if not current_config.get("enabled", False):
+                        logger.info("定时主动发送功能已被禁用，退出等待")
+                        break
+
+                    # 等待较短的时间间隔
+                    wait_time = min(check_interval, remaining_time)
+                    await asyncio.sleep(wait_time)
+                    remaining_time -= wait_time
+
+                    if remaining_time > 0:
+                        logger.debug(f"等待中...剩余时间: {remaining_time//60} 分钟")
 
             except asyncio.CancelledError:
                 logger.info("定时主动发送消息循环已取消")
@@ -370,26 +452,18 @@ class ProactiveReplyPlugin(Star):
             # 准备占位符数据
             current_time = datetime.datetime.now().strftime(time_format)
 
-            # 获取AI上次发送时间
+            # 获取AI上次发送时间（优先使用新的ai_last_sent_times，向后兼容last_sent_times）
+            ai_last_sent_times = proactive_config.get("ai_last_sent_times", {})
             last_sent_times = proactive_config.get("last_sent_times", {})
-            last_sent_time = last_sent_times.get(session, "从未发送过")
+
+            # 优先使用ai_last_sent_times，如果没有则使用last_sent_times
+            last_sent_time = ai_last_sent_times.get(session) or last_sent_times.get(session, "从未发送过")
+
             if last_sent_time != "从未发送过":
                 try:
                     # 尝试解析并重新格式化时间
                     parsed_time = datetime.datetime.strptime(last_sent_time, "%Y-%m-%d %H:%M:%S")
                     last_sent_time = parsed_time.strftime(time_format)
-                except:
-                    # 如果解析失败，保持原样
-                    pass
-
-            # 获取用户最后消息时间
-            user_last_message_times = proactive_config.get("user_last_message_times", {})
-            user_last_message_time = user_last_message_times.get(session, "从未发送过")
-            if user_last_message_time != "从未发送过":
-                try:
-                    # 尝试解析并重新格式化时间
-                    parsed_time = datetime.datetime.strptime(user_last_message_time, "%Y-%m-%d %H:%M:%S")
-                    user_last_message_time = parsed_time.strftime(time_format)
                 except:
                     # 如果解析失败，保持原样
                     pass
@@ -402,12 +476,10 @@ class ProactiveReplyPlugin(Star):
                 message = message.replace("{time}", current_time)
             if "{last_sent_time}" in message:
                 message = message.replace("{last_sent_time}", last_sent_time)
-            if "{user_last_message_time}" in message:
-                message = message.replace("{user_last_message_time}", user_last_message_time)
 
             # 移除不支持的占位符（避免发送时出错）
             unsupported_placeholders = [
-                "{username}", "{user_id}", "{platform}", "{chat_type}"
+                "{username}", "{user_id}", "{platform}", "{chat_type}", "{user_last_message_time}"
             ]
             for placeholder in unsupported_placeholders:
                 if placeholder in message:
@@ -430,9 +502,12 @@ class ProactiveReplyPlugin(Star):
                 self.config["proactive_reply"] = {}
             if "last_sent_times" not in self.config["proactive_reply"]:
                 self.config["proactive_reply"]["last_sent_times"] = {}
+            if "ai_last_sent_times" not in self.config["proactive_reply"]:
+                self.config["proactive_reply"]["ai_last_sent_times"] = {}
 
-            # 记录发送时间
+            # 记录发送时间（同时更新两个记录）
             self.config["proactive_reply"]["last_sent_times"][session] = current_time
+            self.config["proactive_reply"]["ai_last_sent_times"][session] = current_time
 
             # 保存配置
             try:
@@ -447,27 +522,64 @@ class ProactiveReplyPlugin(Star):
     async def stop_proactive_task(self):
         """停止定时主动发送任务"""
         if self.proactive_task and not self.proactive_task.cancelled():
-            logger.info("正在停止定时主动发送任务...")
+            task_id = id(self.proactive_task)
+            logger.info(f"正在停止定时主动发送任务 (任务ID: {task_id})...")
             self.proactive_task.cancel()
             try:
                 await self.proactive_task
             except asyncio.CancelledError:
-                logger.info("定时主动发送任务已成功停止")
+                logger.info(f"定时主动发送任务已成功停止 (任务ID: {task_id})")
+            except Exception as e:
+                logger.error(f"停止定时任务时发生错误: {e}")
             self.proactive_task = None
+        else:
+            logger.info("没有运行中的定时主动发送任务需要停止")
+
+    async def force_stop_all_tasks(self):
+        """强制停止所有相关任务"""
+        logger.info("强制停止所有相关任务...")
+
+        # 设置终止标志
+        self._is_terminating = True
+
+        # 停止当前任务
+        await self.stop_proactive_task()
+
+        # 查找并停止所有可能的相关任务
+        current_task = asyncio.current_task()
+        all_tasks = asyncio.all_tasks()
+
+        for task in all_tasks:
+            if task != current_task and not task.done():
+                # 检查任务是否可能是我们的定时任务
+                if hasattr(task, '_coro') and task._coro:
+                    coro_name = getattr(task._coro, '__name__', '')
+                    if 'proactive_message_loop' in coro_name:
+                        logger.info(f"发现可能的旧定时任务，正在停止 (任务ID: {id(task)})...")
+                        task.cancel()
+                        try:
+                            await task
+                        except asyncio.CancelledError:
+                            logger.info(f"旧定时任务已停止 (任务ID: {id(task)})")
+                        except Exception as e:
+                            logger.error(f"停止旧定时任务时发生错误: {e}")
+
+        # 重置终止标志
+        self._is_terminating = False
+        logger.info("所有相关任务已停止")
 
     async def start_proactive_task(self):
         """启动定时主动发送任务"""
         logger.info("尝试启动定时主动发送任务...")
+
+        # 首先强制停止所有现有任务
+        await self.force_stop_all_tasks()
 
         proactive_config = self.config.get("proactive_reply", {})
         enabled = proactive_config.get("enabled", False)
         logger.info(f"配置中的启用状态: {enabled}")
 
         if enabled:
-            if self.proactive_task and not self.proactive_task.cancelled():
-                logger.info("定时主动发送任务已在运行中")
-                return
-
             logger.info("创建定时任务...")
             self.proactive_task = asyncio.create_task(self.proactive_message_loop())
             logger.info("定时主动发送任务已启动")
@@ -511,11 +623,11 @@ class ProactiveReplyPlugin(Star):
 
         # 获取发送时间记录数量
         last_sent_times = proactive_config.get("last_sent_times", {})
+        ai_last_sent_times = proactive_config.get("ai_last_sent_times", {})
         sent_times_count = len(last_sent_times)
+        ai_sent_times_count = len(ai_last_sent_times)
 
-        # 获取用户最后消息时间记录数量
-        user_last_message_times = proactive_config.get("user_last_message_times", {})
-        user_message_times_count = len(user_last_message_times)
+
 
         status_text = f"""📊 主动回复插件状态
 
@@ -532,8 +644,8 @@ class ProactiveReplyPlugin(Star):
   - 随机间隔范围：{proactive_config.get('random_min_minutes', 1)}-{proactive_config.get('random_max_minutes', 60)} 分钟 {'(随机间隔模式)' if proactive_config.get('timing_mode', 'fixed_interval') == 'random_interval' else '(未使用)'}
   - 活跃时间：{proactive_config.get('active_hours', '9:00-22:00')}
   - 配置会话数：{session_count}
-  - AI发送记录数：{sent_times_count}
-  - 用户消息记录数：{user_message_times_count}
+  - AI主动发送记录数：{sent_times_count}
+  - AI发送消息记录数：{ai_sent_times_count}
   - 当前时间：{datetime.datetime.now().strftime('%H:%M')}
   - 是否在活跃时间：{'✅' if self.is_active_time() else '❌'}
 
@@ -660,7 +772,7 @@ class ProactiveReplyPlugin(Star):
         proactive_config = self.config.get("proactive_reply", {})
         session_user_info = proactive_config.get("session_user_info", {})
         last_sent_times = proactive_config.get("last_sent_times", {})
-        user_last_message_times = proactive_config.get("user_last_message_times", {})
+        ai_last_sent_times = proactive_config.get("ai_last_sent_times", {})
 
         if not session_user_info:
             yield event.plain_result("📝 暂无记录的用户信息\n\n💡 提示：与机器人对话后会自动记录用户信息")
@@ -669,13 +781,13 @@ class ProactiveReplyPlugin(Star):
         info_list = []
         for session_id, user_info in session_user_info.items():
             last_sent = last_sent_times.get(session_id, "从未发送")
-            user_last_message = user_last_message_times.get(session_id, "从未发送")
+            ai_last_sent = ai_last_sent_times.get(session_id, "从未发送")
             info_list.append(f"""会话: {session_id[:50]}{'...' if len(session_id) > 50 else ''}
 用户: {user_info.get('username', '未知')} ({user_info.get('user_id', '未知')})
 平台: {user_info.get('platform', '未知')} ({user_info.get('chat_type', '未知')})
 最后活跃: {user_info.get('last_active_time', '未知')}
-AI上次发送: {last_sent}
-用户上次消息: {user_last_message}""")
+AI主动发送: {last_sent}
+AI发送消息: {ai_last_sent}""")
 
         result_text = f"""👥 已记录的用户信息 ({len(session_user_info)} 个会话)
 
@@ -684,6 +796,79 @@ AI上次发送: {last_sent}
 💡 这些信息用于主动消息的占位符替换"""
 
         yield event.plain_result(result_text)
+
+    @proactive_group.command("debug_times")
+    async def debug_times(self, event: AstrMessageEvent):
+        """调试时间记录数据"""
+        current_session = event.unified_msg_origin
+        proactive_config = self.config.get("proactive_reply", {})
+
+        last_sent_times = proactive_config.get("last_sent_times", {})
+        ai_last_sent_times = proactive_config.get("ai_last_sent_times", {})
+
+        debug_text = f"""🔍 时间记录调试信息
+
+当前会话: {current_session[:50]}{'...' if len(current_session) > 50 else ''}
+
+📊 数据统计:
+- AI主动发送记录总数: {len(last_sent_times)}
+- AI发送消息记录总数: {len(ai_last_sent_times)}
+
+🕐 当前会话时间记录:
+- AI主动发送时间: {last_sent_times.get(current_session, '无记录')}
+- AI发送消息时间: {ai_last_sent_times.get(current_session, '无记录')}
+
+🧪 模板测试:
+{self.replace_template_placeholders('测试模板：AI上次发送={last_sent_time}', current_session)}"""
+
+        yield event.plain_result(debug_text)
+
+    @proactive_group.command("debug_tasks")
+    async def debug_tasks(self, event: AstrMessageEvent):
+        """调试当前运行的任务"""
+        current_task = asyncio.current_task()
+        all_tasks = asyncio.all_tasks()
+
+        task_info = []
+        proactive_tasks = []
+
+        for task in all_tasks:
+            task_id = id(task)
+            task_name = getattr(task, '_coro', {})
+            coro_name = getattr(task_name, '__name__', 'unknown') if task_name else 'unknown'
+
+            if 'proactive' in coro_name.lower():
+                proactive_tasks.append(f"- 任务ID: {task_id}, 名称: {coro_name}, 状态: {'运行中' if not task.done() else '已完成'}")
+
+            task_info.append(f"- 任务ID: {task_id}, 名称: {coro_name}, 状态: {'运行中' if not task.done() else '已完成'}")
+
+        current_proactive_task = self.proactive_task
+        current_task_info = f"当前记录的任务: {id(current_proactive_task) if current_proactive_task else 'None'}"
+
+        debug_text = f"""🔍 任务调试信息
+
+{current_task_info}
+
+📊 相关任务统计:
+找到 {len(proactive_tasks)} 个可能的定时任务:
+{chr(10).join(proactive_tasks) if proactive_tasks else '- 无'}
+
+📋 所有任务 (总计 {len(all_tasks)} 个):
+{chr(10).join(task_info[:10])}
+{'...(显示前10个)' if len(task_info) > 10 else ''}"""
+
+        yield event.plain_result(debug_text)
+
+    @proactive_group.command("force_stop")
+    async def force_stop_command(self, event: AstrMessageEvent):
+        """强制停止所有定时任务"""
+        try:
+            await self.force_stop_all_tasks()
+            yield event.plain_result("✅ 已强制停止所有相关任务")
+            logger.info(f"用户 {event.get_sender_name()} 强制停止了所有任务")
+        except Exception as e:
+            yield event.plain_result(f"❌ 强制停止任务失败：{str(e)}")
+            logger.error(f"强制停止任务失败: {e}")
 
     @proactive_group.command("clear_records")
     async def clear_records(self, event: AstrMessageEvent):
@@ -695,12 +880,12 @@ AI上次发送: {last_sent}
             # 清除记录
             self.config["proactive_reply"]["session_user_info"] = {}
             self.config["proactive_reply"]["last_sent_times"] = {}
-            self.config["proactive_reply"]["user_last_message_times"] = {}
+            self.config["proactive_reply"]["ai_last_sent_times"] = {}
 
             # 保存配置
             self.config.save_config()
 
-            yield event.plain_result("✅ 已清除所有用户信息记录、AI发送时间记录和用户消息时间记录")
+            yield event.plain_result("✅ 已清除所有用户信息记录和AI发送时间记录")
             logger.info(f"用户 {event.get_sender_name()} 清除了所有记录")
 
         except Exception as e:
@@ -1047,7 +1232,7 @@ AI上次发送: {last_sent}
 2. 定时主动发送：支持两种时间模式
    - 固定间隔模式：固定时间间隔，可选随机延迟
    - 随机间隔模式：每次在设定范围内随机选择等待时间
-3. 模板占位符：支持 {time}, {last_sent_time}, {user_last_message_time}
+3. 模板占位符：支持 {time}（当前时间）, {last_sent_time}（AI上次发送消息时间）
 
 ⚙️ 配置：
 请在AstrBot管理面板的插件管理中配置相关参数
