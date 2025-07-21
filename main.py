@@ -13,7 +13,12 @@ class ProactiveReplyPlugin(Star):
         super().__init__(context)
         self.config = config or {}
         self.proactive_task = None
+        self._initialization_task = None
+        self._is_terminating = False  # 添加终止标志
         logger.info("ProactiveReplyPlugin 插件已初始化")
+
+        # 异步初始化
+        self._initialization_task = asyncio.create_task(self.initialize())
 
     def _ensure_config_structure(self):
         """确保配置文件结构完整"""
@@ -26,9 +31,15 @@ class ProactiveReplyPlugin(Star):
             "proactive_reply": {
                 "enabled": False,
                 "interval_minutes": 60,
-                "message_templates": "\"嗨，最近怎么样？\"\n\"有什么我可以帮助你的吗？\"\n\"好久不见，有什么新鲜事吗？\"\n\"今天过得如何？\"\n\"有什么想聊的吗？\"",
+                "message_templates": "\"嗨，最近怎么样？\"\n\"有什么我可以帮助你的吗？\"\n\"好久不见，有什么新鲜事吗？\"\n\"今天过得如何？\"\n\"距离上次聊天已经过去了一段时间，AI上次主动发送是{last_sent_time}，你上次发消息是{user_last_message_time}\"",
                 "sessions": "",
-                "active_hours": "9:00-22:00"
+                "active_hours": "9:00-22:00",
+                "random_delay_enabled": False,
+                "min_random_minutes": 0,
+                "max_random_minutes": 30,
+                "session_user_info": {},
+                "last_sent_times": {},
+                "user_last_message_times": {}
             }
         }
 
@@ -57,16 +68,15 @@ class ProactiveReplyPlugin(Star):
 
     async def initialize(self):
         """插件初始化方法"""
+        logger.info("开始执行插件初始化...")
+
         # 确保配置结构完整
         self._ensure_config_structure()
+        logger.info("配置结构检查完成")
 
         # 启动定时任务
-        proactive_config = self.config.get("proactive_reply", {})
-        if proactive_config.get("enabled", False):
-            self.proactive_task = asyncio.create_task(self.proactive_message_loop())
-            logger.info("定时主动发送任务已启动")
-        else:
-            logger.info("定时主动发送功能未启用")
+        await self.start_proactive_task()
+        logger.info("插件初始化完成")
 
     @filter.on_llm_request()
     async def add_user_info(self, event: AstrMessageEvent, req):
@@ -126,33 +136,98 @@ class ProactiveReplyPlugin(Star):
             # 如果没有系统提示，直接设置用户信息
             req.system_prompt = user_info
 
+        # 记录用户信息到配置文件，用于主动发送消息时的占位符替换
+        self.record_user_info(event, username, user_id, platform_name, message_type)
+
         logger.info(f"已为用户 {username}（{user_id}）追加用户信息到LLM请求")
         logger.debug(f"追加的用户信息内容：\n{user_info.strip()}")
         logger.debug(f"完整系统提示长度：{len(req.system_prompt)} 字符")
 
+    def record_user_info(self, event: AstrMessageEvent, username: str, user_id: str, platform_name: str, message_type: str):
+        """记录用户信息到配置文件，用于主动发送消息时的占位符替换"""
+        try:
+            session_id = event.unified_msg_origin
+            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            # 确保配置结构存在
+            if "proactive_reply" not in self.config:
+                self.config["proactive_reply"] = {}
+            if "session_user_info" not in self.config["proactive_reply"]:
+                self.config["proactive_reply"]["session_user_info"] = {}
+            if "user_last_message_times" not in self.config["proactive_reply"]:
+                self.config["proactive_reply"]["user_last_message_times"] = {}
+
+            # 记录用户信息
+            self.config["proactive_reply"]["session_user_info"][session_id] = {
+                "username": username,
+                "user_id": user_id,
+                "platform": platform_name,
+                "chat_type": message_type,
+                "last_active_time": current_time
+            }
+
+            # 记录用户最后消息时间
+            self.config["proactive_reply"]["user_last_message_times"][session_id] = current_time
+
+            # 保存配置（异步保存，避免阻塞）
+            try:
+                self.config.save_config()
+                logger.debug(f"已记录会话 {session_id} 的用户信息和最后消息时间: {username} - {current_time}")
+            except Exception as e:
+                logger.warning(f"保存用户信息配置失败: {e}")
+
+        except Exception as e:
+            logger.error(f"记录用户信息失败: {e}")
+
     async def proactive_message_loop(self):
         """定时主动发送消息的循环"""
         logger.info("定时主动发送消息循环已启动")
+        loop_count = 0
         while True:
             try:
+                loop_count += 1
+                logger.info(f"定时循环第 {loop_count} 次执行")
+
+                # 检查插件是否正在终止
+                if self._is_terminating:
+                    logger.info("插件正在终止，退出定时循环")
+                    break
+
+                # 检查任务是否被取消
+                if self.proactive_task and self.proactive_task.cancelled():
+                    logger.info("定时主动发送任务已被取消，退出循环")
+                    break
+
                 proactive_config = self.config.get("proactive_reply", {})
-                if not proactive_config.get("enabled", False):
-                    logger.debug("定时主动发送功能已禁用，等待中...")
-                    await asyncio.sleep(60)
+                enabled = proactive_config.get("enabled", False)
+                logger.info(f"定时发送功能状态: {'启用' if enabled else '禁用'}")
+
+                if not enabled:
+                    logger.info("定时主动发送功能已禁用，等待60秒后重新检查...")
+                    # 检查是否在等待期间被终止
+                    for i in range(60):  # 分成60次1秒的等待，便于快速响应终止
+                        if self._is_terminating:
+                            logger.info("插件正在终止，退出等待")
+                            return
+                        await asyncio.sleep(1)
                     continue
 
                 # 检查是否在活跃时间段内
-                if not self.is_active_time():
-                    logger.debug("当前不在活跃时间段内，等待中...")
+                is_active = self.is_active_time()
+                logger.info(f"活跃时间检查结果: {'是' if is_active else '否'}")
+                if not is_active:
+                    logger.info("当前不在活跃时间段内，等待60秒后重新检查...")
                     await asyncio.sleep(60)
                     continue
 
                 # 获取配置的会话列表
                 sessions_text = proactive_config.get("sessions", "")
                 sessions = [s.strip() for s in sessions_text.split('\n') if s.strip()]
+                logger.info(f"配置的会话列表: {sessions}")
 
                 if not sessions:
-                    logger.debug("未配置目标会话，等待中...")
+                    logger.info("未配置目标会话，等待60秒后重新检查...")
+                    logger.info("提示：使用 /proactive add_session 指令将当前会话添加到发送列表")
                     await asyncio.sleep(60)
                     continue
 
@@ -167,10 +242,26 @@ class ProactiveReplyPlugin(Star):
                     except Exception as e:
                         logger.error(f"向会话 {session} 发送主动消息失败: {e}")
 
-                # 等待下一次发送
-                interval = proactive_config.get("interval_minutes", 60) * 60
-                logger.info(f"本轮主动消息发送完成，成功发送 {sent_count}/{len(sessions)} 条消息，{interval//60} 分钟后进行下一轮")
-                await asyncio.sleep(interval)
+                # 计算下一次发送的等待时间
+                base_interval = proactive_config.get("interval_minutes", 60) * 60
+
+                # 添加随机延迟
+                total_interval = base_interval
+                if proactive_config.get("random_delay_enabled", False):
+                    min_random = proactive_config.get("min_random_minutes", 0) * 60
+                    max_random = proactive_config.get("max_random_minutes", 30) * 60
+                    if max_random > min_random:
+                        random_delay = random.randint(min_random, max_random)
+                        total_interval += random_delay
+                        logger.info(f"本轮主动消息发送完成，成功发送 {sent_count}/{len(sessions)} 条消息")
+                        logger.info(f"基础间隔: {base_interval//60} 分钟，随机延迟: {random_delay//60} 分钟，总等待时间: {total_interval//60} 分钟")
+                    else:
+                        logger.warning(f"随机延迟配置错误：最大值({max_random//60}分钟) <= 最小值({min_random//60}分钟)，使用基础间隔")
+                        logger.info(f"本轮主动消息发送完成，成功发送 {sent_count}/{len(sessions)} 条消息，{base_interval//60} 分钟后进行下一轮")
+                else:
+                    logger.info(f"本轮主动消息发送完成，成功发送 {sent_count}/{len(sessions)} 条消息，{base_interval//60} 分钟后进行下一轮")
+
+                await asyncio.sleep(total_interval)
 
             except asyncio.CancelledError:
                 logger.info("定时主动发送消息循环已取消")
@@ -225,8 +316,12 @@ class ProactiveReplyPlugin(Star):
             return
 
         # 随机选择一个消息模板
-        message = random.choice(templates)
-        logger.debug(f"为会话 {session} 选择消息模板: {message}")
+        message_template = random.choice(templates)
+        logger.debug(f"为会话 {session} 选择消息模板: {message_template}")
+
+        # 替换模板中的占位符
+        message = self.replace_template_placeholders(message_template, session)
+        logger.debug(f"占位符替换后的消息: {message}")
 
         # 使用 context.send_message 发送消息
         try:
@@ -235,11 +330,147 @@ class ProactiveReplyPlugin(Star):
             success = await self.context.send_message(session, message_chain)
 
             if success:
+                # 记录发送时间
+                self.record_sent_time(session)
                 logger.info(f"成功向会话 {session} 发送主动消息: {message}")
             else:
                 logger.warning(f"向会话 {session} 发送主动消息失败，可能是会话不存在或平台不支持")
         except Exception as e:
             logger.error(f"向会话 {session} 发送主动消息时发生错误: {e}")
+
+    def replace_template_placeholders(self, template: str, session: str) -> str:
+        """替换消息模板中的占位符"""
+        try:
+            # 获取会话的配置信息
+            proactive_config = self.config.get("proactive_reply", {})
+
+            # 获取用户信息配置
+            user_config = self.config.get("user_info", {})
+            time_format = user_config.get("time_format", "%Y-%m-%d %H:%M:%S")
+
+            # 准备占位符数据
+            current_time = datetime.datetime.now().strftime(time_format)
+
+            # 获取AI上次发送时间
+            last_sent_times = proactive_config.get("last_sent_times", {})
+            last_sent_time = last_sent_times.get(session, "从未发送过")
+            if last_sent_time != "从未发送过":
+                try:
+                    # 尝试解析并重新格式化时间
+                    parsed_time = datetime.datetime.strptime(last_sent_time, "%Y-%m-%d %H:%M:%S")
+                    last_sent_time = parsed_time.strftime(time_format)
+                except:
+                    # 如果解析失败，保持原样
+                    pass
+
+            # 获取用户最后消息时间
+            user_last_message_times = proactive_config.get("user_last_message_times", {})
+            user_last_message_time = user_last_message_times.get(session, "从未发送过")
+            if user_last_message_time != "从未发送过":
+                try:
+                    # 尝试解析并重新格式化时间
+                    parsed_time = datetime.datetime.strptime(user_last_message_time, "%Y-%m-%d %H:%M:%S")
+                    user_last_message_time = parsed_time.strftime(time_format)
+                except:
+                    # 如果解析失败，保持原样
+                    pass
+
+            # 安全地替换占位符（只替换存在的占位符）
+            message = template
+
+            # 替换支持的占位符
+            if "{time}" in message:
+                message = message.replace("{time}", current_time)
+            if "{last_sent_time}" in message:
+                message = message.replace("{last_sent_time}", last_sent_time)
+            if "{user_last_message_time}" in message:
+                message = message.replace("{user_last_message_time}", user_last_message_time)
+
+            # 移除不支持的占位符（避免发送时出错）
+            unsupported_placeholders = [
+                "{username}", "{user_id}", "{platform}", "{chat_type}"
+            ]
+            for placeholder in unsupported_placeholders:
+                if placeholder in message:
+                    message = message.replace(placeholder, "")
+                    logger.debug(f"移除了不支持的占位符: {placeholder}")
+
+            return message
+
+        except Exception as e:
+            logger.warning(f"替换模板占位符失败: {e}，返回原始模板")
+            return template
+
+    def record_sent_time(self, session: str):
+        """记录消息发送时间"""
+        try:
+            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            # 确保配置结构存在
+            if "proactive_reply" not in self.config:
+                self.config["proactive_reply"] = {}
+            if "last_sent_times" not in self.config["proactive_reply"]:
+                self.config["proactive_reply"]["last_sent_times"] = {}
+
+            # 记录发送时间
+            self.config["proactive_reply"]["last_sent_times"][session] = current_time
+
+            # 保存配置
+            try:
+                self.config.save_config()
+                logger.debug(f"已记录会话 {session} 的发送时间: {current_time}")
+            except Exception as e:
+                logger.warning(f"保存发送时间配置失败: {e}")
+
+        except Exception as e:
+            logger.error(f"记录发送时间失败: {e}")
+
+    async def stop_proactive_task(self):
+        """停止定时主动发送任务"""
+        if self.proactive_task and not self.proactive_task.cancelled():
+            logger.info("正在停止定时主动发送任务...")
+            self.proactive_task.cancel()
+            try:
+                await self.proactive_task
+            except asyncio.CancelledError:
+                logger.info("定时主动发送任务已成功停止")
+            self.proactive_task = None
+
+    async def start_proactive_task(self):
+        """启动定时主动发送任务"""
+        logger.info("尝试启动定时主动发送任务...")
+
+        proactive_config = self.config.get("proactive_reply", {})
+        enabled = proactive_config.get("enabled", False)
+        logger.info(f"配置中的启用状态: {enabled}")
+
+        if enabled:
+            if self.proactive_task and not self.proactive_task.cancelled():
+                logger.info("定时主动发送任务已在运行中")
+                return
+
+            logger.info("创建定时任务...")
+            self.proactive_task = asyncio.create_task(self.proactive_message_loop())
+            logger.info("定时主动发送任务已启动")
+
+            # 等待一小段时间确保任务开始运行
+            await asyncio.sleep(0.1)
+
+            if self.proactive_task.done():
+                logger.error("定时任务启动后立即结束，可能有错误")
+                try:
+                    await self.proactive_task
+                except Exception as e:
+                    logger.error(f"定时任务错误: {e}")
+            else:
+                logger.info("定时任务正在运行中")
+        else:
+            logger.info("定时主动发送功能未启用")
+
+    async def restart_proactive_task(self):
+        """重启定时主动发送任务"""
+        await self.stop_proactive_task()
+        await self.start_proactive_task()
 
     @filter.command_group("proactive")
     def proactive_group(self):
@@ -255,16 +486,33 @@ class ProactiveReplyPlugin(Star):
         sessions_text = proactive_config.get("sessions", "")
         session_count = len([s for s in sessions_text.split('\n') if s.strip()])
 
+        # 获取用户信息记录数量
+        session_user_info = proactive_config.get("session_user_info", {})
+        user_info_count = len(session_user_info)
+
+        # 获取发送时间记录数量
+        last_sent_times = proactive_config.get("last_sent_times", {})
+        sent_times_count = len(last_sent_times)
+
+        # 获取用户最后消息时间记录数量
+        user_last_message_times = proactive_config.get("user_last_message_times", {})
+        user_message_times_count = len(user_last_message_times)
+
         status_text = f"""📊 主动回复插件状态
 
 🔧 用户信息附加功能：✅ 已启用
   - 时间格式：{user_config.get('time_format', '%Y-%m-%d %H:%M:%S')}
   - 模板长度：{len(user_config.get('template', ''))} 字符
+  - 已记录用户信息：{user_info_count} 个会话
 
 🤖 定时主动发送功能：{'✅ 已启用' if proactive_config.get('enabled', False) else '❌ 已禁用'}
   - 发送间隔：{proactive_config.get('interval_minutes', 60)} 分钟
+  - 随机延迟：{'✅ 已启用' if proactive_config.get('random_delay_enabled', False) else '❌ 已禁用'}
+  - 随机延迟范围：{proactive_config.get('min_random_minutes', 0)}-{proactive_config.get('max_random_minutes', 30)} 分钟
   - 活跃时间：{proactive_config.get('active_hours', '9:00-22:00')}
   - 配置会话数：{session_count}
+  - AI发送记录数：{sent_times_count}
+  - 用户消息记录数：{user_message_times_count}
   - 当前时间：{datetime.datetime.now().strftime('%H:%M')}
   - 是否在活跃时间：{'✅' if self.is_active_time() else '❌'}
 
@@ -341,6 +589,290 @@ class ProactiveReplyPlugin(Star):
         except Exception as e:
             yield event.plain_result(f"❌ 测试消息发送失败：{str(e)}")
             logger.error(f"用户 {event.get_sender_name()} 测试主动消息发送失败: {e}")
+
+    @proactive_group.command("test_template")
+    async def test_template(self, event: AstrMessageEvent):
+        """测试消息模板占位符替换"""
+        current_session = event.unified_msg_origin
+        proactive_config = self.config.get("proactive_reply", {})
+        templates_text = proactive_config.get("message_templates", "\"嗨，{username}，最近怎么样？\"")
+
+        # 解析消息模板
+        templates = []
+        for line in templates_text.split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith('"') and line.endswith('"'):
+                templates.append(line[1:-1])
+            elif line.startswith("'") and line.endswith("'"):
+                templates.append(line[1:-1])
+            else:
+                templates.append(line)
+
+        if not templates:
+            yield event.plain_result("❌ 未配置消息模板")
+            return
+
+        # 测试每个模板的占位符替换
+        test_results = []
+        for i, template in enumerate(templates, 1):
+            try:
+                replaced_message = self.replace_template_placeholders(template, current_session)
+                test_results.append(f"模板 {i}:\n原始: {template}\n替换后: {replaced_message}")
+            except Exception as e:
+                test_results.append(f"模板 {i}:\n原始: {template}\n❌ 替换失败: {str(e)}")
+
+        result_text = f"""🧪 消息模板占位符测试结果
+
+📝 共测试 {len(templates)} 个模板：
+
+{chr(10).join(test_results)}
+
+💡 提示：如果某些占位符显示为"未知"，请先与机器人对话以记录用户信息"""
+
+        yield event.plain_result(result_text)
+
+    @proactive_group.command("show_user_info")
+    async def show_user_info(self, event: AstrMessageEvent):
+        """显示记录的用户信息"""
+        proactive_config = self.config.get("proactive_reply", {})
+        session_user_info = proactive_config.get("session_user_info", {})
+        last_sent_times = proactive_config.get("last_sent_times", {})
+        user_last_message_times = proactive_config.get("user_last_message_times", {})
+
+        if not session_user_info:
+            yield event.plain_result("📝 暂无记录的用户信息\n\n💡 提示：与机器人对话后会自动记录用户信息")
+            return
+
+        info_list = []
+        for session_id, user_info in session_user_info.items():
+            last_sent = last_sent_times.get(session_id, "从未发送")
+            user_last_message = user_last_message_times.get(session_id, "从未发送")
+            info_list.append(f"""会话: {session_id[:50]}{'...' if len(session_id) > 50 else ''}
+用户: {user_info.get('username', '未知')} ({user_info.get('user_id', '未知')})
+平台: {user_info.get('platform', '未知')} ({user_info.get('chat_type', '未知')})
+最后活跃: {user_info.get('last_active_time', '未知')}
+AI上次发送: {last_sent}
+用户上次消息: {user_last_message}""")
+
+        result_text = f"""👥 已记录的用户信息 ({len(session_user_info)} 个会话)
+
+{chr(10).join([f"{i+1}. {info}" for i, info in enumerate(info_list)])}
+
+💡 这些信息用于主动消息的占位符替换"""
+
+        yield event.plain_result(result_text)
+
+    @proactive_group.command("clear_records")
+    async def clear_records(self, event: AstrMessageEvent):
+        """清除记录的用户信息和发送时间（用于测试）"""
+        try:
+            if "proactive_reply" not in self.config:
+                self.config["proactive_reply"] = {}
+
+            # 清除记录
+            self.config["proactive_reply"]["session_user_info"] = {}
+            self.config["proactive_reply"]["last_sent_times"] = {}
+            self.config["proactive_reply"]["user_last_message_times"] = {}
+
+            # 保存配置
+            self.config.save_config()
+
+            yield event.plain_result("✅ 已清除所有用户信息记录、AI发送时间记录和用户消息时间记录")
+            logger.info(f"用户 {event.get_sender_name()} 清除了所有记录")
+
+        except Exception as e:
+            yield event.plain_result(f"❌ 清除记录失败：{str(e)}")
+            logger.error(f"清除记录失败: {e}")
+
+    @proactive_group.command("restart")
+    async def restart_task(self, event: AstrMessageEvent):
+        """重启定时主动发送任务"""
+        try:
+            await self.restart_proactive_task()
+            proactive_config = self.config.get("proactive_reply", {})
+            if proactive_config.get("enabled", False):
+                yield event.plain_result("✅ 定时主动发送任务已重启")
+            else:
+                yield event.plain_result("ℹ️ 定时主动发送功能已禁用，任务已停止")
+            logger.info(f"用户 {event.get_sender_name()} 重启了定时主动发送任务")
+        except Exception as e:
+            yield event.plain_result(f"❌ 重启任务失败：{str(e)}")
+            logger.error(f"重启定时任务失败: {e}")
+
+    @proactive_group.command("task_status")
+    async def task_status(self, event: AstrMessageEvent):
+        """检查定时任务状态"""
+        try:
+            task_info = []
+
+            # 检查主定时任务
+            if self.proactive_task:
+                if self.proactive_task.cancelled():
+                    task_info.append("🔴 主定时任务：已取消")
+                elif self.proactive_task.done():
+                    task_info.append("🟡 主定时任务：已完成")
+                else:
+                    task_info.append("🟢 主定时任务：运行中")
+            else:
+                task_info.append("⚪ 主定时任务：未创建")
+
+            # 检查初始化任务
+            if self._initialization_task:
+                if self._initialization_task.cancelled():
+                    task_info.append("🔴 初始化任务：已取消")
+                elif self._initialization_task.done():
+                    task_info.append("🟢 初始化任务：已完成")
+                else:
+                    task_info.append("🟡 初始化任务：运行中")
+            else:
+                task_info.append("⚪ 初始化任务：未创建")
+
+            # 检查终止标志
+            task_info.append(f"🏁 终止标志：{'是' if self._is_terminating else '否'}")
+
+            # 检查配置状态
+            proactive_config = self.config.get("proactive_reply", {})
+            task_info.append(f"⚙️ 功能启用：{'是' if proactive_config.get('enabled', False) else '否'}")
+
+            # 获取所有运行中的任务数量
+            all_tasks = [task for task in asyncio.all_tasks() if not task.done()]
+            task_info.append(f"📊 全局任务数：{len(all_tasks)}")
+
+            status_text = f"""🔍 定时任务状态检查
+
+{chr(10).join(task_info)}
+
+💡 如果任务状态异常，请使用 /proactive restart 重启任务"""
+
+            yield event.plain_result(status_text)
+
+        except Exception as e:
+            yield event.plain_result(f"❌ 检查任务状态失败：{str(e)}")
+            logger.error(f"检查任务状态失败: {e}")
+
+    @proactive_group.command("debug_send")
+    async def debug_send(self, event: AstrMessageEvent):
+        """调试定时发送功能 - 详细显示发送过程"""
+        current_session = event.unified_msg_origin
+
+        try:
+            proactive_config = self.config.get("proactive_reply", {})
+
+            # 检查配置
+            debug_info = []
+            debug_info.append(f"🔧 配置检查:")
+            debug_info.append(f"  - 功能启用: {'是' if proactive_config.get('enabled', False) else '否'}")
+            debug_info.append(f"  - 当前在活跃时间: {'是' if self.is_active_time() else '否'}")
+
+            # 检查会话列表
+            sessions_text = proactive_config.get("sessions", "")
+            sessions = [s.strip() for s in sessions_text.split('\n') if s.strip()]
+            debug_info.append(f"  - 配置的会话数: {len(sessions)}")
+            debug_info.append(f"  - 当前会话在列表中: {'是' if current_session in sessions else '否'}")
+
+            # 检查消息模板
+            templates_text = proactive_config.get("message_templates", "")
+            templates = []
+            for line in templates_text.split('\n'):
+                line = line.strip()
+                if not line:
+                    continue
+                if line.startswith('"') and line.endswith('"'):
+                    templates.append(line[1:-1])
+                elif line.startswith("'") and line.endswith("'"):
+                    templates.append(line[1:-1])
+                else:
+                    templates.append(line)
+
+            debug_info.append(f"  - 消息模板数: {len(templates)}")
+
+            if templates:
+                # 测试模板替换
+                test_template = templates[0]
+                debug_info.append(f"📝 模板测试:")
+                debug_info.append(f"  - 原始模板: {test_template}")
+
+                replaced_message = self.replace_template_placeholders(test_template, current_session)
+                debug_info.append(f"  - 替换后: {replaced_message}")
+
+                # 尝试发送测试消息
+                debug_info.append(f"🚀 发送测试:")
+                try:
+                    from astrbot.api.event import MessageChain
+                    message_chain = MessageChain().message(replaced_message)
+                    success = await self.context.send_message(current_session, message_chain)
+
+                    if success:
+                        debug_info.append(f"  - 发送结果: ✅ 成功")
+                        # 记录发送时间
+                        self.record_sent_time(current_session)
+                    else:
+                        debug_info.append(f"  - 发送结果: ❌ 失败（可能是会话不存在或平台不支持）")
+
+                except Exception as e:
+                    debug_info.append(f"  - 发送结果: ❌ 异常 - {str(e)}")
+            else:
+                debug_info.append(f"❌ 没有可用的消息模板")
+
+            result_text = f"""🔍 定时发送功能调试
+
+{chr(10).join(debug_info)}
+
+💡 如果发送失败，请检查配置和会话设置"""
+
+            yield event.plain_result(result_text)
+
+        except Exception as e:
+            yield event.plain_result(f"❌ 调试发送功能失败：{str(e)}")
+            logger.error(f"调试发送功能失败: {e}")
+
+    @proactive_group.command("force_start")
+    async def force_start_task(self, event: AstrMessageEvent):
+        """强制启动定时任务（调试用）"""
+        try:
+            logger.info("用户请求强制启动定时任务")
+
+            # 停止现有任务
+            await self.stop_proactive_task()
+
+            # 强制启动任务（忽略配置中的enabled状态）
+            self.proactive_task = asyncio.create_task(self.proactive_message_loop())
+
+            yield event.plain_result("✅ 已强制启动定时任务（忽略配置状态）")
+            logger.info("定时任务已强制启动")
+
+        except Exception as e:
+            yield event.plain_result(f"❌ 强制启动任务失败：{str(e)}")
+            logger.error(f"强制启动任务失败: {e}")
+
+    @proactive_group.command("current_session")
+    async def show_current_session(self, event: AstrMessageEvent):
+        """显示当前会话ID"""
+        current_session = event.unified_msg_origin
+
+        # 检查当前会话是否在发送列表中
+        proactive_config = self.config.get("proactive_reply", {})
+        sessions_text = proactive_config.get("sessions", "")
+        sessions = [s.strip() for s in sessions_text.split('\n') if s.strip()]
+
+        is_in_list = current_session in sessions
+
+        session_info = f"""📍 当前会话信息
+
+🆔 会话ID：
+{current_session}
+
+📋 状态：
+{'✅ 已在定时发送列表中' if is_in_list else '❌ 未在定时发送列表中'}
+
+💡 操作提示：
+{'使用 /proactive remove_session 移除此会话' if is_in_list else '使用 /proactive add_session 添加此会话到发送列表'}
+
+📊 当前发送列表共有 {len(sessions)} 个会话"""
+
+        yield event.plain_result(session_info)
 
     @proactive_group.command("debug")
     async def debug_user_info(self, event: AstrMessageEvent):
@@ -467,19 +999,32 @@ class ProactiveReplyPlugin(Star):
         """显示插件帮助信息"""
         help_text = """📖 主动回复插件帮助
 
-🔧 指令列表：
+🔧 基础指令：
   /proactive status - 查看插件状态
   /proactive debug - 调试用户信息，查看AI收到的信息
   /proactive config - 显示完整的插件配置信息
-  /proactive test_llm - 测试LLM请求，实际体验用户信息附加功能
+  /proactive help - 显示此帮助信息
+
+🤖 定时发送管理：
+  /proactive current_session - 显示当前会话ID和状态
   /proactive add_session - 将当前会话添加到定时发送列表
   /proactive remove_session - 将当前会话从定时发送列表中移除
   /proactive test - 测试发送一条主动消息到当前会话
-  /proactive help - 显示此帮助信息
+  /proactive restart - 重启定时主动发送任务（配置更改后使用）
+
+🧪 测试功能：
+  /proactive test_llm - 测试LLM请求，实际体验用户信息附加功能
+  /proactive test_template - 测试消息模板占位符替换
+  /proactive show_user_info - 显示记录的用户信息
+  /proactive clear_records - 清除记录的用户信息和发送时间
+  /proactive task_status - 检查定时任务状态（调试用）
+  /proactive debug_send - 调试定时发送功能（详细显示发送过程）
+  /proactive force_start - 强制启动定时任务（调试用）
 
 📝 功能说明：
 1. 用户信息附加：在与AI对话时自动附加用户信息和时间
-2. 定时主动发送：定时向指定会话发送消息，保持对话活跃
+2. 定时主动发送：定时向指定会话发送消息，支持随机延迟
+3. 模板占位符：支持 {time}, {last_sent_time}, {user_last_message_time}
 
 ⚙️ 配置：
 请在AstrBot管理面板的插件管理中配置相关参数
@@ -491,10 +1036,19 @@ https://github.com/AstraSolis/astrbot_proactive_reply"""
     async def terminate(self):
         """插件终止时的清理工作"""
         logger.info("ProactiveReplyPlugin 插件正在终止...")
-        if self.proactive_task:
-            self.proactive_task.cancel()
+
+        # 设置终止标志
+        self._is_terminating = True
+
+        # 停止初始化任务
+        if self._initialization_task and not self._initialization_task.cancelled():
+            logger.info("取消初始化任务...")
+            self._initialization_task.cancel()
             try:
-                await self.proactive_task
+                await self._initialization_task
             except asyncio.CancelledError:
-                logger.info("定时主动发送任务已成功取消")
+                logger.info("初始化任务已取消")
+
+        # 停止定时任务
+        await self.stop_proactive_task()
         logger.info("ProactiveReplyPlugin 插件已完全终止")

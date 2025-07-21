@@ -14,19 +14,33 @@
   - 支持自定义时间格式
   - 支持自定义信息模板
   - 智能追加到系统提示，不覆盖人格设置
+  - 自动记录用户消息时间用于占位符
 - 实现定时主动发送消息功能
   - 支持多会话管理
   - 支持多消息模板随机选择
-  - 可配置发送间隔和活跃时间段
+  - 可配置发送间隔和随机延迟
+  - 支持活跃时间段设置
   - 支持引号格式的消息模板解析
+  - 消息模板支持时间占位符
+- 占位符系统
+  - 消息模板占位符：`{time}`, `{last_sent_time}`, `{user_last_message_time}`
+  - 用户信息模板占位符：`{username}`, `{user_id}`, `{time}`, `{platform}`, `{chat_type}`
 - 提供完整的管理指令系统
   - `/proactive status` - 查看插件状态
-  - `/proactive debug` - 调试用户信息
-  - `/proactive config` - 显示完整配置
-  - `/proactive test_llm` - 测试LLM请求
+  - `/proactive current_session` - 显示当前会话ID和状态
   - `/proactive add_session` - 添加当前会话到定时发送列表
   - `/proactive remove_session` - 移除当前会话
   - `/proactive test` - 测试主动消息发送
+  - `/proactive restart` - 重启定时任务
+  - `/proactive debug` - 调试用户信息
+  - `/proactive test_llm` - 测试LLM请求
+  - `/proactive test_template` - 测试模板占位符替换
+  - `/proactive show_user_info` - 显示记录的用户信息
+  - `/proactive clear_records` - 清除记录数据
+  - `/proactive task_status` - 检查定时任务状态
+  - `/proactive debug_send` - 调试定时发送功能
+  - `/proactive force_start` - 强制启动定时任务
+  - `/proactive config` - 显示完整配置
   - `/proactive help` - 显示帮助信息
 
 ### 技术特性
@@ -34,21 +48,18 @@
 - 使用官方 API，无任何非标准功能
 - 支持异步处理和错误恢复
 - 完整的日志记录和调试功能
-- 优雅的资源清理
+- 优雅的资源清理和任务管理
 - 人格系统友好，智能追加不覆盖现有设置
 - 自动配置检查和补充机制
+- 安全的占位符替换机制
+- 强化的定时任务停止机制
+- 详细的调试和诊断工具
 
 ### 兼容性
 - 与 AstrBot 人格系统完全兼容
 - 与 AstrBot 对话管理系统完全兼容
 - 支持所有 AstrBot 支持的消息平台
 - 支持可视化配置管理
-
-### 文档
-- 完整的 README.md 使用文档
-- 详细的测试指南
-- 配置文件位置说明
-- 模板示例和最佳实践
 
 ---
 

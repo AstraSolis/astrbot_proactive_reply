@@ -37,8 +37,26 @@
       "message_templates": {
         "description": "消息模板列表",
         "type": "text",
-        "default": "\"嗨，最近怎么样？\"\n\"有什么我可以帮助你的吗？\"\n\"好久不见，有什么新鲜事吗？\"\n\"今天过得如何？\"\n\"有什么想聊的吗？\"",
-        "hint": "每行一个消息模板，用双引号包围，发送时会随机选择一个"
+        "default": "\"嗨，最近怎么样？\"\n\"有什么我可以帮助你的吗？\"\n\"好久不见，有什么新鲜事吗？\"\n\"今天过得如何？\"\n\"距离上次聊天已经过去了一段时间，AI上次主动发送是{last_sent_time}，你上次发消息是{user_last_message_time}\"",
+        "hint": "每行一个消息模板，用双引号包围，发送时会随机选择一个。支持占位符：{time}（当前时间）、{last_sent_time}（AI上次主动发送时间）、{user_last_message_time}（用户上次发送消息时间）"
+      },
+      "random_delay_enabled": {
+        "description": "是否启用随机延迟发送",
+        "type": "bool",
+        "default": false,
+        "hint": "启用后，在固定间隔基础上增加随机延迟时间"
+      },
+      "min_random_minutes": {
+        "description": "最小随机延迟时间（分钟）",
+        "type": "int",
+        "default": 0,
+        "hint": "随机延迟的最小值，单位：分钟"
+      },
+      "max_random_minutes": {
+        "description": "最大随机延迟时间（分钟）",
+        "type": "int",
+        "default": 30,
+        "hint": "随机延迟的最大值，单位：分钟"
       },
       "sessions": {
         "description": "目标会话列表",
@@ -51,6 +69,27 @@
         "type": "string",
         "default": "9:00-22:00",
         "hint": "只在此时间段内发送主动消息，格式：开始时间-结束时间（24小时制）"
+      },
+      "session_user_info": {
+        "description": "会话用户信息记录（内部数据）",
+        "type": "object",
+        "default": {},
+        "invisible": true,
+        "items": {}
+      },
+      "last_sent_times": {
+        "description": "上次发送时间记录（内部数据）",
+        "type": "object",
+        "default": {},
+        "invisible": true,
+        "items": {}
+      },
+      "user_last_message_times": {
+        "description": "用户最后消息时间记录（内部数据）",
+        "type": "object",
+        "default": {},
+        "invisible": true,
+        "items": {}
       }
     }
   }
