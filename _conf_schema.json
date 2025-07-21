@@ -1,0 +1,57 @@
+{
+  "user_info": {
+    "description": "聊天附带用户信息设置",
+    "type": "object",
+    "items": {
+      "time_format": {
+        "description": "时间格式",
+        "type": "string",
+        "default": "%Y-%m-%d %H:%M:%S",
+        "hint": "使用Python datetime格式，如：%Y-%m-%d %H:%M:%S"
+      },
+      "template": {
+        "description": "用户信息模板",
+        "type": "text",
+        "default": "[对话信息] 用户：{username}，时间：{time}",
+        "hint": "用户信息会追加到现有系统提示的末尾，不会覆盖人格设置。可使用占位符：{username}（用户名）、{user_id}（用户ID）、{time}（时间）、{platform}（平台名）、{chat_type}（聊天类型）。建议保持简洁，避免与人格设置冲突"
+      }
+    }
+  },
+  "proactive_reply": {
+    "description": "定时主动发送消息设置",
+    "type": "object",
+    "items": {
+      "enabled": {
+        "description": "是否启用定时主动发送消息功能",
+        "type": "bool",
+        "default": false,
+        "hint": "启用后，插件会定时向配置的会话发送消息",
+        "obvious_hint": true
+      },
+      "interval_minutes": {
+        "description": "定时发送间隔（分钟）",
+        "type": "int",
+        "default": 60,
+        "hint": "每隔多少分钟发送一次主动消息"
+      },
+      "message_templates": {
+        "description": "消息模板列表",
+        "type": "text",
+        "default": "\"嗨，最近怎么样？\"\n\"有什么我可以帮助你的吗？\"\n\"好久不见，有什么新鲜事吗？\"\n\"今天过得如何？\"\n\"有什么想聊的吗？\"",
+        "hint": "每行一个消息模板，用双引号包围，发送时会随机选择一个"
+      },
+      "sessions": {
+        "description": "目标会话列表",
+        "type": "text",
+        "default": "",
+        "hint": "需要定时发送消息的会话ID，每行一个。格式：platform_name:message_type:session_id。可使用 /proactive add_session 指令添加当前会话"
+      },
+      "active_hours": {
+        "description": "活跃时间段",
+        "type": "string",
+        "default": "9:00-22:00",
+        "hint": "只在此时间段内发送主动消息，格式：开始时间-结束时间（24小时制）"
+      }
+    }
+  }
+}

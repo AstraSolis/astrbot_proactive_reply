@@ -1,5 +1,13 @@
-name: helloworld # 这是你的插件的唯一识别名。
-desc: 这是 AstrBot 的默认插件，支持关键词回复。 # 插件简短描述
-version: v1.3 # 插件版本号。格式：v1.1.1 或者 v1.1
-author: Soulter # 作者
-repo: https://github.com/Soulter/helloworld # 插件的仓库地址
+name: astrbot_proactive_reply
+desc: 一个支持聊天附带用户信息和定时主动发送消息的AstrBot插件
+version: v1.0.0
+author: AstraSolis
+repo: https://github.com/AstraSolis/astrbot_proactive_reply
+tags:
+  - "聊天增强"
+  - "定时任务"
+  - "用户信息"
+  - "主动回复"
+license: MIT
+homepage: https://github.com/AstraSolis/astrbot_proactive_reply
+issues: https://github.com/AstraSolis/astrbot_proactive_reply/issues
