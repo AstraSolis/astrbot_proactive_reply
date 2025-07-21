@@ -28,11 +28,18 @@
         "hint": "启用后，插件会定时向配置的会话发送消息",
         "obvious_hint": true
       },
+      "timing_mode": {
+        "description": "时间模式",
+        "type": "string",
+        "default": "fixed_interval",
+        "options": ["fixed_interval", "random_interval"],
+        "hint": "选择时间模式：fixed_interval=固定间隔（可选随机延迟），random_interval=完全随机间隔"
+      },
       "interval_minutes": {
         "description": "定时发送间隔（分钟）",
         "type": "int",
-        "default": 60,
-        "hint": "每隔多少分钟发送一次主动消息"
+        "default": 600,
+        "hint": "每隔多少分钟发送一次主动消息。该参数仅在固定间隔模式(fixed_interval)下生效"
       },
       "message_templates": {
         "description": "消息模板列表",
@@ -44,19 +51,31 @@
         "description": "是否启用随机延迟发送",
         "type": "bool",
         "default": false,
-        "hint": "启用后，在固定间隔基础上增加随机延迟时间"
+        "hint": "启用后，在固定间隔基础上增加随机延迟时间。该参数仅在固定间隔模式(fixed_interval)下生效"
       },
       "min_random_minutes": {
         "description": "最小随机延迟时间（分钟）",
         "type": "int",
         "default": 0,
-        "hint": "随机延迟的最小值，单位：分钟"
+        "hint": "随机延迟的最小值，单位：分钟。该参数仅在固定间隔模式(fixed_interval)下生效"
       },
       "max_random_minutes": {
         "description": "最大随机延迟时间（分钟）",
         "type": "int",
         "default": 30,
-        "hint": "随机延迟的最大值，单位：分钟"
+        "hint": "随机延迟的最大值，单位：分钟。该参数仅在固定间隔模式(fixed_interval)下生效"
+      },
+      "random_min_minutes": {
+        "description": "随机间隔最小时间（分钟）",
+        "type": "int",
+        "default": 600,
+        "hint": "随机间隔模式下的最小等待时间，单位：分钟。该参数仅在随机间隔模式(random_interval)下生效"
+      },
+      "random_max_minutes": {
+        "description": "随机间隔最大时间（分钟）",
+        "type": "int",
+        "default": 1200,
+        "hint": "随机间隔模式下的最大等待时间，单位：分钟。该参数仅在随机间隔模式(random_interval)下生效"
       },
       "sessions": {
         "description": "目标会话列表",

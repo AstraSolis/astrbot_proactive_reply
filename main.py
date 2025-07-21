@@ -30,13 +30,16 @@ class ProactiveReplyPlugin(Star):
             },
             "proactive_reply": {
                 "enabled": False,
-                "interval_minutes": 60,
+                "timing_mode": "fixed_interval",
+                "interval_minutes": 600,
                 "message_templates": "\"嗨，最近怎么样？\"\n\"有什么我可以帮助你的吗？\"\n\"好久不见，有什么新鲜事吗？\"\n\"今天过得如何？\"\n\"距离上次聊天已经过去了一段时间，AI上次主动发送是{last_sent_time}，你上次发消息是{user_last_message_time}\"",
                 "sessions": "",
                 "active_hours": "9:00-22:00",
                 "random_delay_enabled": False,
                 "min_random_minutes": 0,
                 "max_random_minutes": 30,
+                "random_min_minutes": 600,
+                "random_max_minutes": 1200,
                 "session_user_info": {},
                 "last_sent_times": {},
                 "user_last_message_times": {}
@@ -243,23 +246,39 @@ class ProactiveReplyPlugin(Star):
                         logger.error(f"向会话 {session} 发送主动消息失败: {e}")
 
                 # 计算下一次发送的等待时间
-                base_interval = proactive_config.get("interval_minutes", 60) * 60
+                timing_mode = proactive_config.get("timing_mode", "fixed_interval")
 
-                # 添加随机延迟
-                total_interval = base_interval
-                if proactive_config.get("random_delay_enabled", False):
-                    min_random = proactive_config.get("min_random_minutes", 0) * 60
-                    max_random = proactive_config.get("max_random_minutes", 30) * 60
-                    if max_random > min_random:
-                        random_delay = random.randint(min_random, max_random)
-                        total_interval += random_delay
+                if timing_mode == "random_interval":
+                    # 随机间隔模式：在最小和最大时间之间随机选择
+                    random_min = proactive_config.get("random_min_minutes", 1) * 60
+                    random_max = proactive_config.get("random_max_minutes", 60) * 60
+
+                    if random_max > random_min:
+                        total_interval = random.randint(random_min, random_max)
                         logger.info(f"本轮主动消息发送完成，成功发送 {sent_count}/{len(sessions)} 条消息")
-                        logger.info(f"基础间隔: {base_interval//60} 分钟，随机延迟: {random_delay//60} 分钟，总等待时间: {total_interval//60} 分钟")
+                        logger.info(f"随机间隔模式：随机等待时间 {total_interval//60} 分钟（范围：{random_min//60}-{random_max//60}分钟）")
                     else:
-                        logger.warning(f"随机延迟配置错误：最大值({max_random//60}分钟) <= 最小值({min_random//60}分钟)，使用基础间隔")
-                        logger.info(f"本轮主动消息发送完成，成功发送 {sent_count}/{len(sessions)} 条消息，{base_interval//60} 分钟后进行下一轮")
+                        logger.warning(f"随机间隔配置错误：最大值({random_max//60}分钟) <= 最小值({random_min//60}分钟)，使用默认60分钟")
+                        total_interval = 60 * 60
+                        logger.info(f"本轮主动消息发送完成，成功发送 {sent_count}/{len(sessions)} 条消息，使用默认等待时间 60 分钟")
                 else:
-                    logger.info(f"本轮主动消息发送完成，成功发送 {sent_count}/{len(sessions)} 条消息，{base_interval//60} 分钟后进行下一轮")
+                    # 固定间隔模式（原有逻辑）
+                    base_interval = proactive_config.get("interval_minutes", 60) * 60
+                    total_interval = base_interval
+
+                    if proactive_config.get("random_delay_enabled", False):
+                        min_random = proactive_config.get("min_random_minutes", 0) * 60
+                        max_random = proactive_config.get("max_random_minutes", 30) * 60
+                        if max_random > min_random:
+                            random_delay = random.randint(min_random, max_random)
+                            total_interval += random_delay
+                            logger.info(f"本轮主动消息发送完成，成功发送 {sent_count}/{len(sessions)} 条消息")
+                            logger.info(f"固定间隔模式：基础间隔 {base_interval//60} 分钟，随机延迟 {random_delay//60} 分钟，总等待时间 {total_interval//60} 分钟")
+                        else:
+                            logger.warning(f"随机延迟配置错误：最大值({max_random//60}分钟) <= 最小值({min_random//60}分钟)，使用基础间隔")
+                            logger.info(f"本轮主动消息发送完成，成功发送 {sent_count}/{len(sessions)} 条消息，{base_interval//60} 分钟后进行下一轮")
+                    else:
+                        logger.info(f"本轮主动消息发送完成，成功发送 {sent_count}/{len(sessions)} 条消息，{base_interval//60} 分钟后进行下一轮")
 
                 await asyncio.sleep(total_interval)
 
@@ -506,9 +525,11 @@ class ProactiveReplyPlugin(Star):
   - 已记录用户信息：{user_info_count} 个会话
 
 🤖 定时主动发送功能：{'✅ 已启用' if proactive_config.get('enabled', False) else '❌ 已禁用'}
-  - 发送间隔：{proactive_config.get('interval_minutes', 60)} 分钟
-  - 随机延迟：{'✅ 已启用' if proactive_config.get('random_delay_enabled', False) else '❌ 已禁用'}
-  - 随机延迟范围：{proactive_config.get('min_random_minutes', 0)}-{proactive_config.get('max_random_minutes', 30)} 分钟
+  - 时间模式：{proactive_config.get('timing_mode', 'fixed_interval')} ({'固定间隔' if proactive_config.get('timing_mode', 'fixed_interval') == 'fixed_interval' else '随机间隔'})
+  - 发送间隔：{proactive_config.get('interval_minutes', 60)} 分钟 {'(固定间隔模式)' if proactive_config.get('timing_mode', 'fixed_interval') == 'fixed_interval' else '(未使用)'}
+  - 随机延迟：{'✅ 已启用' if proactive_config.get('random_delay_enabled', False) else '❌ 已禁用'} {'(固定间隔模式)' if proactive_config.get('timing_mode', 'fixed_interval') == 'fixed_interval' else '(未使用)'}
+  - 随机延迟范围：{proactive_config.get('min_random_minutes', 0)}-{proactive_config.get('max_random_minutes', 30)} 分钟 {'(固定间隔模式)' if proactive_config.get('timing_mode', 'fixed_interval') == 'fixed_interval' else '(未使用)'}
+  - 随机间隔范围：{proactive_config.get('random_min_minutes', 1)}-{proactive_config.get('random_max_minutes', 60)} 分钟 {'(随机间隔模式)' if proactive_config.get('timing_mode', 'fixed_interval') == 'random_interval' else '(未使用)'}
   - 活跃时间：{proactive_config.get('active_hours', '9:00-22:00')}
   - 配置会话数：{session_count}
   - AI发送记录数：{sent_times_count}
@@ -1023,7 +1044,9 @@ AI上次发送: {last_sent}
 
 📝 功能说明：
 1. 用户信息附加：在与AI对话时自动附加用户信息和时间
-2. 定时主动发送：定时向指定会话发送消息，支持随机延迟
+2. 定时主动发送：支持两种时间模式
+   - 固定间隔模式：固定时间间隔，可选随机延迟
+   - 随机间隔模式：每次在设定范围内随机选择等待时间
 3. 模板占位符：支持 {time}, {last_sent_time}, {user_last_message_time}
 
 ⚙️ 配置：
