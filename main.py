@@ -985,6 +985,10 @@ class ProactiveReplyPlugin(Star):
             if success:
                 # 记录发送时间
                 self.record_sent_time(session)
+
+                # 重要：将AI主动发送的消息添加到对话历史记录中
+                await self.add_message_to_conversation_history(session, message)
+
                 logger.info(f"成功向会话 {session} 发送主动消息: {message}")
             else:
                 logger.warning(
@@ -993,6 +997,101 @@ class ProactiveReplyPlugin(Star):
 
         except Exception as e:
             logger.error(f"向会话 {session} 发送主动消息时发生错误: {e}")
+
+    async def add_message_to_conversation_history(self, session: str, message: str):
+        """将AI主动发送的消息添加到对话历史记录中"""
+        try:
+            import json
+
+            # 获取当前会话的对话ID
+            curr_cid = await self.context.conversation_manager.get_curr_conversation_id(
+                session
+            )
+
+            # 如果没有对话，创建一个新的对话
+            if not curr_cid:
+                logger.info(f"会话 {session} 没有现有对话，创建新对话")
+                curr_cid = await self.context.conversation_manager.new_conversation(
+                    session
+                )
+                if not curr_cid:
+                    logger.error(f"无法为会话 {session} 创建新对话")
+                    return
+
+            # 获取对话对象
+            conversation = await self.context.conversation_manager.get_conversation(
+                session, curr_cid
+            )
+            if not conversation:
+                logger.error(f"无法获取会话 {session} 的对话对象")
+                return
+
+            # 解析现有的对话历史
+            try:
+                if conversation.history:
+                    history = json.loads(conversation.history)
+                else:
+                    history = []
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.warning(f"解析对话历史失败: {e}，使用空历史")
+                history = []
+
+            # 添加AI的主动消息到历史记录
+            ai_message = {"role": "assistant", "content": message}
+            history.append(ai_message)
+
+            # 更新对话历史
+            conversation.history = json.dumps(history, ensure_ascii=False)
+
+            # 保存对话历史到数据库
+            try:
+                saved = False
+                db = self.context.get_db()
+
+                if db and hasattr(db, "conn"):
+                    # 使用数据库连接直接执行SQL
+                    try:
+                        conn = db.conn
+                        cursor = conn.cursor()
+
+                        # 直接更新webchat_conversation表
+                        cursor.execute(
+                            "UPDATE webchat_conversation SET history = ?, updated_at = ? WHERE cid = ?",
+                            (
+                                conversation.history,
+                                int(datetime.datetime.now().timestamp()),
+                                curr_cid,
+                            ),
+                        )
+                        affected_rows = cursor.rowcount
+                        conn.commit()  # 提交事务
+
+                        if affected_rows > 0:
+                            saved = True
+                            logger.debug(
+                                f"✅ 通过SQL直接更新对话历史成功（影响行数：{affected_rows}）"
+                            )
+                        else:
+                            logger.debug(f"SQL更新执行成功但未影响任何行")
+
+                    except Exception as e:
+                        logger.debug(f"数据库连接操作失败: {e}")
+
+                if saved:
+                    logger.info(
+                        f"✅ 已将AI主动消息添加到会话 {session} 的对话历史中并保存到数据库"
+                    )
+                else:
+                    logger.warning(f"⚠️ 无法保存对话历史到数据库，消息已添加到内存中")
+                    logger.debug(f"已将AI主动消息添加到会话 {session} 的内存对话历史中")
+
+            except Exception as save_error:
+                logger.error(f"保存对话历史时发生错误: {save_error}")
+                # 即使保存失败，至少内存中的历史已经更新了
+                logger.debug(f"内存中的对话历史已更新，但可能未持久化到数据库")
+
+        except Exception as e:
+            logger.error(f"将消息添加到对话历史时发生错误: {e}")
 
     def record_sent_time(self, session: str):
         """记录消息发送时间"""
@@ -1977,6 +2076,323 @@ AI发送消息: {ai_last_sent}""")
             yield event.plain_result(f"❌ 测试占位符替换失败：{str(e)}")
             logger.error(f"测试占位符替换失败: {e}")
 
+    @proactive_group.command("test_conversation_history")
+    async def test_conversation_history(self, event: AstrMessageEvent):
+        """测试对话历史记录功能"""
+        current_session = event.unified_msg_origin
+
+        try:
+            # 显示测试开始信息
+            yield event.plain_result("🧪 开始测试对话历史记录功能...")
+
+            # 测试消息
+            test_message = f"这是一条测试主动消息，时间戳：{datetime.datetime.now().strftime('%H:%M:%S')}"
+
+            # 添加测试消息到对话历史
+            await self.add_message_to_conversation_history(
+                current_session, test_message
+            )
+
+            # 验证消息是否已添加到历史记录
+            curr_cid = await self.context.conversation_manager.get_curr_conversation_id(
+                current_session
+            )
+            if curr_cid:
+                conversation = await self.context.conversation_manager.get_conversation(
+                    current_session, curr_cid
+                )
+                if conversation and conversation.history:
+                    import json
+
+                    try:
+                        history = json.loads(conversation.history)
+                        # 查找我们刚添加的测试消息
+                        found_test_message = False
+                        matching_messages = []
+
+                        for i, msg in enumerate(
+                            reversed(history)
+                        ):  # 从最新的消息开始查找
+                            if msg.get("role") == "assistant":
+                                if test_message in msg.get("content", ""):
+                                    found_test_message = True
+                                    matching_messages.append(
+                                        f"位置{len(history) - i}: {msg.get('content', '')[:50]}..."
+                                    )
+                                elif "测试主动消息" in msg.get("content", ""):
+                                    matching_messages.append(
+                                        f"位置{len(history) - i}: {msg.get('content', '')[:50]}..."
+                                    )
+
+                        if found_test_message:
+                            result_text = f"""✅ 对话历史记录功能测试成功
+
+🔍 测试结果：
+- 对话ID：{curr_cid}
+- 历史记录条数：{len(history)}
+- 测试消息已成功添加到对话历史中
+
+📝 测试消息内容：
+{test_message}
+
+🎯 找到的匹配消息：
+{chr(10).join(matching_messages[:3])}
+
+💡 这意味着AI主动发送的消息现在会正确地添加到对话历史中，
+   用户下次发消息时LLM能够看到完整的上下文。"""
+                        else:
+                            result_text = f"""⚠️ 对话历史记录功能测试部分成功
+
+🔍 测试结果：
+- 对话ID：{curr_cid}
+- 历史记录条数：{len(history)}
+- 测试消息可能已添加，但在历史记录中未找到完全匹配的内容
+
+🔧 调试信息：
+- 对话对象类型：{type(conversation).__name__}
+- 最近3条历史记录：{history[-3:] if len(history) >= 3 else history}
+
+🎯 找到的相似消息：
+{chr(10).join(matching_messages[:3]) if matching_messages else "无"}
+
+💡 即使没有找到完全匹配，消息可能仍然被正确添加到内存中。"""
+
+                    except json.JSONDecodeError as e:
+                        result_text = f"❌ 解析对话历史失败：{e}"
+                else:
+                    result_text = "❌ 无法获取对话历史记录"
+            else:
+                result_text = "❌ 当前会话没有对话记录"
+
+            yield event.plain_result(result_text)
+
+        except Exception as e:
+            yield event.plain_result(f"❌ 对话历史记录测试失败：{str(e)}")
+            logger.error(f"对话历史记录测试失败: {e}")
+
+    @proactive_group.command("debug_conversation_object")
+    async def debug_conversation_object(self, event: AstrMessageEvent):
+        """调试对话对象结构，帮助了解保存机制"""
+        current_session = event.unified_msg_origin
+
+        try:
+            # 获取对话对象
+            curr_cid = await self.context.conversation_manager.get_curr_conversation_id(
+                current_session
+            )
+            if not curr_cid:
+                yield event.plain_result("❌ 当前会话没有对话记录")
+                return
+
+            conversation = await self.context.conversation_manager.get_conversation(
+                current_session, curr_cid
+            )
+            if not conversation:
+                yield event.plain_result("❌ 无法获取对话对象")
+                return
+
+            # 分析对话对象结构
+            obj_type = type(conversation).__name__
+            obj_module = type(conversation).__module__
+
+            # 获取所有属性和方法
+            attributes = []
+            methods = []
+            save_methods = []
+
+            for attr_name in dir(conversation):
+                if attr_name.startswith("_"):
+                    continue
+
+                attr = getattr(conversation, attr_name)
+                if callable(attr):
+                    methods.append(attr_name)
+                    if "save" in attr_name.lower() or "update" in attr_name.lower():
+                        save_methods.append(attr_name)
+                else:
+                    attributes.append(f"{attr_name}: {type(attr).__name__}")
+
+            debug_info = f"""🔍 对话对象调试信息
+
+📋 基本信息：
+- 对话ID：{curr_cid}
+- 对象类型：{obj_type}
+- 模块：{obj_module}
+
+📊 属性列表：
+{chr(10).join(attributes[:10])}
+{"..." if len(attributes) > 10 else ""}
+
+🔧 方法列表：
+{chr(10).join(methods[:15])}
+{"..." if len(methods) > 15 else ""}
+
+💾 可能的保存方法：
+{chr(10).join(save_methods) if save_methods else "未找到明显的保存方法"}
+
+🗄️ 数据库对象信息：
+- 数据库对象：{type(self.context.get_db()).__name__ if self.context.get_db() else "None"}
+- 数据库模块：{type(self.context.get_db()).__module__ if self.context.get_db() else "None"}
+
+💡 这些信息可以帮助开发者了解如何正确保存对话历史。"""
+
+            yield event.plain_result(debug_info)
+
+        except Exception as e:
+            yield event.plain_result(f"❌ 调试对话对象失败：{str(e)}")
+            logger.error(f"调试对话对象失败: {e}")
+
+    @proactive_group.command("debug_database")
+    async def debug_database(self, event: AstrMessageEvent):
+        """调试数据库对象，查看可用的保存方法"""
+        try:
+            db = self.context.get_db()
+            if not db:
+                yield event.plain_result("❌ 无法获取数据库对象")
+                return
+
+            # 分析数据库对象
+            db_type = type(db).__name__
+            db_module = type(db).__module__
+
+            # 获取所有方法
+            methods = []
+            save_methods = []
+            execute_methods = []
+
+            for attr_name in dir(db):
+                if attr_name.startswith("_"):
+                    continue
+
+                attr = getattr(db, attr_name)
+                if callable(attr):
+                    methods.append(attr_name)
+                    if "save" in attr_name.lower() or "update" in attr_name.lower():
+                        save_methods.append(attr_name)
+                    if "execute" in attr_name.lower():
+                        execute_methods.append(attr_name)
+
+            debug_info = f"""🗄️ 数据库对象调试信息
+
+📋 基本信息：
+- 数据库类型：{db_type}
+- 模块：{db_module}
+
+🔧 所有方法：
+{chr(10).join(methods[:20])}
+{"..." if len(methods) > 20 else ""}
+
+💾 可能的保存/更新方法：
+{chr(10).join(save_methods) if save_methods else "未找到明显的保存方法"}
+
+⚡ 执行方法：
+{chr(10).join(execute_methods) if execute_methods else "未找到执行方法"}
+
+🔍 ConversationManager方法：
+{chr(10).join([m for m in dir(self.context.conversation_manager) if not m.startswith("_") and callable(getattr(self.context.conversation_manager, m))][:10])}
+
+💡 这些信息可以帮助确定正确的数据库操作方法。"""
+
+            yield event.plain_result(debug_info)
+
+        except Exception as e:
+            yield event.plain_result(f"❌ 调试数据库对象失败：{str(e)}")
+            logger.error(f"调试数据库对象失败: {e}")
+
+    @proactive_group.command("debug_db_schema")
+    async def debug_db_schema(self, event: AstrMessageEvent):
+        """调试数据库表结构，查看conversations表的字段"""
+        try:
+            db = self.context.get_db()
+            if not db:
+                yield event.plain_result("❌ 无法获取数据库对象")
+                return
+
+            # 查询数据库表结构
+            try:
+                # 尝试通过conn属性访问数据库连接
+                if hasattr(db, "conn"):
+                    conn = db.conn
+                    cursor = conn.cursor()
+
+                    # 首先查询所有表名
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                    tables = cursor.fetchall()
+
+                    schema_info = f"""🗄️ 数据库表结构信息
+
+📋 所有表名：
+{chr(10).join([f"- {table[0]}" for table in tables]) if tables else "无法获取表信息"}
+
+"""
+
+                    # 查找对话相关的表
+                    conversation_tables = [
+                        table[0]
+                        for table in tables
+                        if "conversation" in table[0].lower()
+                    ]
+
+                    if conversation_tables:
+                        # 查询第一个对话表的结构
+                        table_name = conversation_tables[0]
+                        cursor.execute(f"PRAGMA table_info({table_name})")
+                        table_info = cursor.fetchall()
+
+                        schema_info += f"""🔍 {table_name}表字段信息：
+{chr(10).join([f"- {field}" for field in table_info]) if table_info else "无法获取字段信息"}
+
+"""
+
+                        # 获取当前会话的对话信息
+                        current_session = event.unified_msg_origin
+                        curr_cid = await self.context.conversation_manager.get_curr_conversation_id(
+                            current_session
+                        )
+
+                        if curr_cid:
+                            # 查询当前对话的数据库记录
+                            try:
+                                # 尝试不同的字段名
+                                for id_field in ["cid", "id", "conversation_id"]:
+                                    try:
+                                        cursor.execute(
+                                            f"SELECT * FROM {table_name} WHERE {id_field} = ?",
+                                            (curr_cid,),
+                                        )
+                                        conversation_data = cursor.fetchone()
+                                        if conversation_data:
+                                            schema_info += f"""🔍 当前会话信息：
+- 对话ID：{curr_cid}
+- 使用字段：{id_field}
+- 数据库记录：{conversation_data}"""
+                                            break
+                                    except Exception as e:
+                                        continue
+                                else:
+                                    schema_info += f"""🔍 当前会话信息：
+- 对话ID：{curr_cid}
+- 查询记录失败：未找到匹配的ID字段"""
+                            except Exception as e:
+                                schema_info += f"""🔍 当前会话信息：
+- 对话ID：{curr_cid}
+- 查询记录失败：{e}"""
+                        else:
+                            schema_info += "\n🔍 当前会话没有对话记录"
+                    else:
+                        schema_info += "❌ 未找到对话相关的表"
+
+                    yield event.plain_result(schema_info)
+                else:
+                    yield event.plain_result("❌ 无法访问数据库连接对象")
+
+            except Exception as e:
+                yield event.plain_result(f"❌ 查询表结构失败：{str(e)}")
+
+        except Exception as e:
+            yield event.plain_result(f"❌ 调试数据库表结构失败：{str(e)}")
+            logger.error(f"调试数据库表结构失败: {e}")
+
     @proactive_group.command("force_save_config")
     async def force_save_config(self, event: AstrMessageEvent):
         """强制保存配置文件"""
@@ -2228,6 +2644,10 @@ AI发送消息: {ai_last_sent}""")
   /proactive test_llm_generation - 测试LLM生成主动消息功能
   /proactive test_prompt - 测试系统提示词构建过程
   /proactive test_placeholders - 测试占位符替换功能
+  /proactive test_conversation_history - 测试对话历史记录功能（新增）
+  /proactive debug_conversation_object - 调试对话对象结构（新增）
+  /proactive debug_database - 调试数据库对象和方法（新增）
+  /proactive debug_db_schema - 调试数据库表结构（新增）
   /proactive show_user_info - 显示记录的用户信息
   /proactive clear_records - 清除记录的用户信息和发送时间
   /proactive task_status - 检查定时任务状态（调试用）
@@ -2243,6 +2663,9 @@ AI发送消息: {ai_last_sent}""")
    - 固定间隔模式：固定时间间隔，可选随机延迟
    - 随机间隔模式：每次在设定范围内随机选择等待时间
 3. 个性化生成：基于用户信息和对话历史生成更自然的主动消息
+4. 🆕 对话历史记录：AI主动发送的消息会自动添加到对话历史中
+   - 解决了上下文断裂问题，用户下次发消息时AI能看到完整对话
+   - 支持多种保存方式，确保历史记录的可靠性
 
 🏷️ 主动对话提示词支持的占位符：
   {user_context} - 完整的用户上下文信息

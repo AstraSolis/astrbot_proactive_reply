@@ -5,6 +5,30 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v1.0.0] - 2025-01-22 (更新)
+
+### 🔥 重大改进
+- **解决AI主动消息上下文断裂问题**：AI主动发送的消息现在会自动添加到对话历史记录中
+  - 用户下次发消息时，LLM能够看到AI之前主动发送的内容，保持对话连贯性
+  - 自动处理对话创建和历史记录解析
+  - 使用高效的SQL直接更新方式保存到数据库
+
+### 新增功能
+- 新增 `add_message_to_conversation_history()` 方法，专门处理对话历史记录
+- 新增 `/proactive test_conversation_history` 指令，用于测试对话历史记录功能
+- 新增调试工具：`debug_conversation_object`、`debug_database`、`debug_db_schema`
+
+### 技术改进
+- 优化对话历史的JSON格式处理
+- 识别正确的数据库表结构（`webchat_conversation`表）
+- 使用最优的SQL直接更新方式
+- 简化代码结构，提高性能和可维护性
+- 增强错误处理和日志记录
+
+### 问题修复
+- 🐛 修复AI主动发送消息不进入历史记录导致的上下文断裂问题
+- 🐛 优化数据库操作，确保消息可靠保存
+
 ## [v1.0.0] - 2025-07-22
 
 ### 重大更新

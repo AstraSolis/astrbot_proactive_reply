@@ -1,13 +1,7 @@
-name: astrbot_proactive_reply
-desc: 一个支持聊天附带用户信息和定时主动发送消息的AstrBot插件
-version: v1.0.0
-author: AstraSolis
-repo: https://github.com/AstraSolis/astrbot_proactive_reply
-tags:
-  - "聊天增强"
-  - "定时任务"
-  - "用户信息"
-  - "主动回复"
-license: MIT
-homepage: https://github.com/AstraSolis/astrbot_proactive_reply
-issues: https://github.com/AstraSolis/astrbot_proactive_reply/issues
+  "name": "astrbot_proactive_reply"
+  "desc": "一个支持聊天附带用户信息和定时主动发送消息的AstrBot插件"
+  "version": "v1.0.0"
+  "author": "AstraSolis"
+  "tags": ["聊天增强", "定时任务", "用户信息", "主动回复"]
+  "repo": "https://github.com/AstraSolis/astrbot_proactive_reply"
+  
