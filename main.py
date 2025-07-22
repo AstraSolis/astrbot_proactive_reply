@@ -196,6 +196,8 @@ class ProactiveReplyPlugin(Star):
                     "友好交流，分享今日想法",
                     "轻松聊天，询问用户心情",
                 ],
+                "include_history_enabled": False,
+                "history_message_count": 10,
                 "sessions": [],
                 "active_hours": "9:00-22:00",
                 "random_delay_enabled": False,
@@ -634,8 +636,8 @@ class ProactiveReplyPlugin(Star):
 
             # 尝试编码和解码以确保字符串正确
             # 这可以帮助发现和修复编码问题
-            encoded = text.encode('utf-8', errors='replace')
-            decoded = encoded.decode('utf-8', errors='replace')
+            encoded = text.encode("utf-8", errors="replace")
+            decoded = encoded.decode("utf-8", errors="replace")
 
             return decoded
         except Exception as e:
@@ -667,7 +669,9 @@ class ProactiveReplyPlugin(Star):
 
             # 获取配置
             proactive_config = self.config.get("proactive_reply", {})
-            default_persona = self._ensure_string_encoding(proactive_config.get("proactive_default_persona", ""))
+            default_persona = self._ensure_string_encoding(
+                proactive_config.get("proactive_default_persona", "")
+            )
             prompt_list_data = proactive_config.get("proactive_prompt_list", [])
 
             if not prompt_list_data:
@@ -726,7 +730,9 @@ class ProactiveReplyPlugin(Star):
                                     hasattr(persona, "name")
                                     and persona.name == conversation.persona_id
                                 ):
-                                    base_system_prompt = self._ensure_string_encoding(getattr(persona, "prompt", ""))
+                                    base_system_prompt = self._ensure_string_encoding(
+                                        getattr(persona, "prompt", "")
+                                    )
                                     logger.debug(
                                         f"使用会话人格 '{conversation.persona_id}' 的系统提示词"
                                     )
@@ -738,7 +744,9 @@ class ProactiveReplyPlugin(Star):
                     and default_persona_obj
                     and default_persona_obj.get("prompt")
                 ):
-                    base_system_prompt = self._ensure_string_encoding(default_persona_obj["prompt"])
+                    base_system_prompt = self._ensure_string_encoding(
+                        default_persona_obj["prompt"]
+                    )
                     logger.debug(
                         f"使用默认人格 '{default_persona_obj.get('name', '未知')}' 的系统提示词"
                     )
@@ -746,30 +754,67 @@ class ProactiveReplyPlugin(Star):
             except Exception as e:
                 logger.warning(f"获取人格系统提示词失败: {e}")
 
-            # 组合系统提示词：人格提示词 + 主动对话提示词
-            if base_system_prompt:
-                # 有AstrBot人格：使用AstrBot人格 + 主动对话提示词
-                combined_system_prompt = (
-                    f"{base_system_prompt}\n\n--- 主动对话指令 ---\n{final_prompt}"
-                )
+            # 获取历史记录（如果启用）
+            contexts = []
+            history_info = "未启用历史记录"
+
+            if proactive_config.get("include_history_enabled", False):
+                history_count = proactive_config.get("history_message_count", 10)
+                # 限制历史记录数量在合理范围内
+                history_count = max(1, min(50, history_count))
+
                 logger.debug(
-                    f"使用AstrBot人格 + 主动对话提示词: 人格({len(base_system_prompt)}字符) + 提示词({len(final_prompt)}字符)"
+                    f"正在获取会话 {session} 的历史记录，数量限制: {history_count}"
+                )
+                contexts = await self.get_conversation_history(session, history_count)
+
+                if contexts:
+                    history_info = f"已获取 {len(contexts)} 条历史记录"
+                    logger.info(f"为主动消息生成获取到 {len(contexts)} 条历史记录")
+                    # 记录历史记录的简要信息
+                    for i, ctx in enumerate(contexts[-3:]):  # 只显示最后3条的简要信息
+                        role = ctx.get("role", "unknown")
+                        content_preview = (
+                            ctx.get("content", "")[:50] + "..."
+                            if len(ctx.get("content", "")) > 50
+                            else ctx.get("content", "")
+                        )
+                        logger.debug(f"历史记录 {i + 1}: {role} - {content_preview}")
+                else:
+                    history_info = "历史记录为空"
+                    logger.debug("未获取到历史记录，使用空上下文")
+            else:
+                logger.debug("历史记录功能未启用")
+
+            # 构建历史记录引导提示词（简化版，避免与主动对话提示词冲突）
+            history_guidance = ""
+            if proactive_config.get("include_history_enabled", False) and contexts:
+                history_guidance = "\n\n--- 上下文说明 ---\n你可以参考上述对话历史来生成更自然和连贯的回复。"
+
+            # 组合系统提示词：人格提示词 + 主动对话提示词 + 历史记录引导
+            if base_system_prompt:
+                # 有AstrBot人格：使用AstrBot人格 + 主动对话提示词 + 历史记录引导
+                combined_system_prompt = f"{base_system_prompt}\n\n--- 主动对话指令 ---\n{final_prompt}{history_guidance}"
+                logger.debug(
+                    f"使用AstrBot人格 + 主动对话提示词 + 历史记录引导: 人格({len(base_system_prompt)}字符) + 提示词({len(final_prompt)}字符) + 引导({len(history_guidance)}字符)"
                 )
             else:
-                # 没有AstrBot人格：使用插件默认人格 + 主动对话提示词
+                # 没有AstrBot人格：使用插件默认人格 + 主动对话提示词 + 历史记录引导
                 if default_persona:
-                    combined_system_prompt = (
-                        f"{default_persona}\n\n--- 主动对话指令 ---\n{final_prompt}"
-                    )
+                    combined_system_prompt = f"{default_persona}\n\n--- 主动对话指令 ---\n{final_prompt}{history_guidance}"
                     logger.debug(
-                        f"使用插件默认人格 + 主动对话提示词: 默认人格({len(default_persona)}字符) + 提示词({len(final_prompt)}字符)"
+                        f"使用插件默认人格 + 主动对话提示词 + 历史记录引导: 默认人格({len(default_persona)}字符) + 提示词({len(final_prompt)}字符) + 引导({len(history_guidance)}字符)"
                     )
                 else:
-                    combined_system_prompt = final_prompt
-                    logger.debug(f"仅使用主动对话提示词: {len(final_prompt)}字符")
+                    combined_system_prompt = f"{final_prompt}{history_guidance}"
+                    logger.debug(
+                        f"使用主动对话提示词 + 历史记录引导: 提示词({len(final_prompt)}字符) + 引导({len(history_guidance)}字符)"
+                    )
 
             # 确保最终系统提示词的编码正确
-            combined_system_prompt = self._ensure_string_encoding(combined_system_prompt)
+            combined_system_prompt = self._ensure_string_encoding(
+                combined_system_prompt
+            )
             logger.debug(f"最终系统提示词长度: {len(combined_system_prompt)} 字符")
             logger.debug(f"最终系统提示词前100字符: {combined_system_prompt[:100]}...")
 
@@ -777,7 +822,7 @@ class ProactiveReplyPlugin(Star):
             llm_response = await provider.text_chat(
                 prompt="请生成一条主动问候消息。",
                 session_id=None,
-                contexts=[],
+                contexts=contexts,  # 传入历史记录
                 image_urls=[],
                 func_tool=None,
                 system_prompt=combined_system_prompt,
@@ -787,8 +832,11 @@ class ProactiveReplyPlugin(Star):
                 generated_message = llm_response.completion_text
                 if generated_message:
                     # 确保生成的消息编码正确
-                    generated_message = self._ensure_string_encoding(generated_message.strip())
+                    generated_message = self._ensure_string_encoding(
+                        generated_message.strip()
+                    )
                     logger.info(f"LLM生成的主动消息: {generated_message}")
+                    logger.info(f"生成上下文: {history_info}")
                     logger.debug(f"生成消息的字符编码检查: {repr(generated_message)}")
                     return generated_message
                 else:
@@ -801,6 +849,7 @@ class ProactiveReplyPlugin(Star):
         except Exception as e:
             logger.error(f"使用LLM生成主动消息失败: {e}")
             import traceback
+
             logger.error(f"详细错误信息: {traceback.format_exc()}")
             return None
 
@@ -864,10 +913,14 @@ class ProactiveReplyPlugin(Star):
                     prompt_list = []
                     for item in parsed_list:
                         if item and str(item).strip():
-                            cleaned_item = self._ensure_string_encoding(str(item).strip())
+                            cleaned_item = self._ensure_string_encoding(
+                                str(item).strip()
+                            )
                             prompt_list.append(cleaned_item)
 
-                    logger.debug(f"成功解析JSON格式的提示词列表，共 {len(prompt_list)} 个")
+                    logger.debug(
+                        f"成功解析JSON格式的提示词列表，共 {len(prompt_list)} 个"
+                    )
                 except (json.JSONDecodeError, ValueError) as json_error:
                     logger.debug(f"JSON解析失败: {json_error}，尝试传统换行格式")
                     # 回退到传统换行格式
@@ -884,6 +937,7 @@ class ProactiveReplyPlugin(Star):
         except Exception as e:
             logger.error(f"解析提示词列表失败: {e}")
             import traceback
+
             logger.error(f"详细错误信息: {traceback.format_exc()}")
             return []
 
@@ -892,9 +946,9 @@ class ProactiveReplyPlugin(Star):
         for i, prompt in enumerate(prompt_list):
             if prompt and len(prompt.strip()) > 0:
                 valid_prompts.append(prompt)
-                logger.debug(f"提示词 {i+1}: {repr(prompt[:50])}...")
+                logger.debug(f"提示词 {i + 1}: {repr(prompt[:50])}...")
             else:
-                logger.warning(f"跳过无效的提示词 {i+1}: {repr(prompt)}")
+                logger.warning(f"跳过无效的提示词 {i + 1}: {repr(prompt)}")
 
         logger.info(f"最终解析得到 {len(valid_prompts)} 个有效提示词")
         return valid_prompts
@@ -961,15 +1015,27 @@ class ProactiveReplyPlugin(Star):
             last_sent_time = ai_last_sent_times.get(session, "从未发送过")
 
             # 构建占位符字典，确保所有值都是正确编码的字符串
-            user_last_time = self._ensure_string_encoding(user_info.get("last_active_time", "未知"))
+            user_last_time = self._ensure_string_encoding(
+                user_info.get("last_active_time", "未知")
+            )
 
             placeholders = {
-                "{user_context}": self._ensure_string_encoding(self.build_user_context_for_proactive(session)),
+                "{user_context}": self._ensure_string_encoding(
+                    self.build_user_context_for_proactive(session)
+                ),
                 "{user_last_message_time}": user_last_time,
-                "{user_last_message_time_ago}": self._ensure_string_encoding(self.format_time_ago(user_last_time)),
-                "{username}": self._ensure_string_encoding(user_info.get("username", "未知用户")),
-                "{platform}": self._ensure_string_encoding(user_info.get("platform", "未知平台")),
-                "{chat_type}": self._ensure_string_encoding(user_info.get("chat_type", "未知")),
+                "{user_last_message_time_ago}": self._ensure_string_encoding(
+                    self.format_time_ago(user_last_time)
+                ),
+                "{username}": self._ensure_string_encoding(
+                    user_info.get("username", "未知用户")
+                ),
+                "{platform}": self._ensure_string_encoding(
+                    user_info.get("platform", "未知平台")
+                ),
+                "{chat_type}": self._ensure_string_encoding(
+                    user_info.get("chat_type", "未知")
+                ),
                 "{ai_last_sent_time}": self._ensure_string_encoding(last_sent_time),
                 "{current_time}": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             }
@@ -984,13 +1050,16 @@ class ProactiveReplyPlugin(Star):
                     logger.warning(f"替换占位符 {placeholder} 失败: {replace_error}")
                     continue
 
-            logger.debug(f"占位符替换完成，原始长度: {len(prompt)}, 结果长度: {len(result)}")
+            logger.debug(
+                f"占位符替换完成，原始长度: {len(prompt)}, 结果长度: {len(result)}"
+            )
             logger.debug(f"替换结果前100字符: {result[:100]}...")
             return result
 
         except Exception as e:
             logger.error(f"替换占位符失败: {e}")
             import traceback
+
             logger.error(f"详细错误信息: {traceback.format_exc()}")
             return prompt  # 如果替换失败，返回原始提示词
 
@@ -1031,6 +1100,66 @@ class ProactiveReplyPlugin(Star):
         except Exception as e:
             logger.error(f"格式化相对时间失败: {e}")
             return "未知"
+
+    async def get_conversation_history(self, session: str, max_count: int = 10) -> list:
+        """安全地获取会话的对话历史记录"""
+        try:
+            # 获取当前会话的对话ID
+            curr_cid = await self.context.conversation_manager.get_curr_conversation_id(
+                session
+            )
+
+            if not curr_cid:
+                logger.debug(f"会话 {session} 没有现有对话，返回空历史记录")
+                return []
+
+            # 获取对话对象
+            conversation = await self.context.conversation_manager.get_conversation(
+                session, curr_cid
+            )
+
+            if not conversation or not conversation.history:
+                logger.debug(f"会话 {session} 没有历史记录，返回空历史记录")
+                return []
+
+            # 解析历史记录
+            import json
+
+            try:
+                history = json.loads(conversation.history)
+                if not isinstance(history, list):
+                    logger.warning(f"会话 {session} 的历史记录格式不正确，不是列表格式")
+                    return []
+
+                # 限制历史记录数量，取最近的记录
+                if max_count > 0 and len(history) > max_count:
+                    history = history[-max_count:]
+                    logger.debug(f"历史记录已截取到最近 {max_count} 条")
+
+                # 验证历史记录格式
+                valid_history = []
+                for item in history:
+                    if isinstance(item, dict) and "role" in item and "content" in item:
+                        # 确保内容是字符串格式
+                        if isinstance(item["content"], str):
+                            valid_history.append(item)
+                        else:
+                            logger.debug(f"跳过非字符串内容的历史记录项: {item}")
+                    else:
+                        logger.debug(f"跳过格式不正确的历史记录项: {item}")
+
+                logger.info(
+                    f"成功获取会话 {session} 的历史记录，共 {len(valid_history)} 条"
+                )
+                return valid_history
+
+            except json.JSONDecodeError as e:
+                logger.warning(f"解析会话 {session} 的历史记录JSON失败: {e}")
+                return []
+
+        except Exception as e:
+            logger.error(f"获取会话 {session} 的历史记录失败: {e}")
+            return []
 
     async def send_proactive_message(self, session):
         """向指定会话发送主动消息"""
@@ -1075,11 +1204,13 @@ class ProactiveReplyPlugin(Star):
             except Exception as send_error:
                 logger.error(f"❌ 发送消息时发生错误: {send_error}")
                 import traceback
+
                 logger.error(f"发送错误详情: {traceback.format_exc()}")
 
         except Exception as e:
             logger.error(f"❌ 向会话 {session} 发送主动消息时发生错误: {e}")
             import traceback
+
             logger.error(f"详细错误信息: {traceback.format_exc()}")
 
     async def add_message_to_conversation_history(self, session: str, message: str):
@@ -1343,6 +1474,10 @@ class ProactiveReplyPlugin(Star):
         except Exception as e:
             persona_info = f"获取失败: {str(e)}"
 
+        # 检查历史记录功能状态
+        history_enabled = proactive_config.get("include_history_enabled", False)
+        history_count = proactive_config.get("history_message_count", 10)
+
         status_text = f"""📊 主动回复插件状态
 
 🔧 用户信息附加功能：✅ 已启用
@@ -1355,6 +1490,8 @@ class ProactiveReplyPlugin(Star):
   - 人格系统：{persona_info}
   - 默认人格：{"✅ 已配置" if default_persona else "❌ 未配置"} ({len(default_persona)} 字符)
   - 主动对话提示词：{"✅ 已配置" if prompt_list else "❌ 未配置"} ({len(prompt_list)} 个)
+  - 📚 历史记录功能：{"✅ 已启用" if history_enabled else "❌ 已禁用"}
+  - 历史记录条数：{history_count} 条 {"(已启用)" if history_enabled else "(未启用)"}
   - 时间模式：{proactive_config.get("timing_mode", "fixed_interval")} ({"固定间隔" if proactive_config.get("timing_mode", "fixed_interval") == "fixed_interval" else "随机间隔"})
   - 发送间隔：{proactive_config.get("interval_minutes", 60)} 分钟 {"(固定间隔模式)" if proactive_config.get("timing_mode", "fixed_interval") == "fixed_interval" else "(未使用)"}
   - 随机延迟：{"✅ 已启用" if proactive_config.get("random_delay_enabled", False) else "❌ 已禁用"} {"(固定间隔模式)" if proactive_config.get("timing_mode", "fixed_interval") == "fixed_interval" else "(未使用)"}
@@ -2716,12 +2853,14 @@ AI发送消息: {ai_last_sent}""")
 
             # 检查原始配置数据
             debug_info.append(f"📋 原始配置类型: {type(prompt_list_data)}")
-            debug_info.append(f"📋 原始配置长度: {len(prompt_list_data) if hasattr(prompt_list_data, '__len__') else 'N/A'}")
+            debug_info.append(
+                f"📋 原始配置长度: {len(prompt_list_data) if hasattr(prompt_list_data, '__len__') else 'N/A'}"
+            )
 
             if isinstance(prompt_list_data, list):
                 debug_info.append("📋 配置格式: 列表格式")
                 for i, item in enumerate(prompt_list_data[:3]):  # 只显示前3个
-                    debug_info.append(f"  项目 {i+1}: {type(item)} - {repr(item)}")
+                    debug_info.append(f"  项目 {i + 1}: {type(item)} - {repr(item)}")
             elif isinstance(prompt_list_data, str):
                 debug_info.append("📋 配置格式: 字符串格式")
                 debug_info.append(f"  内容预览: {repr(prompt_list_data[:100])}")
@@ -2731,7 +2870,7 @@ AI发送消息: {ai_last_sent}""")
             debug_info.append(f"\n🔧 解析结果: {len(prompt_list)} 个提示词")
 
             for i, prompt in enumerate(prompt_list[:3]):  # 只显示前3个
-                debug_info.append(f"  提示词 {i+1}:")
+                debug_info.append(f"  提示词 {i + 1}:")
                 debug_info.append(f"    类型: {type(prompt)}")
                 debug_info.append(f"    长度: {len(prompt)} 字符")
                 debug_info.append(f"    编码表示: {repr(prompt)}")
@@ -2759,7 +2898,10 @@ AI发送消息: {ai_last_sent}""")
         except Exception as e:
             logger.error(f"编码调试失败: {e}")
             import traceback
-            error_info = f"❌ 编码调试失败: {str(e)}\n\n详细错误:\n{traceback.format_exc()}"
+
+            error_info = (
+                f"❌ 编码调试失败: {str(e)}\n\n详细错误:\n{traceback.format_exc()}"
+            )
             yield event.plain_result(error_info)
 
     @proactive_group.command("show_prompt")
@@ -2858,24 +3000,81 @@ AI发送消息: {ai_last_sent}""")
                 logger.warning(f"获取人格系统提示词失败: {e}")
                 persona_info = f"获取失败: {str(e)}"
 
-            # 组合系统提示词：人格提示词 + 主动对话提示词
-            if base_system_prompt:
-                # 有AstrBot人格：使用AstrBot人格 + 主动对话提示词
-                combined_system_prompt = (
-                    f"{base_system_prompt}\n\n--- 主动对话指令 ---\n{final_prompt}"
+            # 获取历史记录（如果启用）
+            contexts = []
+            history_info = "未启用历史记录"
+            history_display = ""
+
+            if proactive_config.get("include_history_enabled", False):
+                history_count = proactive_config.get("history_message_count", 10)
+                # 限制历史记录数量在合理范围内
+                history_count = max(1, min(50, history_count))
+
+                logger.debug(
+                    f"正在获取会话 {target_session} 的历史记录，数量限制: {history_count}"
                 )
-                prompt_source = "AstrBot人格 + 主动对话提示词"
+                contexts = await self.get_conversation_history(
+                    target_session, history_count
+                )
+
+                if contexts:
+                    history_info = f"已获取 {len(contexts)} 条历史记录"
+                    # 构建历史记录显示信息
+                    history_preview = []
+                    for i, ctx in enumerate(contexts[-3:]):  # 显示最后3条的简要信息
+                        role = ctx.get("role", "unknown")
+                        content = ctx.get("content", "")
+                        content_preview = (
+                            content[:100] + "..." if len(content) > 100 else content
+                        )
+                        history_preview.append(f"  {i + 1}. {role}: {content_preview}")
+
+                    history_display = f"""
+📚 历史记录信息:
+- 启用状态: ✅ 已启用
+- 配置数量: {history_count} 条
+- 实际获取: {len(contexts)} 条
+- 最近3条预览:
+{chr(10).join(history_preview)}"""
+                else:
+                    history_info = "历史记录为空"
+                    history_display = f"""
+📚 历史记录信息:
+- 启用状态: ✅ 已启用
+- 配置数量: {history_count} 条
+- 实际获取: 0 条
+- 说明: 该会话暂无历史记录"""
             else:
-                # 没有AstrBot人格：使用默认人格 + 主动对话提示词
+                history_display = """
+📚 历史记录信息:
+- 启用状态: ❌ 未启用
+- 说明: 不会向LLM提供历史对话上下文"""
+
+            # 构建历史记录引导提示词（简化版，避免与主动对话提示词冲突）
+            history_guidance = ""
+            if proactive_config.get("include_history_enabled", False) and contexts:
+                history_guidance = "\n\n--- 上下文说明 ---\n你可以参考上述对话历史来生成更自然和连贯的回复。"
+
+            # 组合系统提示词：人格提示词 + 主动对话提示词 + 历史记录引导
+            if base_system_prompt:
+                # 有AstrBot人格：使用AstrBot人格 + 主动对话提示词 + 历史记录引导
+                combined_system_prompt = f"{base_system_prompt}\n\n--- 主动对话指令 ---\n{final_prompt}{history_guidance}"
+                prompt_source = "AstrBot人格 + 主动对话提示词" + (
+                    " + 历史记录引导" if history_guidance else ""
+                )
+            else:
+                # 没有AstrBot人格：使用默认人格 + 主动对话提示词 + 历史记录引导
                 if default_persona:
-                    combined_system_prompt = (
-                        f"{default_persona}\n\n--- 主动对话指令 ---\n{final_prompt}"
+                    combined_system_prompt = f"{default_persona}\n\n--- 主动对话指令 ---\n{final_prompt}{history_guidance}"
+                    prompt_source = "插件默认人格 + 主动对话提示词" + (
+                        " + 历史记录引导" if history_guidance else ""
                     )
-                    prompt_source = "插件默认人格 + 主动对话提示词"
                     persona_info = "插件默认人格"
                 else:
-                    combined_system_prompt = final_prompt
-                    prompt_source = "仅主动对话提示词"
+                    combined_system_prompt = f"{final_prompt}{history_guidance}"
+                    prompt_source = "仅主动对话提示词" + (
+                        " + 历史记录引导" if history_guidance else ""
+                    )
                     persona_info = "无人格设置"
 
             # 格式化输出 - 分段发送避免消息过长
@@ -2893,7 +3092,7 @@ AI发送消息: {ai_last_sent}""")
 替换后: {final_prompt}
 
 👤 用户上下文信息:
-{user_context}"""
+{user_context}{history_display}"""
 
             # 第二部分：组合话术（截断显示）
             part2 = f"""🔗 最终组合话术 ({prompt_source}):
@@ -2906,8 +3105,9 @@ AI发送消息: {ai_last_sent}""")
 - 人格提示词长度: {len(base_system_prompt)} 字符
 - 主动对话提示词长度: {len(final_prompt)} 字符
 - 最终系统提示词长度: {len(combined_system_prompt)} 字符
+- 历史记录状态: {history_info}
 
-💡 提示: 这就是LLM会收到的完整系统提示词，用于生成主动消息"""
+💡 提示: 这就是LLM会收到的完整系统提示词和历史上下文，用于生成主动消息"""
 
             # 发送第一部分
             yield event.plain_result(part1)

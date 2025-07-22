@@ -1,127 +1,139 @@
 {
-  "user_info": {
-    "description": "聊天附带用户信息设置",
-    "type": "object",
-    "items": {
-      "time_format": {
-        "description": "时间格式",
-        "type": "string",
-        "default": "%Y-%m-%d %H:%M:%S",
-        "hint": "使用Python datetime格式，如：%Y-%m-%d %H:%M:%S"
-      },
-      "template": {
-        "description": "用户信息模板",
-        "type": "text",
-        "default": "[对话信息] 用户：{username}，时间：{time}",
-        "hint": "用户信息会追加到现有系统提示的末尾，不会覆盖人格设置。可使用占位符：{username}（用户名）、{user_id}（用户ID）、{time}（时间）、{platform}（平台名）、{chat_type}（聊天类型）。建议保持简洁，避免与人格设置冲突"
-      }
+    "user_info": {
+        "description": "聊天附带用户信息设置",
+        "type": "object",
+        "items": {
+            "time_format": {
+                "description": "时间格式",
+                "type": "string",
+                "default": "%Y-%m-%d %H:%M:%S",
+                "hint": "使用Python datetime格式，如：%Y-%m-%d %H:%M:%S"
+            },
+            "template": {
+                "description": "用户信息模板",
+                "type": "text",
+                "default": "[对话信息] 用户：{username}，时间：{time}",
+                "hint": "用户信息会追加到现有系统提示的末尾，不会覆盖人格设置。可使用占位符：{username}（用户名）、{user_id}（用户ID）、{time}（时间）、{platform}（平台名）、{chat_type}（聊天类型）。建议保持简洁，避免与人格设置冲突"
+            }
+        }
+    },
+    "proactive_reply": {
+        "description": "定时主动发送消息设置",
+        "type": "object",
+        "items": {
+            "enabled": {
+                "description": "是否启用定时主动发送消息功能",
+                "type": "bool",
+                "default": false,
+                "hint": "启用后，插件会定时向配置的会话发送消息",
+                "obvious_hint": true
+            },
+            "timing_mode": {
+                "description": "时间模式",
+                "type": "string",
+                "default": "fixed_interval",
+                "options": ["fixed_interval", "random_interval"],
+                "hint": "选择时间模式：fixed_interval=固定间隔（可选随机延迟），random_interval=完全随机间隔"
+            },
+            "interval_minutes": {
+                "description": "定时发送间隔（分钟）",
+                "type": "int",
+                "default": 600,
+                "hint": "每隔多少分钟发送一次主动消息。该参数仅在固定间隔模式(fixed_interval)下生效"
+            },
+            "proactive_default_persona": {
+                "description": "主动对话默认人格",
+                "type": "text",
+                "default": "你是一个友好、轻松的AI助手。",
+                "hint": "当没有AstrBot人格时使用的默认人格设定。这将作为系统提示词的基础部分"
+            },
+            "proactive_prompt_list": {
+                "description": "主动对话提示词列表",
+                "type": "list",
+                "default": [
+                    "主动问候用户，询问近况",
+                    "分享有趣话题，发起轻松对话",
+                    "关心用户情况，温暖问候",
+                    "友好交流，分享今日想法",
+                    "轻松聊天，询问用户心情"
+                ],
+                "hint": "主动对话的提示词列表，每个提示词可以单独添加、编辑和删除。系统会随机选择一个提示词来指导AI生成主动消息。支持占位符：user_context（完整用户上下文）、user_last_message_time（用户上次发消息时间）、user_last_message_time_ago（用户上次发消息相对时间，如5分钟前）、username（用户昵称）、platform（平台名称）、chat_type（聊天类型）、ai_last_sent_time（AI上次发送时间）、current_time（当前时间）"
+            },
+            "include_history_enabled": {
+                "description": "是否附带历史记录",
+                "type": "bool",
+                "default": false,
+                "hint": "启用后，AI生成主动消息时会参考之前的对话历史，生成更加拟人和连贯的主动消息。会添加简洁的上下文说明，不干扰主动对话提示词的主导作用"
+            },
+            "history_message_count": {
+                "description": "附带的历史记录条数",
+                "type": "int",
+                "default": 10,
+                "hint": "当启用历史记录功能时，获取最近多少条对话记录作为上下文。建议设置为5-20条，过多可能影响性能"
+            },
+            "random_delay_enabled": {
+                "description": "是否启用随机延迟发送",
+                "type": "bool",
+                "default": false,
+                "hint": "启用后，在固定间隔基础上增加随机延迟时间。该参数仅在固定间隔模式(fixed_interval)下生效"
+            },
+            "min_random_minutes": {
+                "description": "最小随机延迟时间（分钟）",
+                "type": "int",
+                "default": 0,
+                "hint": "随机延迟的最小值，单位：分钟。该参数仅在固定间隔模式(fixed_interval)下生效"
+            },
+            "max_random_minutes": {
+                "description": "最大随机延迟时间（分钟）",
+                "type": "int",
+                "default": 30,
+                "hint": "随机延迟的最大值，单位：分钟。该参数仅在固定间隔模式(fixed_interval)下生效"
+            },
+            "random_min_minutes": {
+                "description": "随机间隔最小时间（分钟）",
+                "type": "int",
+                "default": 600,
+                "hint": "随机间隔模式下的最小等待时间，单位：分钟。该参数仅在随机间隔模式(random_interval)下生效"
+            },
+            "random_max_minutes": {
+                "description": "随机间隔最大时间（分钟）",
+                "type": "int",
+                "default": 1200,
+                "hint": "随机间隔模式下的最大等待时间，单位：分钟。该参数仅在随机间隔模式(random_interval)下生效"
+            },
+            "sessions": {
+                "description": "目标会话列表",
+                "type": "list",
+                "default": [],
+                "hint": "需要定时发送消息的会话ID列表，每个会话ID可以单独添加、编辑和删除。格式：platform_name:message_type:session_id。可使用 /proactive add_session 指令添加当前会话"
+            },
+            "active_hours": {
+                "description": "活跃时间段",
+                "type": "string",
+                "default": "9:00-22:00",
+                "hint": "只在此时间段内发送主动消息，格式：开始时间-结束时间（24小时制）"
+            },
+            "session_user_info": {
+                "description": "会话用户信息记录（内部数据）",
+                "type": "object",
+                "default": {},
+                "invisible": true,
+                "items": {}
+            },
+            "last_sent_times": {
+                "description": "AI主动发送时间记录（内部数据）",
+                "type": "object",
+                "default": {},
+                "invisible": true,
+                "items": {}
+            },
+            "ai_last_sent_times": {
+                "description": "AI发送消息时间记录（内部数据）",
+                "type": "object",
+                "default": {},
+                "invisible": true,
+                "items": {}
+            }
+        }
     }
-  },
-  "proactive_reply": {
-    "description": "定时主动发送消息设置",
-    "type": "object",
-    "items": {
-      "enabled": {
-        "description": "是否启用定时主动发送消息功能",
-        "type": "bool",
-        "default": false,
-        "hint": "启用后，插件会定时向配置的会话发送消息",
-        "obvious_hint": true
-      },
-      "timing_mode": {
-        "description": "时间模式",
-        "type": "string",
-        "default": "fixed_interval",
-        "options": ["fixed_interval", "random_interval"],
-        "hint": "选择时间模式：fixed_interval=固定间隔（可选随机延迟），random_interval=完全随机间隔"
-      },
-      "interval_minutes": {
-        "description": "定时发送间隔（分钟）",
-        "type": "int",
-        "default": 600,
-        "hint": "每隔多少分钟发送一次主动消息。该参数仅在固定间隔模式(fixed_interval)下生效"
-      },
-      "proactive_default_persona": {
-        "description": "主动对话默认人格",
-        "type": "text",
-        "default": "你是一个友好、轻松的AI助手。",
-        "hint": "当没有AstrBot人格时使用的默认人格设定。这将作为系统提示词的基础部分"
-      },
-      "proactive_prompt_list": {
-        "description": "主动对话提示词列表",
-        "type": "list",
-        "default": [
-          "主动问候用户，询问近况",
-          "分享有趣话题，发起轻松对话",
-          "关心用户情况，温暖问候",
-          "友好交流，分享今日想法",
-          "轻松聊天，询问用户心情"
-        ],
-        "hint": "主动对话的提示词列表，每个提示词可以单独添加、编辑和删除。系统会随机选择一个提示词来指导AI生成主动消息。支持占位符：user_context（完整用户上下文）、user_last_message_time（用户上次发消息时间）、user_last_message_time_ago（用户上次发消息相对时间，如5分钟前）、username（用户昵称）、platform（平台名称）、chat_type（聊天类型）、ai_last_sent_time（AI上次发送时间）、current_time（当前时间）"
-      },
-      "random_delay_enabled": {
-        "description": "是否启用随机延迟发送",
-        "type": "bool",
-        "default": false,
-        "hint": "启用后，在固定间隔基础上增加随机延迟时间。该参数仅在固定间隔模式(fixed_interval)下生效"
-      },
-      "min_random_minutes": {
-        "description": "最小随机延迟时间（分钟）",
-        "type": "int",
-        "default": 0,
-        "hint": "随机延迟的最小值，单位：分钟。该参数仅在固定间隔模式(fixed_interval)下生效"
-      },
-      "max_random_minutes": {
-        "description": "最大随机延迟时间（分钟）",
-        "type": "int",
-        "default": 30,
-        "hint": "随机延迟的最大值，单位：分钟。该参数仅在固定间隔模式(fixed_interval)下生效"
-      },
-      "random_min_minutes": {
-        "description": "随机间隔最小时间（分钟）",
-        "type": "int",
-        "default": 600,
-        "hint": "随机间隔模式下的最小等待时间，单位：分钟。该参数仅在随机间隔模式(random_interval)下生效"
-      },
-      "random_max_minutes": {
-        "description": "随机间隔最大时间（分钟）",
-        "type": "int",
-        "default": 1200,
-        "hint": "随机间隔模式下的最大等待时间，单位：分钟。该参数仅在随机间隔模式(random_interval)下生效"
-      },
-      "sessions": {
-        "description": "目标会话列表",
-        "type": "list",
-        "default": [],
-        "hint": "需要定时发送消息的会话ID列表，每个会话ID可以单独添加、编辑和删除。格式：platform_name:message_type:session_id。可使用 /proactive add_session 指令添加当前会话"
-      },
-      "active_hours": {
-        "description": "活跃时间段",
-        "type": "string",
-        "default": "9:00-22:00",
-        "hint": "只在此时间段内发送主动消息，格式：开始时间-结束时间（24小时制）"
-      },
-      "session_user_info": {
-        "description": "会话用户信息记录（内部数据）",
-        "type": "object",
-        "default": {},
-        "invisible": true,
-        "items": {}
-      },
-      "last_sent_times": {
-        "description": "AI主动发送时间记录（内部数据）",
-        "type": "object",
-        "default": {},
-        "invisible": true,
-        "items": {}
-      },
-      "ai_last_sent_times": {
-        "description": "AI发送消息时间记录（内部数据）",
-        "type": "object",
-        "default": {},
-        "invisible": true,
-        "items": {}
-      }
-    }
-  }
 }
