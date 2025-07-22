@@ -387,7 +387,7 @@ class ProactiveReplyPlugin(Star):
             try:
                 self.config.save_config()
                 config_saved = True
-                logger.debug(f"✅ 配置文件保存成功")
+                logger.debug("✅ 配置文件保存成功")
             except Exception as e:
                 logger.warning(f"⚠️ 配置文件保存失败: {e}")
 
@@ -429,7 +429,7 @@ class ProactiveReplyPlugin(Star):
             try:
                 self.config.save_config()
                 config_saved = True
-                logger.debug(f"✅ 配置文件保存成功")
+                logger.debug("✅ 配置文件保存成功")
             except Exception as e:
                 logger.warning(f"⚠️ 配置文件保存失败: {e}")
 
@@ -654,9 +654,6 @@ class ProactiveReplyPlugin(Star):
             selected_prompt = random.choice(prompt_list)
             logger.debug(f"随机选择的主动对话提示词: {selected_prompt}")
 
-            # 构建用户上下文信息
-            user_context = self.build_user_context_for_proactive(session)
-
             # 替换提示词中的占位符
             final_prompt = self.replace_placeholders(selected_prompt, session)
 
@@ -664,12 +661,16 @@ class ProactiveReplyPlugin(Star):
             base_system_prompt = ""
             try:
                 # 尝试获取当前会话的人格设置
-
                 uid = session  # session 就是 unified_msg_origin
                 curr_cid = (
                     await self.context.conversation_manager.get_curr_conversation_id(
                         uid
                     )
+                )
+
+                # 获取默认人格设置
+                default_persona_obj = (
+                    self.context.provider_manager.selected_default_persona
                 )
 
                 if curr_cid:
@@ -678,58 +679,36 @@ class ProactiveReplyPlugin(Star):
                             uid, curr_cid
                         )
                     )
+
                     if (
                         conversation
                         and conversation.persona_id
                         and conversation.persona_id != "[%None]"
                     ):
-                        # 有指定人格，获取人格的系统提示词
+                        # 有指定人格，尝试获取人格的系统提示词
                         personas = self.context.provider_manager.personas
-                        for persona in personas:
-                            # 根据文档，persona 是 Personality 对象，有 name 和 prompt 属性
-                            if (
-                                hasattr(persona, "name")
-                                and persona.name == conversation.persona_id
-                            ):
-                                base_system_prompt = getattr(persona, "prompt", "")
-                                logger.debug(
-                                    f"使用会话人格 '{conversation.persona_id}' 的系统提示词"
-                                )
-                                break
-                    else:
-                        # 使用默认人格
-                        default_persona = (
-                            self.context.provider_manager.selected_default_persona
-                        )
-                        if default_persona and default_persona.get("name"):
-                            personas = self.context.provider_manager.personas
+                        if personas:
                             for persona in personas:
                                 if (
                                     hasattr(persona, "name")
-                                    and persona.name == default_persona["name"]
+                                    and persona.name == conversation.persona_id
                                 ):
                                     base_system_prompt = getattr(persona, "prompt", "")
                                     logger.debug(
-                                        f"使用默认人格 '{default_persona['name']}' 的系统提示词"
+                                        f"使用会话人格 '{conversation.persona_id}' 的系统提示词"
                                     )
                                     break
-                else:
-                    # 没有对话记录，使用默认人格
-                    default_persona = (
-                        self.context.provider_manager.selected_default_persona
+
+                # 如果没有获取到人格提示词，尝试使用默认人格
+                if (
+                    not base_system_prompt
+                    and default_persona_obj
+                    and default_persona_obj.get("prompt")
+                ):
+                    base_system_prompt = default_persona_obj["prompt"]
+                    logger.debug(
+                        f"使用默认人格 '{default_persona_obj.get('name', '未知')}' 的系统提示词"
                     )
-                    if default_persona and default_persona.get("name"):
-                        personas = self.context.provider_manager.personas
-                        for persona in personas:
-                            if (
-                                hasattr(persona, "name")
-                                and persona.name == default_persona["name"]
-                            ):
-                                base_system_prompt = getattr(persona, "prompt", "")
-                                logger.debug(
-                                    f"使用默认人格 '{default_persona['name']}' 的系统提示词"
-                                )
-                                break
 
             except Exception as e:
                 logger.warning(f"获取人格系统提示词失败: {e}")
@@ -744,13 +723,13 @@ class ProactiveReplyPlugin(Star):
                     f"使用AstrBot人格 + 主动对话提示词: 人格({len(base_system_prompt)}字符) + 提示词({len(final_prompt)}字符)"
                 )
             else:
-                # 没有AstrBot人格：使用默认人格 + 主动对话提示词
+                # 没有AstrBot人格：使用插件默认人格 + 主动对话提示词
                 if default_persona:
                     combined_system_prompt = (
                         f"{default_persona}\n\n--- 主动对话指令 ---\n{final_prompt}"
                     )
                     logger.debug(
-                        f"使用默认人格 + 主动对话提示词: 默认人格({len(default_persona)}字符) + 提示词({len(final_prompt)}字符)"
+                        f"使用插件默认人格 + 主动对话提示词: 默认人格({len(default_persona)}字符) + 提示词({len(final_prompt)}字符)"
                     )
                 else:
                     combined_system_prompt = final_prompt
@@ -1072,7 +1051,7 @@ class ProactiveReplyPlugin(Star):
                                 f"✅ 通过SQL直接更新对话历史成功（影响行数：{affected_rows}）"
                             )
                         else:
-                            logger.debug(f"SQL更新执行成功但未影响任何行")
+                            logger.debug("SQL更新执行成功但未影响任何行")
 
                     except Exception as e:
                         logger.debug(f"数据库连接操作失败: {e}")
@@ -1082,13 +1061,13 @@ class ProactiveReplyPlugin(Star):
                         f"✅ 已将AI主动消息添加到会话 {session} 的对话历史中并保存到数据库"
                     )
                 else:
-                    logger.warning(f"⚠️ 无法保存对话历史到数据库，消息已添加到内存中")
+                    logger.warning("⚠️ 无法保存对话历史到数据库，消息已添加到内存中")
                     logger.debug(f"已将AI主动消息添加到会话 {session} 的内存对话历史中")
 
             except Exception as save_error:
                 logger.error(f"保存对话历史时发生错误: {save_error}")
                 # 即使保存失败，至少内存中的历史已经更新了
-                logger.debug(f"内存中的对话历史已更新，但可能未持久化到数据库")
+                logger.debug("内存中的对话历史已更新，但可能未持久化到数据库")
 
         except Exception as e:
             logger.error(f"将消息添加到对话历史时发生错误: {e}")
@@ -1115,7 +1094,7 @@ class ProactiveReplyPlugin(Star):
             try:
                 self.config.save_config()
                 config_saved = True
-                logger.debug(f"✅ 配置文件保存成功")
+                logger.debug("✅ 配置文件保存成功")
             except Exception as e:
                 logger.warning(f"⚠️ 配置文件保存失败: {e}")
 
@@ -1924,17 +1903,17 @@ AI发送消息: {ai_last_sent}""")
 
 ❌ 读取配置文件失败: {str(e)}"""
             else:
-                debug_info += f"""
+                debug_info += """
 
 ℹ️ 使用内存配置，无配置文件"""
 
             if config_path:
-                debug_info += f"""
+                debug_info += """
 
 💡 如果内存中有数据但文件中没有，说明保存机制有问题
 💡 如果重启后数据丢失，请检查配置文件路径和权限"""
             else:
-                debug_info += f"""
+                debug_info += """
 
 ⚠️ 当前使用内存配置，数据将在AstrBot重启后丢失
 💡 这可能是正常的，取决于AstrBot的配置管理方式
@@ -2015,21 +1994,21 @@ AI发送消息: {ai_last_sent}""")
 - 用户昵称：{user_info.get("username", "未知")}
 - 最后活跃时间：{user_info.get("last_active_time", "未知")}"""
                         else:
-                            debug_info += f"""
+                            debug_info += """
 
 🔍 当前会话在持久化文件中：❌"""
                     else:
-                        debug_info += f"""
+                        debug_info += """
 ❌ 无法解析文件内容"""
 
                 except Exception as e:
                     debug_info += f"""
 ❌ 读取文件失败：{str(e)}"""
             else:
-                debug_info += f"""
+                debug_info += """
 ❌ 文件不存在"""
 
-            debug_info += f"""
+            debug_info += """
 
 💡 独立持久化文件用于在AstrBot重启时保持数据
 💡 即使配置文件被重置，持久化文件中的数据也会被恢复"""
@@ -2367,7 +2346,7 @@ AI发送消息: {ai_last_sent}""")
 - 使用字段：{id_field}
 - 数据库记录：{conversation_data}"""
                                             break
-                                    except Exception as e:
+                                    except Exception:
                                         continue
                                 else:
                                     schema_info += f"""🔍 当前会话信息：
@@ -2621,6 +2600,163 @@ AI发送消息: {ai_last_sent}""")
             yield event.plain_result(f"❌ 测试LLM请求失败：{str(e)}")
             logger.error(f"测试LLM请求失败: {e}")
 
+    @proactive_group.command("show_prompt")
+    async def show_prompt(self, event: AstrMessageEvent, session_id: str = None):
+        """显示当前配置下会输入给LLM的组合话术"""
+        try:
+            # 确定目标会话ID
+            target_session = session_id if session_id else event.unified_msg_origin
+
+            # 检查LLM是否可用
+            provider = self.context.get_using_provider()
+            if not provider:
+                yield event.plain_result("❌ LLM提供商不可用，无法生成主动消息")
+                return
+
+            # 获取配置
+            proactive_config = self.config.get("proactive_reply", {})
+            default_persona = proactive_config.get("proactive_default_persona", "")
+            prompt_list_data = proactive_config.get("proactive_prompt_list", [])
+
+            if not prompt_list_data:
+                yield event.plain_result("❌ 未配置主动对话提示词列表")
+                return
+
+            # 解析主动对话提示词列表
+            prompt_list = self.parse_prompt_list(prompt_list_data)
+            if not prompt_list:
+                yield event.plain_result("❌ 主动对话提示词列表为空")
+                return
+
+            # 随机选择一个主动对话提示词
+            selected_prompt = random.choice(prompt_list)
+
+            # 构建用户上下文信息
+            user_context = self.build_user_context_for_proactive(target_session)
+
+            # 替换提示词中的占位符
+            final_prompt = self.replace_placeholders(selected_prompt, target_session)
+
+            # 获取当前使用的人格系统提示词
+            base_system_prompt = ""
+            persona_info = "无人格设置"
+
+            try:
+                # 尝试获取当前会话的人格设置
+                uid = target_session
+                curr_cid = (
+                    await self.context.conversation_manager.get_curr_conversation_id(
+                        uid
+                    )
+                )
+
+                # 获取默认人格设置
+                default_persona_obj = (
+                    self.context.provider_manager.selected_default_persona
+                )
+
+                if curr_cid:
+                    conversation = (
+                        await self.context.conversation_manager.get_conversation(
+                            uid, curr_cid
+                        )
+                    )
+
+                    if (
+                        conversation
+                        and conversation.persona_id
+                        and conversation.persona_id != "[%None]"
+                    ):
+                        # 有指定人格，尝试获取人格的系统提示词
+                        personas = self.context.provider_manager.personas
+                        if personas:
+                            for persona in personas:
+                                if (
+                                    hasattr(persona, "name")
+                                    and persona.name == conversation.persona_id
+                                ):
+                                    base_system_prompt = getattr(persona, "prompt", "")
+                                    persona_info = (
+                                        f"会话人格: {conversation.persona_id}"
+                                    )
+                                    break
+
+                # 如果没有获取到人格提示词，尝试使用默认人格
+                if (
+                    not base_system_prompt
+                    and default_persona_obj
+                    and default_persona_obj.get("prompt")
+                ):
+                    base_system_prompt = default_persona_obj["prompt"]
+                    persona_info = (
+                        f"默认人格: {default_persona_obj.get('name', '未知')}"
+                    )
+
+            except Exception as e:
+                logger.warning(f"获取人格系统提示词失败: {e}")
+                persona_info = f"获取失败: {str(e)}"
+
+            # 组合系统提示词：人格提示词 + 主动对话提示词
+            if base_system_prompt:
+                # 有AstrBot人格：使用AstrBot人格 + 主动对话提示词
+                combined_system_prompt = (
+                    f"{base_system_prompt}\n\n--- 主动对话指令 ---\n{final_prompt}"
+                )
+                prompt_source = "AstrBot人格 + 主动对话提示词"
+            else:
+                # 没有AstrBot人格：使用默认人格 + 主动对话提示词
+                if default_persona:
+                    combined_system_prompt = (
+                        f"{default_persona}\n\n--- 主动对话指令 ---\n{final_prompt}"
+                    )
+                    prompt_source = "插件默认人格 + 主动对话提示词"
+                    persona_info = "插件默认人格"
+                else:
+                    combined_system_prompt = final_prompt
+                    prompt_source = "仅主动对话提示词"
+                    persona_info = "无人格设置"
+
+            # 格式化输出 - 分段发送避免消息过长
+            # 第一部分：基本信息
+            part1 = f"""🎯 主动对话话术预览
+
+📋 目标会话: {target_session[:50]}{"..." if len(target_session) > 50 else ""}
+
+🎭 人格信息: {persona_info}
+{"📝 人格提示词 (" + str(len(base_system_prompt)) + " 字符):" if base_system_prompt else ""}
+{base_system_prompt[:150] + "..." if len(base_system_prompt) > 150 else base_system_prompt if base_system_prompt else ""}
+
+🎲 随机选择的主动对话提示词:
+原始: {selected_prompt}
+替换后: {final_prompt}
+
+👤 用户上下文信息:
+{user_context}"""
+
+            # 第二部分：组合话术（截断显示）
+            part2 = f"""🔗 最终组合话术 ({prompt_source}):
+总长度: {len(combined_system_prompt)} 字符
+
+{combined_system_prompt[:500] + "..." if len(combined_system_prompt) > 500 else combined_system_prompt}
+
+📊 统计信息:
+- 可用提示词数量: {len(prompt_list)}
+- 人格提示词长度: {len(base_system_prompt)} 字符
+- 主动对话提示词长度: {len(final_prompt)} 字符
+- 最终系统提示词长度: {len(combined_system_prompt)} 字符
+
+💡 提示: 这就是LLM会收到的完整系统提示词，用于生成主动消息"""
+
+            # 发送第一部分
+            yield event.plain_result(part1)
+
+            # 发送第二部分
+            yield event.plain_result(part2)
+
+        except Exception as e:
+            logger.error(f"显示主动对话话术失败: {e}")
+            yield event.plain_result(f"❌ 显示主动对话话术失败: {str(e)}")
+
     @proactive_group.command("help")
     async def help_command(self, event: AstrMessageEvent):
         """显示插件帮助信息"""
@@ -2630,6 +2766,7 @@ AI发送消息: {ai_last_sent}""")
   /proactive status - 查看插件状态
   /proactive debug - 调试用户信息，查看AI收到的信息
   /proactive config - 显示完整的插件配置信息
+  /proactive show_prompt - 显示当前配置下会输入给LLM的组合话术
   /proactive help - 显示此帮助信息
 
 🤖 定时发送管理：
