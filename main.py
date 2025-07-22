@@ -626,6 +626,36 @@ class ProactiveReplyPlugin(Star):
             logger.warning(f"活跃时间解析错误: {e}，默认为活跃状态")
             return True  # 如果解析失败，默认总是活跃
 
+    def _ensure_string_encoding(self, text: str) -> str:
+        """确保字符串的正确编码"""
+        try:
+            if not isinstance(text, str):
+                text = str(text)
+
+            # 尝试编码和解码以确保字符串正确
+            # 这可以帮助发现和修复编码问题
+            encoded = text.encode('utf-8', errors='replace')
+            decoded = encoded.decode('utf-8', errors='replace')
+
+            return decoded
+        except Exception as e:
+            logger.warning(f"字符串编码处理失败: {e}, 原文本: {repr(text)}")
+            return str(text)
+
+    def _safe_string_replace(self, text: str, old: str, new: str) -> str:
+        """安全的字符串替换，处理编码问题"""
+        try:
+            # 确保所有字符串都是正确编码的
+            text = self._ensure_string_encoding(text)
+            old = self._ensure_string_encoding(old)
+            new = self._ensure_string_encoding(new)
+
+            result = text.replace(old, new)
+            return self._ensure_string_encoding(result)
+        except Exception as e:
+            logger.warning(f"字符串替换失败: {e}")
+            return text
+
     async def generate_proactive_message_with_llm(self, session: str) -> str:
         """使用LLM生成主动消息内容"""
         try:
@@ -637,7 +667,7 @@ class ProactiveReplyPlugin(Star):
 
             # 获取配置
             proactive_config = self.config.get("proactive_reply", {})
-            default_persona = proactive_config.get("proactive_default_persona", "")
+            default_persona = self._ensure_string_encoding(proactive_config.get("proactive_default_persona", ""))
             prompt_list_data = proactive_config.get("proactive_prompt_list", [])
 
             if not prompt_list_data:
@@ -652,10 +682,13 @@ class ProactiveReplyPlugin(Star):
 
             # 随机选择一个主动对话提示词
             selected_prompt = random.choice(prompt_list)
+            selected_prompt = self._ensure_string_encoding(selected_prompt)
             logger.debug(f"随机选择的主动对话提示词: {selected_prompt}")
 
             # 替换提示词中的占位符
             final_prompt = self.replace_placeholders(selected_prompt, session)
+            final_prompt = self._ensure_string_encoding(final_prompt)
+            logger.debug(f"占位符替换后的提示词: {final_prompt}")
 
             # 获取当前使用的人格系统提示词
             base_system_prompt = ""
@@ -693,7 +726,7 @@ class ProactiveReplyPlugin(Star):
                                     hasattr(persona, "name")
                                     and persona.name == conversation.persona_id
                                 ):
-                                    base_system_prompt = getattr(persona, "prompt", "")
+                                    base_system_prompt = self._ensure_string_encoding(getattr(persona, "prompt", ""))
                                     logger.debug(
                                         f"使用会话人格 '{conversation.persona_id}' 的系统提示词"
                                     )
@@ -705,7 +738,7 @@ class ProactiveReplyPlugin(Star):
                     and default_persona_obj
                     and default_persona_obj.get("prompt")
                 ):
-                    base_system_prompt = default_persona_obj["prompt"]
+                    base_system_prompt = self._ensure_string_encoding(default_persona_obj["prompt"])
                     logger.debug(
                         f"使用默认人格 '{default_persona_obj.get('name', '未知')}' 的系统提示词"
                     )
@@ -735,7 +768,10 @@ class ProactiveReplyPlugin(Star):
                     combined_system_prompt = final_prompt
                     logger.debug(f"仅使用主动对话提示词: {len(final_prompt)}字符")
 
-            logger.debug(f"最终系统提示词: {combined_system_prompt}")
+            # 确保最终系统提示词的编码正确
+            combined_system_prompt = self._ensure_string_encoding(combined_system_prompt)
+            logger.debug(f"最终系统提示词长度: {len(combined_system_prompt)} 字符")
+            logger.debug(f"最终系统提示词前100字符: {combined_system_prompt[:100]}...")
 
             # 调用LLM生成主动消息
             llm_response = await provider.text_chat(
@@ -748,15 +784,24 @@ class ProactiveReplyPlugin(Star):
             )
 
             if llm_response and llm_response.role == "assistant":
-                generated_message = llm_response.completion_text.strip()
-                logger.info(f"LLM生成的主动消息: {generated_message}")
-                return generated_message
+                generated_message = llm_response.completion_text
+                if generated_message:
+                    # 确保生成的消息编码正确
+                    generated_message = self._ensure_string_encoding(generated_message.strip())
+                    logger.info(f"LLM生成的主动消息: {generated_message}")
+                    logger.debug(f"生成消息的字符编码检查: {repr(generated_message)}")
+                    return generated_message
+                else:
+                    logger.warning("LLM返回了空消息")
+                    return None
             else:
                 logger.warning(f"LLM响应异常: {llm_response}")
                 return None
 
         except Exception as e:
             logger.error(f"使用LLM生成主动消息失败: {e}")
+            import traceback
+            logger.error(f"详细错误信息: {traceback.format_exc()}")
             return None
 
     def parse_sessions_list(self, sessions_data) -> list:
@@ -792,36 +837,67 @@ class ProactiveReplyPlugin(Star):
         """解析主动对话提示词列表（支持列表格式、JSON格式和传统换行格式）"""
         prompt_list = []
 
-        # 如果已经是列表格式（新的配置格式）
-        if isinstance(prompt_list_data, list):
-            prompt_list = [s.strip() for s in prompt_list_data if s and s.strip()]
-            logger.debug(f"使用列表格式的提示词列表，共 {len(prompt_list)} 个")
-            return prompt_list
+        try:
+            # 如果已经是列表格式（新的配置格式）
+            if isinstance(prompt_list_data, list):
+                prompt_list = []
+                for item in prompt_list_data:
+                    if item and str(item).strip():
+                        # 确保每个提示词的编码正确
+                        cleaned_item = self._ensure_string_encoding(str(item).strip())
+                        prompt_list.append(cleaned_item)
+                logger.debug(f"使用列表格式的提示词列表，共 {len(prompt_list)} 个")
+                return prompt_list
 
-        # 如果是字符串格式（兼容旧配置）
-        if isinstance(prompt_list_data, str):
-            try:
-                # 尝试解析JSON格式
-                import json
+            # 如果是字符串格式（兼容旧配置）
+            if isinstance(prompt_list_data, str):
+                prompt_list_data = self._ensure_string_encoding(prompt_list_data)
+                try:
+                    # 尝试解析JSON格式
+                    import json
 
-                prompt_list = json.loads(prompt_list_data)
-                if not isinstance(prompt_list, list):
-                    raise ValueError("不是有效的JSON数组")
-                # 过滤空字符串
-                prompt_list = [s.strip() for s in prompt_list if s and s.strip()]
-                logger.debug(f"成功解析JSON格式的提示词列表，共 {len(prompt_list)} 个")
-            except (json.JSONDecodeError, ValueError):
-                # 回退到传统换行格式
-                prompt_list = [
-                    line.strip()
-                    for line in prompt_list_data.split("\n")
-                    if line.strip()
-                ]
-                logger.debug(
-                    f"使用传统换行格式解析提示词列表，共 {len(prompt_list)} 个"
-                )
+                    parsed_list = json.loads(prompt_list_data)
+                    if not isinstance(parsed_list, list):
+                        raise ValueError("不是有效的JSON数组")
 
-        return prompt_list
+                    # 过滤空字符串并确保编码正确
+                    prompt_list = []
+                    for item in parsed_list:
+                        if item and str(item).strip():
+                            cleaned_item = self._ensure_string_encoding(str(item).strip())
+                            prompt_list.append(cleaned_item)
+
+                    logger.debug(f"成功解析JSON格式的提示词列表，共 {len(prompt_list)} 个")
+                except (json.JSONDecodeError, ValueError) as json_error:
+                    logger.debug(f"JSON解析失败: {json_error}，尝试传统换行格式")
+                    # 回退到传统换行格式
+                    prompt_list = []
+                    for line in prompt_list_data.split("\n"):
+                        if line.strip():
+                            cleaned_line = self._ensure_string_encoding(line.strip())
+                            prompt_list.append(cleaned_line)
+
+                    logger.debug(
+                        f"使用传统换行格式解析提示词列表，共 {len(prompt_list)} 个"
+                    )
+
+        except Exception as e:
+            logger.error(f"解析提示词列表失败: {e}")
+            import traceback
+            logger.error(f"详细错误信息: {traceback.format_exc()}")
+            return []
+
+        # 最终检查，确保所有提示词都是有效的
+        valid_prompts = []
+        for i, prompt in enumerate(prompt_list):
+            if prompt and len(prompt.strip()) > 0:
+                valid_prompts.append(prompt)
+                logger.debug(f"提示词 {i+1}: {repr(prompt[:50])}...")
+            else:
+                logger.warning(f"跳过无效的提示词 {i+1}: {repr(prompt)}")
+
+        logger.info(f"最终解析得到 {len(valid_prompts)} 个有效提示词")
+        return valid_prompts
 
     def build_user_context_for_proactive(self, session: str) -> str:
         """为主动对话构建用户上下文信息"""
@@ -873,6 +949,10 @@ class ProactiveReplyPlugin(Star):
     def replace_placeholders(self, prompt: str, session: str) -> str:
         """替换提示词中的占位符"""
         try:
+            # 确保输入参数的编码正确
+            prompt = self._ensure_string_encoding(prompt)
+            session = self._ensure_string_encoding(session)
+
             proactive_config = self.config.get("proactive_reply", {})
             session_user_info = proactive_config.get("session_user_info", {})
             ai_last_sent_times = proactive_config.get("ai_last_sent_times", {})
@@ -880,29 +960,38 @@ class ProactiveReplyPlugin(Star):
             user_info = session_user_info.get(session, {})
             last_sent_time = ai_last_sent_times.get(session, "从未发送过")
 
-            # 构建占位符字典
-            user_last_time = user_info.get("last_active_time", "未知")
+            # 构建占位符字典，确保所有值都是正确编码的字符串
+            user_last_time = self._ensure_string_encoding(user_info.get("last_active_time", "未知"))
+
             placeholders = {
-                "{user_context}": self.build_user_context_for_proactive(session),
+                "{user_context}": self._ensure_string_encoding(self.build_user_context_for_proactive(session)),
                 "{user_last_message_time}": user_last_time,
-                "{user_last_message_time_ago}": self.format_time_ago(user_last_time),
-                "{username}": user_info.get("username", "未知用户"),
-                "{platform}": user_info.get("platform", "未知平台"),
-                "{chat_type}": user_info.get("chat_type", "未知"),
-                "{ai_last_sent_time}": last_sent_time,
+                "{user_last_message_time_ago}": self._ensure_string_encoding(self.format_time_ago(user_last_time)),
+                "{username}": self._ensure_string_encoding(user_info.get("username", "未知用户")),
+                "{platform}": self._ensure_string_encoding(user_info.get("platform", "未知平台")),
+                "{chat_type}": self._ensure_string_encoding(user_info.get("chat_type", "未知")),
+                "{ai_last_sent_time}": self._ensure_string_encoding(last_sent_time),
                 "{current_time}": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             }
 
-            # 替换所有占位符
+            # 替换所有占位符，使用安全的字符串替换
             result = prompt
             for placeholder, value in placeholders.items():
-                result = result.replace(placeholder, str(value))
+                try:
+                    result = self._safe_string_replace(result, placeholder, str(value))
+                    logger.debug(f"替换占位符 {placeholder} -> {repr(value)}")
+                except Exception as replace_error:
+                    logger.warning(f"替换占位符 {placeholder} 失败: {replace_error}")
+                    continue
 
-            logger.debug(f"占位符替换完成: {prompt} -> {result}")
+            logger.debug(f"占位符替换完成，原始长度: {len(prompt)}, 结果长度: {len(result)}")
+            logger.debug(f"替换结果前100字符: {result[:100]}...")
             return result
 
         except Exception as e:
             logger.error(f"替换占位符失败: {e}")
+            import traceback
+            logger.error(f"详细错误信息: {traceback.format_exc()}")
             return prompt  # 如果替换失败，返回原始提示词
 
     def format_time_ago(self, time_str: str) -> str:
@@ -946,6 +1035,9 @@ class ProactiveReplyPlugin(Star):
     async def send_proactive_message(self, session):
         """向指定会话发送主动消息"""
         try:
+            # 确保会话ID的编码正确
+            session = self._ensure_string_encoding(session)
+
             # 使用LLM生成主动消息
             message = await self.generate_proactive_message_with_llm(session)
 
@@ -953,29 +1045,42 @@ class ProactiveReplyPlugin(Star):
                 logger.warning(f"无法为会话 {session} 生成主动消息")
                 return
 
+            # 确保消息的编码正确
+            message = self._ensure_string_encoding(message)
             logger.debug(f"为会话 {session} 生成的主动消息: {message}")
+            logger.debug(f"消息编码检查: {repr(message)}")
 
             # 使用 context.send_message 发送消息
             from astrbot.api.event import MessageChain
 
-            message_chain = MessageChain().message(message)
-            success = await self.context.send_message(session, message_chain)
+            try:
+                message_chain = MessageChain().message(message)
+                logger.debug(f"创建消息链成功，准备发送到会话: {session}")
 
-            if success:
-                # 记录发送时间
-                self.record_sent_time(session)
+                success = await self.context.send_message(session, message_chain)
+                logger.debug(f"消息发送结果: {success}")
 
-                # 重要：将AI主动发送的消息添加到对话历史记录中
-                await self.add_message_to_conversation_history(session, message)
+                if success:
+                    # 记录发送时间
+                    self.record_sent_time(session)
 
-                logger.info(f"成功向会话 {session} 发送主动消息: {message}")
-            else:
-                logger.warning(
-                    f"向会话 {session} 发送主动消息失败，可能是会话不存在或平台不支持"
-                )
+                    # 重要：将AI主动发送的消息添加到对话历史记录中
+                    await self.add_message_to_conversation_history(session, message)
+
+                    logger.info(f"✅ 成功向会话 {session} 发送主动消息: {message}")
+                else:
+                    logger.warning(
+                        f"⚠️ 向会话 {session} 发送主动消息失败，可能是会话不存在或平台不支持"
+                    )
+            except Exception as send_error:
+                logger.error(f"❌ 发送消息时发生错误: {send_error}")
+                import traceback
+                logger.error(f"发送错误详情: {traceback.format_exc()}")
 
         except Exception as e:
-            logger.error(f"向会话 {session} 发送主动消息时发生错误: {e}")
+            logger.error(f"❌ 向会话 {session} 发送主动消息时发生错误: {e}")
+            import traceback
+            logger.error(f"详细错误信息: {traceback.format_exc()}")
 
     async def add_message_to_conversation_history(self, session: str, message: str):
         """将AI主动发送的消息添加到对话历史记录中"""
@@ -2600,6 +2705,63 @@ AI发送消息: {ai_last_sent}""")
             yield event.plain_result(f"❌ 测试LLM请求失败：{str(e)}")
             logger.error(f"测试LLM请求失败: {e}")
 
+    @proactive_group.command("debug_encoding")
+    async def debug_encoding(self, event: AstrMessageEvent):
+        """调试编码问题，检查配置中的提示词编码"""
+        try:
+            proactive_config = self.config.get("proactive_reply", {})
+            prompt_list_data = proactive_config.get("proactive_prompt_list", [])
+
+            debug_info = ["🔍 编码调试信息\n"]
+
+            # 检查原始配置数据
+            debug_info.append(f"📋 原始配置类型: {type(prompt_list_data)}")
+            debug_info.append(f"📋 原始配置长度: {len(prompt_list_data) if hasattr(prompt_list_data, '__len__') else 'N/A'}")
+
+            if isinstance(prompt_list_data, list):
+                debug_info.append("📋 配置格式: 列表格式")
+                for i, item in enumerate(prompt_list_data[:3]):  # 只显示前3个
+                    debug_info.append(f"  项目 {i+1}: {type(item)} - {repr(item)}")
+            elif isinstance(prompt_list_data, str):
+                debug_info.append("📋 配置格式: 字符串格式")
+                debug_info.append(f"  内容预览: {repr(prompt_list_data[:100])}")
+
+            # 解析提示词列表
+            prompt_list = self.parse_prompt_list(prompt_list_data)
+            debug_info.append(f"\n🔧 解析结果: {len(prompt_list)} 个提示词")
+
+            for i, prompt in enumerate(prompt_list[:3]):  # 只显示前3个
+                debug_info.append(f"  提示词 {i+1}:")
+                debug_info.append(f"    类型: {type(prompt)}")
+                debug_info.append(f"    长度: {len(prompt)} 字符")
+                debug_info.append(f"    编码表示: {repr(prompt)}")
+                debug_info.append(f"    显示内容: {prompt}")
+
+                # 测试编码处理
+                encoded_prompt = self._ensure_string_encoding(prompt)
+                debug_info.append(f"    编码处理后: {repr(encoded_prompt)}")
+                debug_info.append("")
+
+            # 测试占位符替换
+            if prompt_list:
+                test_prompt = prompt_list[0]
+                session = event.unified_msg_origin
+                debug_info.append("🔄 测试占位符替换:")
+                debug_info.append(f"  原始提示词: {repr(test_prompt)}")
+
+                replaced_prompt = self.replace_placeholders(test_prompt, session)
+                debug_info.append(f"  替换后: {repr(replaced_prompt)}")
+                debug_info.append(f"  显示内容: {replaced_prompt}")
+
+            result_text = "\n".join(debug_info)
+            yield event.plain_result(result_text)
+
+        except Exception as e:
+            logger.error(f"编码调试失败: {e}")
+            import traceback
+            error_info = f"❌ 编码调试失败: {str(e)}\n\n详细错误:\n{traceback.format_exc()}"
+            yield event.plain_result(error_info)
+
     @proactive_group.command("show_prompt")
     async def show_prompt(self, event: AstrMessageEvent, session_id: str = None):
         """显示当前配置下会输入给LLM的组合话术"""
@@ -2767,6 +2929,7 @@ AI发送消息: {ai_last_sent}""")
   /proactive debug - 调试用户信息，查看AI收到的信息
   /proactive config - 显示完整的插件配置信息
   /proactive show_prompt - 显示当前配置下会输入给LLM的组合话术
+  /proactive debug_encoding - 调试编码问题，检查提示词编码状态
   /proactive help - 显示此帮助信息
 
 🤖 定时发送管理：
