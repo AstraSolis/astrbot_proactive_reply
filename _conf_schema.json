@@ -41,11 +41,23 @@
         "default": 600,
         "hint": "每隔多少分钟发送一次主动消息。该参数仅在固定间隔模式(fixed_interval)下生效"
       },
-      "message_templates": {
-        "description": "消息模板列表",
+      "proactive_default_persona": {
+        "description": "主动对话默认人格",
         "type": "text",
-        "default": "\"嗨，最近怎么样？\"\n\"有什么我可以帮助你的吗？\"\n\"好久不见，有什么新鲜事吗？\"\n\"今天过得如何？\"\n\"距离上次聊天已经过去了一段时间，AI上次发送消息是{last_sent_time}\"",
-        "hint": "每行一个消息模板，用双引号包围，发送时会随机选择一个。支持占位符：{time}（当前时间）、{last_sent_time}（AI上次发送消息时间）"
+        "default": "你是一个友好、轻松的AI助手。",
+        "hint": "当没有AstrBot人格时使用的默认人格设定。这将作为系统提示词的基础部分"
+      },
+      "proactive_prompt_list": {
+        "description": "主动对话提示词列表",
+        "type": "list",
+        "default": [
+          "主动问候用户，询问近况",
+          "分享有趣话题，发起轻松对话",
+          "关心用户情况，温暖问候",
+          "友好交流，分享今日想法",
+          "轻松聊天，询问用户心情"
+        ],
+        "hint": "主动对话的提示词列表，每个提示词可以单独添加、编辑和删除。系统会随机选择一个提示词来指导AI生成主动消息。支持 {user_context} 占位符"
       },
       "random_delay_enabled": {
         "description": "是否启用随机延迟发送",
@@ -79,9 +91,9 @@
       },
       "sessions": {
         "description": "目标会话列表",
-        "type": "text",
-        "default": "",
-        "hint": "需要定时发送消息的会话ID，每行一个。格式：platform_name:message_type:session_id。可使用 /proactive add_session 指令添加当前会话"
+        "type": "list",
+        "default": [],
+        "hint": "需要定时发送消息的会话ID列表，每个会话ID可以单独添加、编辑和删除。格式：platform_name:message_type:session_id。可使用 /proactive add_session 指令添加当前会话"
       },
       "active_hours": {
         "description": "活跃时间段",
