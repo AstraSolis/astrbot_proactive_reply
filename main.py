@@ -22,11 +22,162 @@ class ProactiveReplyPlugin(Star):
         self._is_terminating = False  # 添加终止标志
         logger.info("ProactiveReplyPlugin 插件已初始化")
 
+        # 验证配置文件加载状态
+        self._verify_config_loading()
+
         # 异步初始化
         self._initialization_task = asyncio.create_task(self.initialize())
 
+    def _verify_config_loading(self):
+        """验证配置文件加载状态"""
+        try:
+            # 尝试多种方式获取配置文件路径
+            config_path = None
+            for attr in ["_config_path", "config_path", "_path", "path"]:
+                if hasattr(self.config, attr):
+                    config_path = getattr(self.config, attr)
+                    if config_path:
+                        break
+
+            if not config_path:
+                # 尝试通过 save_config 方法的异常来推断路径问题
+                logger.warning("⚠️ 无法获取配置文件路径，可能使用内存配置")
+            else:
+                logger.info(f"📁 配置文件路径: {config_path}")
+
+            # 检查是否有已保存的用户信息
+            proactive_config = self.config.get("proactive_reply", {})
+            session_user_info = proactive_config.get("session_user_info", {})
+            ai_last_sent_times = proactive_config.get("ai_last_sent_times", {})
+
+            logger.info(f"📊 加载的用户信息数量: {len(session_user_info)}")
+            logger.info(f"📊 加载的AI发送时间记录数量: {len(ai_last_sent_times)}")
+
+            if session_user_info:
+                logger.info("✅ 检测到已保存的用户信息，配置持久化正常")
+                # 显示最近的几个用户信息
+                recent_sessions = list(session_user_info.keys())[:3]
+                for session_id in recent_sessions:
+                    user_info = session_user_info[session_id]
+                    logger.debug(
+                        f"  - 会话: {session_id[:50]}... 用户: {user_info.get('username', '未知')}"
+                    )
+            else:
+                logger.info("ℹ️ 暂无已保存的用户信息（首次运行或配置已清空）")
+
+        except Exception as e:
+            logger.error(f"❌ 验证配置加载状态失败: {e}")
+
+    def _load_persistent_data(self):
+        """从独立的持久化文件加载用户数据"""
+        try:
+            import os
+            import json
+
+            # 使用独立的数据文件，避免被配置重置影响
+            config_path = None
+            for attr in ["_config_path", "config_path", "_path", "path"]:
+                if hasattr(self.config, attr):
+                    config_path = getattr(self.config, attr)
+                    if config_path:
+                        break
+
+            if config_path:
+                data_dir = os.path.dirname(config_path)
+            else:
+                # 如果无法获取配置路径，使用临时目录
+                data_dir = "/tmp"
+                logger.warning("⚠️ 无法获取配置路径，使用临时目录保存持久化数据")
+
+            persistent_file = os.path.join(
+                data_dir, "astrbot_proactive_reply_persistent.json"
+            )
+
+            if os.path.exists(persistent_file):
+                for encoding in ["utf-8-sig", "utf-8", "gbk"]:
+                    try:
+                        with open(persistent_file, "r", encoding=encoding) as f:
+                            persistent_data = json.load(f)
+
+                        # 将持久化数据合并到配置中
+                        if "proactive_reply" not in self.config:
+                            self.config["proactive_reply"] = {}
+
+                        for key in [
+                            "session_user_info",
+                            "ai_last_sent_times",
+                            "last_sent_times",
+                        ]:
+                            if key in persistent_data:
+                                self.config["proactive_reply"][key] = persistent_data[
+                                    key
+                                ]
+
+                        logger.info(f"✅ 从持久化文件加载数据成功: {persistent_file}")
+                        logger.info(
+                            f"📊 加载用户信息: {len(persistent_data.get('session_user_info', {}))}"
+                        )
+                        return
+                    except (UnicodeDecodeError, json.JSONDecodeError):
+                        continue
+
+                logger.warning(f"⚠️ 无法读取持久化文件: {persistent_file}")
+            else:
+                logger.info(f"ℹ️ 持久化文件不存在: {persistent_file}")
+
+        except Exception as e:
+            logger.error(f"❌ 加载持久化数据失败: {e}")
+
+    def _save_persistent_data(self):
+        """保存用户数据到独立的持久化文件"""
+        try:
+            import os
+            import json
+
+            # 使用独立的数据文件
+            config_path = None
+            for attr in ["_config_path", "config_path", "_path", "path"]:
+                if hasattr(self.config, attr):
+                    config_path = getattr(self.config, attr)
+                    if config_path:
+                        break
+
+            if config_path:
+                data_dir = os.path.dirname(config_path)
+            else:
+                # 如果无法获取配置路径，使用临时目录
+                data_dir = "/tmp"
+                logger.warning("⚠️ 无法获取配置路径，使用临时目录保存持久化数据")
+
+            persistent_file = os.path.join(
+                data_dir, "astrbot_proactive_reply_persistent.json"
+            )
+
+            # 准备要保存的数据
+            proactive_config = self.config.get("proactive_reply", {})
+            persistent_data = {
+                "session_user_info": proactive_config.get("session_user_info", {}),
+                "ai_last_sent_times": proactive_config.get("ai_last_sent_times", {}),
+                "last_sent_times": proactive_config.get("last_sent_times", {}),
+                "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+
+            # 保存到独立文件
+            with open(persistent_file, "w", encoding="utf-8") as f:
+                json.dump(persistent_data, f, ensure_ascii=False, indent=2)
+
+            logger.debug(f"✅ 数据已保存到持久化文件: {persistent_file}")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ 保存持久化数据失败: {e}")
+            return False
+
     def _ensure_config_structure(self):
         """确保配置文件结构完整"""
+        # 先尝试加载持久化数据
+        self._load_persistent_data()
+
         # 默认配置
         default_config = {
             "user_info": {
@@ -231,14 +382,26 @@ class ProactiveReplyPlugin(Star):
                 "last_active_time": current_time,
             }
 
-            # 保存配置（异步保存，避免阻塞）
+            # 保存配置到文件
+            config_saved = False
             try:
                 self.config.save_config()
-                logger.debug(
-                    f"已记录会话 {session_id} 的用户信息: {username} - {current_time}"
-                )
+                config_saved = True
+                logger.debug(f"✅ 配置文件保存成功")
             except Exception as e:
-                logger.warning(f"保存用户信息配置失败: {e}")
+                logger.warning(f"⚠️ 配置文件保存失败: {e}")
+
+            # 同时保存到独立的持久化文件
+            persistent_saved = self._save_persistent_data()
+
+            if config_saved or persistent_saved:
+                logger.info(
+                    f"✅ 已保存会话 {session_id} 的用户信息: {username} - {current_time}"
+                )
+                if persistent_saved:
+                    logger.debug("✅ 持久化文件保存成功")
+            else:
+                logger.error("❌ 所有保存方式都失败了")
 
         except Exception as e:
             logger.error(f"记录用户信息失败: {e}")
@@ -262,13 +425,23 @@ class ProactiveReplyPlugin(Star):
             )
 
             # 保存配置
+            config_saved = False
             try:
                 self.config.save_config()
-                logger.debug(
-                    f"已记录会话 {session_id} 的AI发送消息时间: {current_time}"
-                )
+                config_saved = True
+                logger.debug(f"✅ 配置文件保存成功")
             except Exception as e:
-                logger.warning(f"保存AI发送消息时间配置失败: {e}")
+                logger.warning(f"⚠️ 配置文件保存失败: {e}")
+
+            # 同时保存到独立的持久化文件
+            persistent_saved = self._save_persistent_data()
+
+            if config_saved or persistent_saved:
+                logger.debug(
+                    f"✅ 已保存会话 {session_id} 的AI发送消息时间: {current_time}"
+                )
+            else:
+                logger.error("❌ AI发送时间保存失败")
 
         except Exception as e:
             logger.error(f"记录AI发送消息时间失败: {e}")
@@ -485,7 +658,7 @@ class ProactiveReplyPlugin(Star):
             user_context = self.build_user_context_for_proactive(session)
 
             # 替换提示词中的占位符
-            final_prompt = selected_prompt.replace("{user_context}", user_context)
+            final_prompt = self.replace_placeholders(selected_prompt, session)
 
             # 获取当前使用的人格系统提示词
             base_system_prompt = ""
@@ -718,6 +891,79 @@ class ProactiveReplyPlugin(Star):
             logger.error(f"构建用户上下文失败: {e}")
             return "无法获取用户信息"
 
+    def replace_placeholders(self, prompt: str, session: str) -> str:
+        """替换提示词中的占位符"""
+        try:
+            proactive_config = self.config.get("proactive_reply", {})
+            session_user_info = proactive_config.get("session_user_info", {})
+            ai_last_sent_times = proactive_config.get("ai_last_sent_times", {})
+
+            user_info = session_user_info.get(session, {})
+            last_sent_time = ai_last_sent_times.get(session, "从未发送过")
+
+            # 构建占位符字典
+            user_last_time = user_info.get("last_active_time", "未知")
+            placeholders = {
+                "{user_context}": self.build_user_context_for_proactive(session),
+                "{user_last_message_time}": user_last_time,
+                "{user_last_message_time_ago}": self.format_time_ago(user_last_time),
+                "{username}": user_info.get("username", "未知用户"),
+                "{platform}": user_info.get("platform", "未知平台"),
+                "{chat_type}": user_info.get("chat_type", "未知"),
+                "{ai_last_sent_time}": last_sent_time,
+                "{current_time}": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+
+            # 替换所有占位符
+            result = prompt
+            for placeholder, value in placeholders.items():
+                result = result.replace(placeholder, str(value))
+
+            logger.debug(f"占位符替换完成: {prompt} -> {result}")
+            return result
+
+        except Exception as e:
+            logger.error(f"替换占位符失败: {e}")
+            return prompt  # 如果替换失败，返回原始提示词
+
+    def format_time_ago(self, time_str: str) -> str:
+        """将时间字符串转换为相对时间描述（如"5分钟前"）"""
+        try:
+            if not time_str or time_str == "未知":
+                return "未知"
+
+            # 解析时间字符串
+            last_time = datetime.datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+            current_time = datetime.datetime.now()
+
+            # 计算时间差
+            time_diff = current_time - last_time
+            total_seconds = int(time_diff.total_seconds())
+
+            if total_seconds < 0:
+                return "刚刚"
+            elif total_seconds < 60:
+                return f"{total_seconds}秒前"
+            elif total_seconds < 3600:  # 小于1小时
+                minutes = total_seconds // 60
+                return f"{minutes}分钟前"
+            elif total_seconds < 86400:  # 小于1天
+                hours = total_seconds // 3600
+                return f"{hours}小时前"
+            elif total_seconds < 2592000:  # 小于30天
+                days = total_seconds // 86400
+                return f"{days}天前"
+            elif total_seconds < 31536000:  # 小于365天
+                months = total_seconds // 2592000
+                return f"{months}个月前"
+            else:
+                years = total_seconds // 31536000
+                return f"{years}年前"
+
+        except Exception as e:
+            logger.error(f"格式化相对时间失败: {e}")
+            return "未知"
+
     async def send_proactive_message(self, session):
         """向指定会话发送主动消息"""
         try:
@@ -766,11 +1012,21 @@ class ProactiveReplyPlugin(Star):
             self.config["proactive_reply"]["ai_last_sent_times"][session] = current_time
 
             # 保存配置
+            config_saved = False
             try:
                 self.config.save_config()
-                logger.debug(f"已记录会话 {session} 的发送时间: {current_time}")
+                config_saved = True
+                logger.debug(f"✅ 配置文件保存成功")
             except Exception as e:
-                logger.warning(f"保存发送时间配置失败: {e}")
+                logger.warning(f"⚠️ 配置文件保存失败: {e}")
+
+            # 同时保存到独立的持久化文件
+            persistent_saved = self._save_persistent_data()
+
+            if config_saved or persistent_saved:
+                logger.debug(f"✅ 已保存会话 {session} 的发送时间: {current_time}")
+            else:
+                logger.error("❌ 发送时间保存失败")
 
         except Exception as e:
             logger.error(f"记录发送时间失败: {e}")
@@ -1486,6 +1742,281 @@ AI发送消息: {ai_last_sent}""")
 
         yield event.plain_result(debug_info)
 
+    @proactive_group.command("debug_config")
+    async def debug_config_persistence(self, event: AstrMessageEvent):
+        """调试配置文件持久化状态"""
+        try:
+            current_session = event.unified_msg_origin
+            proactive_config = self.config.get("proactive_reply", {})
+            session_user_info = proactive_config.get("session_user_info", {})
+
+            # 获取配置文件信息
+            config_path = None
+            for attr in ["_config_path", "config_path", "_path", "path"]:
+                if hasattr(self.config, attr):
+                    config_path = getattr(self.config, attr)
+                    if config_path:
+                        break
+
+            config_type = "文件配置" if config_path else "内存配置"
+
+            debug_info = f"""🔍 配置文件持久化调试信息
+
+📁 配置类型：{config_type}
+📁 配置文件路径：{config_path or "无（使用内存配置）"}
+
+📊 当前内存中的用户信息数量：{len(session_user_info)}
+
+🔍 当前会话信息：
+会话ID: {current_session}
+是否存在: {"✅" if current_session in session_user_info else "❌"}"""
+
+            if current_session in session_user_info:
+                user_info = session_user_info[current_session]
+                debug_info += f"""
+详细信息:
+- 用户昵称: {user_info.get("username", "未知")}
+- 用户ID: {user_info.get("user_id", "未知")}
+- 平台: {user_info.get("platform", "未知")}
+- 聊天类型: {user_info.get("chat_type", "未知")}
+- 最后活跃时间: {user_info.get("last_active_time", "未知")}"""
+
+            # 尝试读取配置文件（仅当有文件路径时）
+            if config_path:
+                try:
+                    import json
+                    import os
+
+                    if os.path.exists(config_path):
+                        # 尝试不同的编码方式读取文件
+                        file_config = None
+                        for encoding in ["utf-8-sig", "utf-8", "gbk"]:
+                            try:
+                                with open(config_path, "r", encoding=encoding) as f:
+                                    file_config = json.load(f)
+                                break
+                            except (UnicodeDecodeError, json.JSONDecodeError):
+                                continue
+
+                        if not file_config:
+                            raise Exception("无法使用任何编码方式读取配置文件")
+
+                        file_session_info = file_config.get("proactive_reply", {}).get(
+                            "session_user_info", {}
+                        )
+                        debug_info += f"""
+
+📄 配置文件中的用户信息数量：{len(file_session_info)}
+当前会话在文件中: {"✅" if current_session in file_session_info else "❌"}"""
+
+                        if current_session in file_session_info:
+                            file_user_info = file_session_info[current_session]
+                            debug_info += f"""
+文件中的详细信息:
+- 用户昵称: {file_user_info.get("username", "未知")}
+- 最后活跃时间: {file_user_info.get("last_active_time", "未知")}"""
+                    else:
+                        debug_info += f"""
+
+❌ 配置文件不存在: {config_path}"""
+
+                except Exception as e:
+                    debug_info += f"""
+
+❌ 读取配置文件失败: {str(e)}"""
+            else:
+                debug_info += f"""
+
+ℹ️ 使用内存配置，无配置文件"""
+
+            if config_path:
+                debug_info += f"""
+
+💡 如果内存中有数据但文件中没有，说明保存机制有问题
+💡 如果重启后数据丢失，请检查配置文件路径和权限"""
+            else:
+                debug_info += f"""
+
+⚠️ 当前使用内存配置，数据将在AstrBot重启后丢失
+💡 这可能是正常的，取决于AstrBot的配置管理方式
+💡 如需持久化，请确保AstrBot使用文件配置而非内存配置"""
+
+            yield event.plain_result(debug_info)
+
+        except Exception as e:
+            yield event.plain_result(f"❌ 调试配置持久化失败：{str(e)}")
+            logger.error(f"调试配置持久化失败: {e}")
+
+    @proactive_group.command("debug_persistent")
+    async def debug_persistent_file(self, event: AstrMessageEvent):
+        """调试独立持久化文件状态"""
+        try:
+            import os
+            import json
+
+            # 获取持久化文件路径
+            config_path = None
+            for attr in ["_config_path", "config_path", "_path", "path"]:
+                if hasattr(self.config, attr):
+                    config_path = getattr(self.config, attr)
+                    if config_path:
+                        break
+
+            if config_path:
+                data_dir = os.path.dirname(config_path)
+            else:
+                # 如果无法获取配置路径，使用临时目录
+                data_dir = "/tmp"
+
+            persistent_file = os.path.join(
+                data_dir, "astrbot_proactive_reply_persistent.json"
+            )
+
+            debug_info = f"""🔍 独立持久化文件调试信息
+
+📁 持久化文件路径：
+{persistent_file}
+
+📊 文件状态："""
+
+            if os.path.exists(persistent_file):
+                try:
+                    file_size = os.path.getsize(persistent_file)
+                    debug_info += f"""
+✅ 文件存在
+📏 文件大小：{file_size} 字节"""
+
+                    # 尝试读取文件内容
+                    persistent_data = None
+                    for encoding in ["utf-8-sig", "utf-8", "gbk"]:
+                        try:
+                            with open(persistent_file, "r", encoding=encoding) as f:
+                                persistent_data = json.load(f)
+                            break
+                        except (UnicodeDecodeError, json.JSONDecodeError):
+                            continue
+
+                    if persistent_data:
+                        session_info = persistent_data.get("session_user_info", {})
+                        ai_times = persistent_data.get("ai_last_sent_times", {})
+                        last_update = persistent_data.get("last_update", "未知")
+
+                        debug_info += f"""
+📊 持久化数据内容：
+- 用户信息数量：{len(session_info)}
+- AI发送时间记录数量：{len(ai_times)}
+- 最后更新时间：{last_update}"""
+
+                        current_session = event.unified_msg_origin
+                        if current_session in session_info:
+                            user_info = session_info[current_session]
+                            debug_info += f"""
+
+🔍 当前会话在持久化文件中：✅
+- 用户昵称：{user_info.get("username", "未知")}
+- 最后活跃时间：{user_info.get("last_active_time", "未知")}"""
+                        else:
+                            debug_info += f"""
+
+🔍 当前会话在持久化文件中：❌"""
+                    else:
+                        debug_info += f"""
+❌ 无法解析文件内容"""
+
+                except Exception as e:
+                    debug_info += f"""
+❌ 读取文件失败：{str(e)}"""
+            else:
+                debug_info += f"""
+❌ 文件不存在"""
+
+            debug_info += f"""
+
+💡 独立持久化文件用于在AstrBot重启时保持数据
+💡 即使配置文件被重置，持久化文件中的数据也会被恢复"""
+
+            yield event.plain_result(debug_info)
+
+        except Exception as e:
+            yield event.plain_result(f"❌ 调试持久化文件失败：{str(e)}")
+            logger.error(f"调试持久化文件失败: {e}")
+
+    @proactive_group.command("test_placeholders")
+    async def test_placeholders(self, event: AstrMessageEvent):
+        """测试占位符替换功能"""
+        current_session = event.unified_msg_origin
+
+        try:
+            # 测试用的提示词，包含所有占位符
+            test_prompt = """测试占位符替换：
+- 完整用户上下文：{user_context}
+- 用户上次发消息时间：{user_last_message_time}
+- 用户上次发消息相对时间：{user_last_message_time_ago}
+- 用户昵称：{username}
+- 平台：{platform}
+- 聊天类型：{chat_type}
+- AI上次发送时间：{ai_last_sent_time}
+- 当前时间：{current_time}"""
+
+            # 执行占位符替换
+            result = self.replace_placeholders(test_prompt, current_session)
+
+            test_result = f"""🧪 占位符替换测试结果
+
+📝 原始提示词：
+{test_prompt}
+
+🔄 替换后结果：
+{result}
+
+✅ 测试完成！所有占位符都已正确替换。"""
+
+            yield event.plain_result(test_result)
+
+        except Exception as e:
+            yield event.plain_result(f"❌ 测试占位符替换失败：{str(e)}")
+            logger.error(f"测试占位符替换失败: {e}")
+
+    @proactive_group.command("force_save_config")
+    async def force_save_config(self, event: AstrMessageEvent):
+        """强制保存配置文件"""
+        try:
+            # 先尝试正常保存
+            try:
+                self.config.save_config()
+                yield event.plain_result("✅ 配置文件保存成功（正常方式）")
+                logger.info("配置文件保存成功（正常方式）")
+                return
+            except Exception as e:
+                logger.warning(f"正常保存失败: {e}，尝试强制保存")
+
+            # 强制保存
+            import json
+
+            # 尝试多种方式获取配置文件路径
+            config_path = None
+            for attr in ["_config_path", "config_path", "_path", "path"]:
+                if hasattr(self.config, attr):
+                    config_path = getattr(self.config, attr)
+                    if config_path:
+                        break
+
+            if not config_path:
+                yield event.plain_result(
+                    "❌ 无法获取配置文件路径，当前可能使用内存配置\n💡 这意味着数据将在重启后丢失，这可能是AstrBot的正常行为"
+                )
+                return
+
+            with open(config_path, "w", encoding="utf-8") as f:
+                json.dump(dict(self.config), f, ensure_ascii=False, indent=2)
+
+            yield event.plain_result(f"✅ 配置文件强制保存成功\n📁 路径: {config_path}")
+            logger.info(f"配置文件强制保存成功: {config_path}")
+
+        except Exception as e:
+            yield event.plain_result(f"❌ 强制保存配置失败：{str(e)}")
+            logger.error(f"强制保存配置失败: {e}")
+
     @proactive_group.command("test_prompt")
     async def test_system_prompt(self, event: AstrMessageEvent):
         """测试系统提示词构建（包含人格系统兼容性）"""
@@ -1696,10 +2227,14 @@ AI发送消息: {ai_last_sent}""")
   /proactive test_llm - 测试LLM请求，实际体验用户信息附加功能
   /proactive test_llm_generation - 测试LLM生成主动消息功能
   /proactive test_prompt - 测试系统提示词构建过程
+  /proactive test_placeholders - 测试占位符替换功能
   /proactive show_user_info - 显示记录的用户信息
   /proactive clear_records - 清除记录的用户信息和发送时间
   /proactive task_status - 检查定时任务状态（调试用）
   /proactive debug_send - 调试LLM主动发送功能（详细显示生成和发送过程）
+  /proactive debug_config - 调试配置文件持久化状态
+  /proactive debug_persistent - 调试独立持久化文件状态
+  /proactive force_save_config - 强制保存配置文件
   /proactive force_start - 强制启动定时任务（调试用）
 
 📝 功能说明：
@@ -1708,6 +2243,16 @@ AI发送消息: {ai_last_sent}""")
    - 固定间隔模式：固定时间间隔，可选随机延迟
    - 随机间隔模式：每次在设定范围内随机选择等待时间
 3. 个性化生成：基于用户信息和对话历史生成更自然的主动消息
+
+🏷️ 主动对话提示词支持的占位符：
+  {user_context} - 完整的用户上下文信息
+  {user_last_message_time} - 用户上次发消息时间
+  {user_last_message_time_ago} - 用户上次发消息相对时间（如"5分钟前"）
+  {username} - 用户昵称
+  {platform} - 平台名称
+  {chat_type} - 聊天类型（群聊/私聊）
+  {ai_last_sent_time} - AI上次发送时间
+  {current_time} - 当前时间
 
 ⚙️ 配置：
 请在AstrBot管理面板的插件管理中配置相关参数

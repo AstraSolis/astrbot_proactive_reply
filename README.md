@@ -154,8 +154,24 @@
 请以轻松友好的方式主动和用户交流，可以分享一些有趣的内容或询问用户的想法
 ```
 
+**使用占位符的提示词示例**：
+```
+现在是 {current_time}，用户 {username} 上次发消息是在 {user_last_message_time}，请主动问候用户
+{username} 在 {platform} 上已经有一段时间没有活跃了，上次发消息是 {user_last_message_time_ago}，请友好地询问近况
+用户 {username} 在 {chat_type} 中，{user_last_message_time_ago} 发过消息，请生成一条温暖的问候消息
+根据以下用户信息主动发起对话：{user_context}
+用户 {username} {user_last_message_time_ago} 活跃过，现在是 {current_time}，请主动关心一下
+```
+
 **主动对话提示词支持的占位符**：
-- `{user_context}` - 用户上下文信息（包含用户名、平台、时间等）
+- `{user_context}` - 完整的用户上下文信息（包含用户名、平台、时间等）
+- `{user_last_message_time}` - 用户上次主动发送消息的时间
+- `{user_last_message_time_ago}` - 用户上次主动发送消息的相对时间（如"5分钟前"、"1小时前"）
+- `{username}` - 用户昵称
+- `{platform}` - 平台名称（如：aiocqhttp、telegram等）
+- `{chat_type}` - 聊天类型（群聊/私聊）
+- `{ai_last_sent_time}` - AI上次发送消息的时间
+- `{current_time}` - 当前时间
 
 **用户信息模板支持的占位符**：
 - `{username}` - 用户名
@@ -285,6 +301,39 @@
 - **许可证**：[LICENSE](LICENSE)
 - **项目地址**：https://github.com/AstraSolis/astrbot_proactive_reply
 - **更新日志**：[CHANGELOG.md](CHANGELOG.md)
+
+## 常见问题
+
+### Q: 为什么重启AstrBot后主动发送功能停止了？
+A: 请检查配置中的"启用功能"是否为true，重启后需要重新启用。
+
+### Q: 为什么重启后用户信息丢失了？
+A: 插件使用双重持久化机制保存用户信息：
+1. **配置文件保存**：保存到AstrBot的配置文件中
+2. **独立持久化文件**：保存到独立的数据文件中，避免配置重置影响
+
+如果重启后信息仍然丢失，请：
+1. 使用 `/proactive debug_config` 检查配置文件状态
+2. 使用 `/proactive debug_persistent` 检查独立持久化文件状态
+3. 使用 `/proactive force_save_config` 强制保存配置
+4. 查看日志中的持久化保存状态
+
+### Q: 为什么没有收到主动消息？
+A: 请检查：
+1. 是否启用了主动发送功能
+2. 当前时间是否在活跃时间段内
+3. 是否已添加当前会话到发送列表
+4. LLM服务是否正常工作
+
+### Q: 如何调试插件问题？
+A: 使用以下调试指令：
+- `/proactive status` - 查看整体状态
+- `/proactive debug` - 查看用户信息处理
+- `/proactive debug_config` - 检查配置文件持久化状态
+- `/proactive debug_persistent` - 检查独立持久化文件状态
+- `/proactive test_llm_generation` - 测试LLM生成功能
+- `/proactive test_placeholders` - 测试占位符替换功能
+- `/proactive task_status` - 检查定时任务状态
 
 ## 问题反馈
 

@@ -42,6 +42,15 @@
 - 占位符系统
   - 消息模板占位符：`{time}`, `{last_sent_time}`, `{user_last_message_time}`
   - 用户信息模板占位符：`{username}`, `{user_id}`, `{time}`, `{platform}`, `{chat_type}`
+  - **主动对话提示词占位符**：支持细粒度的占位符定制
+    - `{user_context}` - 完整的用户上下文信息（向后兼容）
+    - `{user_last_message_time}` - 用户上次主动发送消息的时间
+    - `{user_last_message_time_ago}` - 用户上次主动发送消息的相对时间（如"5分钟前"）
+    - `{username}` - 用户昵称
+    - `{platform}` - 平台名称（如：aiocqhttp、telegram等）
+    - `{chat_type}` - 聊天类型（群聊/私聊）
+    - `{ai_last_sent_time}` - AI上次发送消息的时间
+    - `{current_time}` - 当前时间
 - 提供完整的管理指令系统
   - `/proactive status` - 查看插件状态
   - `/proactive current_session` - 显示当前会话ID和状态
@@ -53,10 +62,14 @@
   - `/proactive test_llm` - 测试LLM请求
   - `/proactive test_llm_generation` - 测试LLM生成主动消息功能
   - `/proactive test_prompt` - 测试系统提示词构建过程
+  - `/proactive test_placeholders` - 测试占位符替换功能
   - `/proactive show_user_info` - 显示记录的用户信息
   - `/proactive clear_records` - 清除记录数据
   - `/proactive task_status` - 检查定时任务状态
   - `/proactive debug_send` - 调试定时发送功能
+  - `/proactive debug_config` - 调试配置文件持久化状态
+  - `/proactive debug_persistent` - 调试独立持久化文件状态
+  - `/proactive force_save_config` - 强制保存配置文件
   - `/proactive force_start` - 强制启动定时任务
   - `/proactive config` - 显示完整配置
   - `/proactive help` - 显示帮助信息
@@ -78,6 +91,14 @@
 - **配置参数智能提示**：每个配置项明确标注适用模式
 - **向后兼容性保证**：现有配置无需修改即可正常使用
 - **可视化配置管理**：支持现代化的列表配置界面
+- **强化配置持久化**：改进配置保存机制，确保用户信息在重启后不丢失
+  - **双重持久化机制**：同时保存到配置文件和独立持久化文件
+  - **自动数据恢复**：启动时自动从持久化文件恢复数据，避免配置重置影响
+  - **多重保存机制**：正常保存失败时自动尝试强制保存
+  - **配置加载验证**：启动时验证已保存的用户信息
+  - **详细的保存日志**：记录每次配置保存的结果
+  - **调试工具**：提供配置持久化状态检查和强制保存功能
+  - **编码兼容性**：自动处理UTF-8 BOM等编码问题，支持多种编码格式读取配置文件
 
 ### 兼容性
 - 与 AstrBot 人格系统完全兼容

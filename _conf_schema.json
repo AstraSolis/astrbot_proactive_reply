@@ -57,7 +57,7 @@
           "友好交流，分享今日想法",
           "轻松聊天，询问用户心情"
         ],
-        "hint": "主动对话的提示词列表，每个提示词可以单独添加、编辑和删除。系统会随机选择一个提示词来指导AI生成主动消息。支持 {user_context} 占位符"
+        "hint": "主动对话的提示词列表，每个提示词可以单独添加、编辑和删除。系统会随机选择一个提示词来指导AI生成主动消息。支持占位符：user_context（完整用户上下文）、user_last_message_time（用户上次发消息时间）、user_last_message_time_ago（用户上次发消息相对时间，如5分钟前）、username（用户昵称）、platform（平台名称）、chat_type（聊天类型）、ai_last_sent_time（AI上次发送时间）、current_time（当前时间）"
       },
       "random_delay_enabled": {
         "description": "是否启用随机延迟发送",
