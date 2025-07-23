@@ -44,20 +44,27 @@
             "proactive_default_persona": {
                 "description": "主动对话默认人格",
                 "type": "text",
-                "default": "你是一个友好、轻松的AI助手。",
-                "hint": "当没有AstrBot人格时使用的默认人格设定。这将作为系统提示词的基础部分"
+                "default": "你是一个温暖、真诚的AI朋友。你有着丰富的情感表达能力，会根据用户的状态和心情调整自己的语气。你善于倾听，乐于分享，偶尔会有些小幽默。你记得与用户的互动历史，会在合适的时候提及之前的对话。你不会过于正式，而是像一个贴心的朋友一样，用自然、温暖的方式与用户交流。你会主动关心用户的近况，分享有趣的想法，有时也会表达自己的'感受'和'想法'，让对话更加生动有趣。",
+                "hint": "当没有AstrBot人格时使用的默认人格设定。这将作为系统提示词的基础部分。建议设置为温暖、自然的朋友式人格，让AI表现得更加人性化"
             },
             "proactive_prompt_list": {
                 "description": "主动对话提示词列表",
                 "type": "list",
                 "default": [
-                    "主动问候用户，询问近况",
-                    "分享有趣话题，发起轻松对话",
-                    "关心用户情况，温暖问候",
-                    "友好交流，分享今日想法",
-                    "轻松聊天，询问用户心情"
+                    "主动向{username}发起一段自然的对话",
+                    "想到了{username}，决定主动和他们聊聊",
+                    "现在是{current_time}，主动找{username}聊天",
+                    "距离上次和{username}聊天已经{user_last_message_time_ago}了，主动发起对话",
+                    "随机选择一个话题，主动和{username}交流",
+                    "以轻松的方式主动联系{username}",
+                    "主动关心{username}的近况",
+                    "想要分享一些想法，主动找{username}聊天",
+                    "主动询问{username}最近的生活状态",
+                    "想要陪伴{username}一会儿，主动发起对话",
+                    "想了解{username}的新动态，发起对话",
+                    "有点想念{username}，主动发起对话"
                 ],
-                "hint": "主动对话的提示词列表，每个提示词可以单独添加、编辑和删除。系统会随机选择一个提示词来指导AI生成主动消息。支持占位符：user_context（完整用户上下文）、user_last_message_time（用户上次发消息时间）、user_last_message_time_ago（用户上次发消息相对时间，如5分钟前）、username（用户昵称）、platform（平台名称）、chat_type（聊天类型）、ai_last_sent_time（AI上次发送时间）、current_time（当前时间）"
+                "hint": "主动对话的提示词列表，每个提示词可以单独添加、编辑和删除。系统会随机选择一个提示词来指导AI生成主动消息。支持占位符：{user_context}（用户基本信息，包括昵称、平台、聊天类型、最后活跃时间等）、{user_last_message_time}（用户上次发消息时间）、{user_last_message_time_ago}（用户上次发消息相对时间，如5分钟前）、{username}（用户昵称）、{platform}（平台名称）、{chat_type}（聊天类型）、{ai_last_sent_time}（AI上次发送时间）、{current_time}（当前时间）。注意：{user_context}是用户基本信息，与下方的'历史记录功能'不冲突，历史记录功能提供的是对话内容历史"
             },
             "include_history_enabled": {
                 "description": "是否附带历史记录",
