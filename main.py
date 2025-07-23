@@ -5,7 +5,6 @@ import asyncio
 import random
 import datetime
 
-
 @register(
     "astrbot_proactive_reply",
     "AstraSolis",
@@ -1478,7 +1477,16 @@ class ProactiveReplyPlugin(Star):
         history_enabled = proactive_config.get("include_history_enabled", False)
         history_count = proactive_config.get("history_message_count", 10)
 
+        # 检查当前会话状态
+        current_session = event.unified_msg_origin
+        is_current_in_list = current_session in sessions
+
         status_text = f"""📊 主动回复插件状态
+
+📍 当前会话：
+  - 会话ID：{current_session[:50]}{"..." if len(current_session) > 50 else ""}
+  - 发送状态：{"✅ 已在发送列表中" if is_current_in_list else "❌ 未在发送列表中"}
+  - 操作提示：{"使用 /proactive remove_session 移除" if is_current_in_list else "使用 /proactive add_session 添加"}
 
 🔧 用户信息附加功能：✅ 已启用
   - 时间格式：{user_config.get("time_format", "%Y-%m-%d %H:%M:%S")}
@@ -1570,8 +1578,49 @@ class ProactiveReplyPlugin(Star):
             logger.error(f"保存配置失败: {e}")
 
     @proactive_group.command("test")
-    async def test_proactive(self, event: AstrMessageEvent):
-        """测试发送一条主动消息到当前会话"""
+    async def test_proactive(self, event: AstrMessageEvent, test_type: str = "basic"):
+        """测试功能 - 支持多种测试类型
+
+        参数:
+        - basic: 基础测试发送 (默认)
+        - llm: 测试LLM请求
+        - generation: 测试LLM生成主动消息
+        - prompt: 测试系统提示词构建
+        - placeholders: 测试占位符替换
+        - history: 测试对话历史记录
+        """
+        test_type = test_type.lower()
+
+        if test_type in ["basic", ""]:
+            async for result in self._test_basic(event):
+                yield result
+        elif test_type == "llm":
+            async for result in self._test_llm(event):
+                yield result
+        elif test_type == "generation":
+            async for result in self._test_generation(event):
+                yield result
+        elif test_type == "prompt":
+            async for result in self._test_prompt(event):
+                yield result
+        elif test_type == "placeholders":
+            async for result in self._test_placeholders(event):
+                yield result
+        elif test_type == "history":
+            async for result in self._test_history(event):
+                yield result
+        else:
+            available_types = ["basic", "llm", "generation", "prompt", "placeholders", "history"]
+            yield event.plain_result(f"""❌ 未知的测试类型: {test_type}
+
+📋 可用的测试类型：
+{chr(10).join([f"  • {t}" for t in available_types])}
+
+💡 使用方法: /proactive test [类型]
+例如: /proactive test llm""")
+
+    async def _test_basic(self, event: AstrMessageEvent):
+        """基础测试发送"""
         current_session = event.unified_msg_origin
 
         try:
@@ -1584,32 +1633,40 @@ class ProactiveReplyPlugin(Star):
             yield event.plain_result(f"❌ 测试消息发送失败：{str(e)}")
             logger.error(f"用户 {event.get_sender_name()} 测试主动消息发送失败: {e}")
 
-    @proactive_group.command("test_llm_generation")
-    async def test_llm_generation(self, event: AstrMessageEvent):
+    async def _test_llm(self, event: AstrMessageEvent):
+        """测试LLM请求"""
+        test_message = "这是一个测试消息，请简单回复确认收到。"
+
+        try:
+            yield event.request_llm(
+                prompt=test_message,
+                system_prompt="",  # 让插件自动添加用户信息
+            )
+            logger.info(f"用户 {event.get_sender_name()} 测试了LLM请求功能")
+        except Exception as e:
+            yield event.plain_result(f"❌ 测试LLM请求失败：{str(e)}")
+            logger.error(f"测试LLM请求失败: {e}")
+
+    async def _test_generation(self, event: AstrMessageEvent):
         """测试LLM生成主动消息功能"""
         current_session = event.unified_msg_origin
 
         try:
-            # 检查LLM是否可用
             provider = self.context.get_using_provider()
             if not provider:
                 yield event.plain_result("❌ LLM提供商不可用，无法测试生成功能")
                 return
 
-            # 显示测试开始信息
             yield event.plain_result(
                 "🧪 开始测试LLM生成主动消息...\n⏳ 正在调用LLM，请稍候..."
             )
 
-            # 生成测试消息
             generated_message = await self.generate_proactive_message_with_llm(
                 current_session
             )
 
             if generated_message:
-                # 获取用户上下文信息用于显示
                 user_context = self.build_user_context_for_proactive(current_session)
-
                 result_text = f"""✅ LLM生成主动消息测试成功
 
 🤖 生成的消息：
@@ -1619,366 +1676,200 @@ class ProactiveReplyPlugin(Star):
 {user_context}
 
 💡 这就是AI会发送给用户的主动消息内容！"""
-
                 yield event.plain_result(result_text)
                 logger.info(f"用户 {event.get_sender_name()} 测试LLM生成功能成功")
             else:
                 yield event.plain_result(
                     "❌ LLM生成主动消息失败，请检查配置和LLM服务状态"
                 )
-
         except Exception as e:
             yield event.plain_result(f"❌ 测试LLM生成功能失败：{str(e)}")
             logger.error(f"测试LLM生成功能失败: {e}")
 
-    @proactive_group.command("show_user_info")
-    async def show_user_info(self, event: AstrMessageEvent):
-        """显示记录的用户信息"""
-        proactive_config = self.config.get("proactive_reply", {})
-        session_user_info = proactive_config.get("session_user_info", {})
-        last_sent_times = proactive_config.get("last_sent_times", {})
-        ai_last_sent_times = proactive_config.get("ai_last_sent_times", {})
-
-        if not session_user_info:
-            yield event.plain_result(
-                "📝 暂无记录的用户信息\n\n💡 提示：与机器人对话后会自动记录用户信息"
-            )
-            return
-
-        info_list = []
-        for session_id, user_info in session_user_info.items():
-            last_sent = last_sent_times.get(session_id, "从未发送")
-            ai_last_sent = ai_last_sent_times.get(session_id, "从未发送")
-            info_list.append(f"""会话: {session_id[:50]}{"..." if len(session_id) > 50 else ""}
-用户: {user_info.get("username", "未知")} ({user_info.get("user_id", "未知")})
-平台: {user_info.get("platform", "未知")} ({user_info.get("chat_type", "未知")})
-最后活跃: {user_info.get("last_active_time", "未知")}
-AI主动发送: {last_sent}
-AI发送消息: {ai_last_sent}""")
-
-        result_text = f"""👥 已记录的用户信息 ({len(session_user_info)} 个会话)
-
-{chr(10).join([f"{i + 1}. {info}" for i, info in enumerate(info_list)])}
-
-💡 这些信息用于主动消息的占位符替换"""
-
-        yield event.plain_result(result_text)
-
-    @proactive_group.command("debug_times")
-    async def debug_times(self, event: AstrMessageEvent):
-        """调试时间记录数据"""
+    async def _test_prompt(self, event: AstrMessageEvent):
+        """测试系统提示词构建过程（包含历史记录处理）"""
         current_session = event.unified_msg_origin
-        proactive_config = self.config.get("proactive_reply", {})
 
-        last_sent_times = proactive_config.get("last_sent_times", {})
-        ai_last_sent_times = proactive_config.get("ai_last_sent_times", {})
-
-        debug_text = f"""🔍 时间记录调试信息
-
-当前会话: {current_session[:50]}{"..." if len(current_session) > 50 else ""}
-
-📊 数据统计:
-- AI主动发送记录总数: {len(last_sent_times)}
-- AI发送消息记录总数: {len(ai_last_sent_times)}
-
-🕐 当前会话时间记录:
-- AI主动发送时间: {last_sent_times.get(current_session, "无记录")}
-- AI发送消息时间: {ai_last_sent_times.get(current_session, "无记录")}
-
-🧪 LLM生成测试:
-使用 /proactive test_llm_generation 测试LLM生成功能"""
-
-        yield event.plain_result(debug_text)
-
-    @proactive_group.command("debug_tasks")
-    async def debug_tasks(self, event: AstrMessageEvent):
-        """调试当前运行的任务"""
-        all_tasks = asyncio.all_tasks()
-
-        task_info = []
-        proactive_tasks = []
-
-        for task in all_tasks:
-            task_id = id(task)
-            task_name = getattr(task, "_coro", {})
-            coro_name = (
-                getattr(task_name, "__name__", "unknown") if task_name else "unknown"
-            )
-
-            if "proactive" in coro_name.lower():
-                proactive_tasks.append(
-                    f"- 任务ID: {task_id}, 名称: {coro_name}, 状态: {'运行中' if not task.done() else '已完成'}"
-                )
-
-            task_info.append(
-                f"- 任务ID: {task_id}, 名称: {coro_name}, 状态: {'运行中' if not task.done() else '已完成'}"
-            )
-
-        current_proactive_task = self.proactive_task
-        current_task_info = f"当前记录的任务: {id(current_proactive_task) if current_proactive_task else 'None'}"
-
-        debug_text = f"""🔍 任务调试信息
-
-{current_task_info}
-
-📊 相关任务统计:
-找到 {len(proactive_tasks)} 个可能的定时任务:
-{chr(10).join(proactive_tasks) if proactive_tasks else "- 无"}
-
-📋 所有任务 (总计 {len(all_tasks)} 个):
-{chr(10).join(task_info[:10])}
-{"...(显示前10个)" if len(task_info) > 10 else ""}"""
-
-        yield event.plain_result(debug_text)
-
-    @proactive_group.command("force_stop")
-    async def force_stop_command(self, event: AstrMessageEvent):
-        """强制停止所有定时任务"""
         try:
-            await self.force_stop_all_tasks()
-            yield event.plain_result("✅ 已强制停止所有相关任务")
-            logger.info(f"用户 {event.get_sender_name()} 强制停止了所有任务")
-        except Exception as e:
-            yield event.plain_result(f"❌ 强制停止任务失败：{str(e)}")
-            logger.error(f"强制停止任务失败: {e}")
+            proactive_config = self.config.get("proactive_reply", {})
+            prompt_list_data = proactive_config.get("proactive_prompt_list", [])
 
-    @proactive_group.command("clear_records")
-    async def clear_records(self, event: AstrMessageEvent):
-        """清除记录的用户信息和发送时间（用于测试）"""
+            if not prompt_list_data:
+                yield event.plain_result("❌ 未配置主动对话提示词列表")
+                return
+
+            prompt_list = self.parse_prompt_list(prompt_list_data)
+            if not prompt_list:
+                yield event.plain_result("❌ 主动对话提示词列表为空")
+                return
+
+            selected_prompt = random.choice(prompt_list)
+            final_prompt = self.replace_placeholders(selected_prompt, current_session)
+
+            base_system_prompt = self.get_base_system_prompt()
+
+            # 检查历史记录功能
+            history_enabled = proactive_config.get("include_history_enabled", False)
+            history_count = proactive_config.get("history_message_count", 10)
+            history_info = ""
+            history_context = ""
+
+            if history_enabled:
+                try:
+                    # 使用项目中已有的get_conversation_history方法
+                    contexts = await self.get_conversation_history(current_session, history_count)
+                    if contexts:
+                        history_context = "\n".join([f"{ctx['role']}: {ctx['content'][:50]}..." for ctx in contexts[-3:]])
+                        history_info = f"✅ 已启用 (最近{len(contexts)}条记录)"
+                    else:
+                        history_info = "✅ 已启用 (暂无历史记录)"
+                except Exception as e:
+                    history_info = f"✅ 已启用 (获取失败: {str(e)[:50]}...)"
+            else:
+                history_info = "❌ 未启用"
+
+            # 构建完整的系统提示词（模拟实际生成过程）
+            combined_system_prompt = f"{base_system_prompt}\n\n{final_prompt}"
+            if history_enabled and history_context:
+                combined_system_prompt += f"\n\n--- 对话历史 ---\n{history_context}"
+
+            result_text = f"""🧪 系统提示词构建测试
+
+📝 原始提示词：
+{selected_prompt}
+
+🔄 占位符替换后：
+{final_prompt}
+
+🤖 基础人格提示词：
+{base_system_prompt[:200] + "..." if len(base_system_prompt) > 200 else base_system_prompt}
+
+📚 历史记录状态：{history_info}
+{f"最近历史记录预览：{chr(10)}{history_context}" if history_context else ""}
+
+🎭 最终组合系统提示词：
+{combined_system_prompt[:400] + "..." if len(combined_system_prompt) > 400 else combined_system_prompt}
+
+📊 统计信息:
+- 可用提示词数量: {len(prompt_list)}
+- 人格提示词长度: {len(base_system_prompt)} 字符
+- 主动对话提示词长度: {len(final_prompt)} 字符
+- 历史记录长度: {len(history_context)} 字符
+- 最终系统提示词长度: {len(combined_system_prompt)} 字符
+
+💡 这就是发送给LLM的完整系统提示词和历史上下文！"""
+
+            yield event.plain_result(result_text)
+        except Exception as e:
+            yield event.plain_result(f"❌ 测试系统提示词构建失败：{str(e)}")
+            logger.error(f"测试系统提示词构建失败: {e}")
+
+    async def _test_placeholders(self, event: AstrMessageEvent):
+        """测试占位符替换功能"""
+        current_session = event.unified_msg_origin
+
         try:
-            if "proactive_reply" not in self.config:
-                self.config["proactive_reply"] = {}
+            test_prompt = """测试占位符替换：
+- 完整用户上下文：{user_context}
+- 用户上次发消息时间：{user_last_message_time}
+- 用户上次发消息相对时间：{user_last_message_time_ago}
+- 用户昵称：{username}
+- 平台：{platform}
+- 聊天类型：{chat_type}
+- AI上次发送时间：{ai_last_sent_time}
+- 当前时间：{current_time}"""
 
-            # 清除记录
-            self.config["proactive_reply"]["session_user_info"] = {}
-            self.config["proactive_reply"]["last_sent_times"] = {}
-            self.config["proactive_reply"]["ai_last_sent_times"] = {}
+            result = self.replace_placeholders(test_prompt, current_session)
 
-            # 保存配置
-            self.config.save_config()
+            test_result = f"""🧪 占位符替换测试结果
 
-            yield event.plain_result("✅ 已清除所有用户信息记录和AI发送时间记录")
-            logger.info(f"用户 {event.get_sender_name()} 清除了所有记录")
+📝 原始模板：
+{test_prompt}
 
+🔄 替换后结果：
+{result}
+
+💡 所有占位符都已成功替换！"""
+
+            yield event.plain_result(test_result)
         except Exception as e:
-            yield event.plain_result(f"❌ 清除记录失败：{str(e)}")
-            logger.error(f"清除记录失败: {e}")
+            yield event.plain_result(f"❌ 测试占位符替换失败：{str(e)}")
+            logger.error(f"测试占位符替换失败: {e}")
+
+    async def _test_history(self, event: AstrMessageEvent):
+        """测试对话历史记录功能"""
+        current_session = event.unified_msg_origin
+
+        try:
+            curr_cid = await self.context.conversation_manager.get_curr_conversation_id(current_session)
+
+            if not curr_cid:
+                yield event.plain_result("❌ 当前会话没有对话ID，无法测试历史记录功能")
+                return
+
+            conversation = await self.context.conversation_manager.get_conversation(current_session, curr_cid)
+
+            if not conversation:
+                yield event.plain_result("❌ 无法获取对话对象")
+                return
+
+            import json
+            history = json.loads(conversation.history) if conversation.history else []
+
+            result_text = f"""🧪 对话历史记录测试结果
+
+📋 基本信息：
+- 对话ID: {curr_cid}
+- 历史记录条数: {len(history)}
+- 对话创建时间: {conversation.created_at if hasattr(conversation, 'created_at') else '未知'}
+
+📝 最近的历史记录（最多显示5条）：
+{chr(10).join([f"{i+1}. {msg.get('role', 'unknown')}: {msg.get('content', '')[:100]}..." for i, msg in enumerate(history[-5:])]) if history else "暂无历史记录"}
+
+💡 历史记录功能正常，AI主动发送的消息会自动添加到此对话历史中"""
+
+            yield event.plain_result(result_text)
+        except Exception as e:
+            yield event.plain_result(f"❌ 测试对话历史记录功能失败：{str(e)}")
+            logger.error(f"测试对话历史记录功能失败: {e}")
 
     @proactive_group.command("restart")
     async def restart_task(self, event: AstrMessageEvent):
-        """重启定时主动发送任务"""
+        """重启定时主动发送任务（配置更改后使用）"""
         try:
             await self.restart_proactive_task()
             proactive_config = self.config.get("proactive_reply", {})
+
             if proactive_config.get("enabled", False):
-                yield event.plain_result("✅ 定时主动发送任务已重启")
+                result_text = """✅ 定时主动发送任务已重启
+
+🔄 任务状态：正在运行
+📋 适用场景：
+  • 修改了插件配置参数后
+  • 更改了发送间隔或时间设置
+  • 添加/删除了主动对话提示词
+  • 修改了活跃时间范围
+  • 任务出现异常需要重新启动
+
+💡 提示：配置更改后必须重启任务才能生效"""
             else:
-                yield event.plain_result("ℹ️ 定时主动发送功能已禁用，任务已停止")
+                result_text = """ℹ️ 定时主动发送功能已禁用
+
+🔄 任务状态：已停止
+💡 提示：请在AstrBot管理面板中启用"定时发送功能"，然后再次运行此指令"""
+
+            yield event.plain_result(result_text)
             logger.info(f"用户 {event.get_sender_name()} 重启了定时主动发送任务")
         except Exception as e:
             yield event.plain_result(f"❌ 重启任务失败：{str(e)}")
             logger.error(f"重启定时任务失败: {e}")
 
-    @proactive_group.command("task_status")
-    async def task_status(self, event: AstrMessageEvent):
-        """检查定时任务状态"""
-        try:
-            task_info = []
 
-            # 检查主定时任务
-            if self.proactive_task:
-                if self.proactive_task.cancelled():
-                    task_info.append("🔴 主定时任务：已取消")
-                elif self.proactive_task.done():
-                    task_info.append("🟡 主定时任务：已完成")
-                else:
-                    task_info.append("🟢 主定时任务：运行中")
-            else:
-                task_info.append("⚪ 主定时任务：未创建")
 
-            # 检查初始化任务
-            if self._initialization_task:
-                if self._initialization_task.cancelled():
-                    task_info.append("🔴 初始化任务：已取消")
-                elif self._initialization_task.done():
-                    task_info.append("🟢 初始化任务：已完成")
-                else:
-                    task_info.append("🟡 初始化任务：运行中")
-            else:
-                task_info.append("⚪ 初始化任务：未创建")
 
-            # 检查终止标志
-            task_info.append(f"🏁 终止标志：{'是' if self._is_terminating else '否'}")
 
-            # 检查配置状态
-            proactive_config = self.config.get("proactive_reply", {})
-            task_info.append(
-                f"⚙️ 功能启用：{'是' if proactive_config.get('enabled', False) else '否'}"
-            )
-
-            # 获取所有运行中的任务数量
-            all_tasks = [task for task in asyncio.all_tasks() if not task.done()]
-            task_info.append(f"📊 全局任务数：{len(all_tasks)}")
-
-            status_text = f"""🔍 定时任务状态检查
-
-{chr(10).join(task_info)}
-
-💡 如果任务状态异常，请使用 /proactive restart 重启任务"""
-
-            yield event.plain_result(status_text)
-
-        except Exception as e:
-            yield event.plain_result(f"❌ 检查任务状态失败：{str(e)}")
-            logger.error(f"检查任务状态失败: {e}")
-
-    @proactive_group.command("debug_send")
-    async def debug_send(self, event: AstrMessageEvent):
-        """调试LLM主动发送功能 - 详细显示生成和发送过程"""
-        current_session = event.unified_msg_origin
-
-        try:
-            proactive_config = self.config.get("proactive_reply", {})
-
-            # 检查配置
-            debug_info = []
-            debug_info.append("🔧 配置检查:")
-            debug_info.append(
-                f"  - 功能启用: {'是' if proactive_config.get('enabled', False) else '否'}"
-            )
-            debug_info.append(
-                f"  - 当前在活跃时间: {'是' if self.is_active_time() else '否'}"
-            )
-
-            # 检查会话列表
-            sessions_data = proactive_config.get("sessions", [])
-            sessions = self.parse_sessions_list(sessions_data)
-            debug_info.append(f"  - 配置的会话数: {len(sessions)}")
-            debug_info.append(
-                f"  - 当前会话在列表中: {'是' if current_session in sessions else '否'}"
-            )
-
-            # 检查LLM可用性
-            provider = self.context.get_using_provider()
-            debug_info.append(f"  - LLM提供商: {'可用' if provider else '不可用'}")
-
-            # 检查系统提示词配置
-            system_prompt = proactive_config.get("proactive_system_prompt", "")
-            debug_info.append(f"  - 系统提示词长度: {len(system_prompt)} 字符")
-
-            if provider and system_prompt:
-                # 测试LLM生成
-                debug_info.append("🤖 LLM生成测试:")
-
-                # 构建用户上下文
-                user_context = self.build_user_context_for_proactive(current_session)
-                debug_info.append(
-                    f"  - 用户上下文: {user_context[:100]}{'...' if len(user_context) > 100 else ''}"
-                )
-
-                try:
-                    # 生成消息
-                    generated_message = await self.generate_proactive_message_with_llm(
-                        current_session
-                    )
-
-                    if generated_message:
-                        debug_info.append("  - 生成结果: ✅ 成功")
-                        debug_info.append(f"  - 生成内容: {generated_message}")
-
-                        # 尝试发送测试消息
-                        debug_info.append("🚀 发送测试:")
-                        try:
-                            from astrbot.api.event import MessageChain
-
-                            message_chain = MessageChain().message(generated_message)
-                            success = await self.context.send_message(
-                                current_session, message_chain
-                            )
-
-                            if success:
-                                debug_info.append("  - 发送结果: ✅ 成功")
-                                # 记录发送时间
-                                self.record_sent_time(current_session)
-                            else:
-                                debug_info.append(
-                                    "  - 发送结果: ❌ 失败（可能是会话不存在或平台不支持）"
-                                )
-
-                        except Exception as e:
-                            debug_info.append(f"  - 发送结果: ❌ 异常 - {str(e)}")
-                    else:
-                        debug_info.append("  - 生成结果: ❌ 失败")
-
-                except Exception as e:
-                    debug_info.append(f"  - 生成异常: {str(e)}")
-            else:
-                if not provider:
-                    debug_info.append("❌ LLM提供商不可用")
-                if not system_prompt:
-                    debug_info.append("❌ 未配置系统提示词")
-
-            result_text = f"""🔍 LLM主动发送功能调试
-
-{chr(10).join(debug_info)}
-
-💡 如果生成或发送失败，请检查LLM配置和系统提示词设置"""
-
-            yield event.plain_result(result_text)
-
-        except Exception as e:
-            yield event.plain_result(f"❌ 调试LLM发送功能失败：{str(e)}")
-            logger.error(f"调试LLM发送功能失败: {e}")
-
-    @proactive_group.command("force_start")
-    async def force_start_task(self, event: AstrMessageEvent):
-        """强制启动定时任务（调试用）"""
-        try:
-            logger.info("用户请求强制启动定时任务")
-
-            # 停止现有任务
-            await self.stop_proactive_task()
-
-            # 强制启动任务（忽略配置中的enabled状态）
-            self.proactive_task = asyncio.create_task(self.proactive_message_loop())
-
-            yield event.plain_result("✅ 已强制启动定时任务（忽略配置状态）")
-            logger.info("定时任务已强制启动")
-
-        except Exception as e:
-            yield event.plain_result(f"❌ 强制启动任务失败：{str(e)}")
-            logger.error(f"强制启动任务失败: {e}")
-
-    @proactive_group.command("current_session")
-    async def show_current_session(self, event: AstrMessageEvent):
-        """显示当前会话ID"""
-        current_session = event.unified_msg_origin
-
-        # 检查当前会话是否在发送列表中
-        proactive_config = self.config.get("proactive_reply", {})
-        sessions_data = proactive_config.get("sessions", [])
-        sessions = self.parse_sessions_list(sessions_data)
-
-        is_in_list = current_session in sessions
-
-        session_info = f"""📍 当前会话信息
-
-🆔 会话ID：
-{current_session}
-
-📋 状态：
-{"✅ 已在定时发送列表中" if is_in_list else "❌ 未在定时发送列表中"}
-
-💡 操作提示：
-{"使用 /proactive remove_session 移除此会话" if is_in_list else "使用 /proactive add_session 添加此会话到发送列表"}
-
-📊 当前发送列表共有 {len(sessions)} 个会话"""
-
-        yield event.plain_result(session_info)
-
-    @proactive_group.command("debug")
-    async def debug_user_info(self, event: AstrMessageEvent):
-        """调试用户信息 - 显示当前会话的用户信息"""
+    async def _debug_basic(self, event: AstrMessageEvent):
+        """基础调试用户信息"""
         user_config = self.config.get("user_info", {})
 
         # 获取用户信息
@@ -2062,745 +1953,442 @@ AI发送消息: {ai_last_sent}""")
 
         yield event.plain_result(debug_info)
 
-    @proactive_group.command("debug_config")
-    async def debug_config_persistence(self, event: AstrMessageEvent):
-        """调试配置文件持久化状态"""
-        try:
-            current_session = event.unified_msg_origin
-            proactive_config = self.config.get("proactive_reply", {})
-            session_user_info = proactive_config.get("session_user_info", {})
-
-            # 获取配置文件信息
-            config_path = None
-            for attr in ["_config_path", "config_path", "_path", "path"]:
-                if hasattr(self.config, attr):
-                    config_path = getattr(self.config, attr)
-                    if config_path:
-                        break
-
-            config_type = "文件配置" if config_path else "内存配置"
-
-            debug_info = f"""🔍 配置文件持久化调试信息
-
-📁 配置类型：{config_type}
-📁 配置文件路径：{config_path or "无（使用内存配置）"}
-
-📊 当前内存中的用户信息数量：{len(session_user_info)}
-
-🔍 当前会话信息：
-会话ID: {current_session}
-是否存在: {"✅" if current_session in session_user_info else "❌"}"""
-
-            if current_session in session_user_info:
-                user_info = session_user_info[current_session]
-                debug_info += f"""
-详细信息:
-- 用户昵称: {user_info.get("username", "未知")}
-- 用户ID: {user_info.get("user_id", "未知")}
-- 平台: {user_info.get("platform", "未知")}
-- 聊天类型: {user_info.get("chat_type", "未知")}
-- 最后活跃时间: {user_info.get("last_active_time", "未知")}"""
-
-            # 尝试读取配置文件（仅当有文件路径时）
-            if config_path:
-                try:
-                    import json
-                    import os
-
-                    if os.path.exists(config_path):
-                        # 尝试不同的编码方式读取文件
-                        file_config = None
-                        for encoding in ["utf-8-sig", "utf-8", "gbk"]:
-                            try:
-                                with open(config_path, "r", encoding=encoding) as f:
-                                    file_config = json.load(f)
-                                break
-                            except (UnicodeDecodeError, json.JSONDecodeError):
-                                continue
-
-                        if not file_config:
-                            raise Exception("无法使用任何编码方式读取配置文件")
-
-                        file_session_info = file_config.get("proactive_reply", {}).get(
-                            "session_user_info", {}
-                        )
-                        debug_info += f"""
-
-📄 配置文件中的用户信息数量：{len(file_session_info)}
-当前会话在文件中: {"✅" if current_session in file_session_info else "❌"}"""
-
-                        if current_session in file_session_info:
-                            file_user_info = file_session_info[current_session]
-                            debug_info += f"""
-文件中的详细信息:
-- 用户昵称: {file_user_info.get("username", "未知")}
-- 最后活跃时间: {file_user_info.get("last_active_time", "未知")}"""
-                    else:
-                        debug_info += f"""
-
-❌ 配置文件不存在: {config_path}"""
-
-                except Exception as e:
-                    debug_info += f"""
-
-❌ 读取配置文件失败: {str(e)}"""
-            else:
-                debug_info += """
-
-ℹ️ 使用内存配置，无配置文件"""
-
-            if config_path:
-                debug_info += """
-
-💡 如果内存中有数据但文件中没有，说明保存机制有问题
-💡 如果重启后数据丢失，请检查配置文件路径和权限"""
-            else:
-                debug_info += """
-
-⚠️ 当前使用内存配置，数据将在AstrBot重启后丢失
-💡 这可能是正常的，取决于AstrBot的配置管理方式
-💡 如需持久化，请确保AstrBot使用文件配置而非内存配置"""
-
-            yield event.plain_result(debug_info)
-
-        except Exception as e:
-            yield event.plain_result(f"❌ 调试配置持久化失败：{str(e)}")
-            logger.error(f"调试配置持久化失败: {e}")
-
-    @proactive_group.command("debug_persistent")
-    async def debug_persistent_file(self, event: AstrMessageEvent):
-        """调试独立持久化文件状态"""
-        try:
-            import os
-            import json
-
-            # 获取持久化文件路径
-            config_path = None
-            for attr in ["_config_path", "config_path", "_path", "path"]:
-                if hasattr(self.config, attr):
-                    config_path = getattr(self.config, attr)
-                    if config_path:
-                        break
-
-            if config_path:
-                data_dir = os.path.dirname(config_path)
-            else:
-                # 如果无法获取配置路径，使用临时目录
-                data_dir = "/tmp"
-
-            persistent_file = os.path.join(
-                data_dir, "astrbot_proactive_reply_persistent.json"
-            )
-
-            debug_info = f"""🔍 独立持久化文件调试信息
-
-📁 持久化文件路径：
-{persistent_file}
-
-📊 文件状态："""
-
-            if os.path.exists(persistent_file):
-                try:
-                    file_size = os.path.getsize(persistent_file)
-                    debug_info += f"""
-✅ 文件存在
-📏 文件大小：{file_size} 字节"""
-
-                    # 尝试读取文件内容
-                    persistent_data = None
-                    for encoding in ["utf-8-sig", "utf-8", "gbk"]:
-                        try:
-                            with open(persistent_file, "r", encoding=encoding) as f:
-                                persistent_data = json.load(f)
-                            break
-                        except (UnicodeDecodeError, json.JSONDecodeError):
-                            continue
-
-                    if persistent_data:
-                        session_info = persistent_data.get("session_user_info", {})
-                        ai_times = persistent_data.get("ai_last_sent_times", {})
-                        last_update = persistent_data.get("last_update", "未知")
-
-                        debug_info += f"""
-📊 持久化数据内容：
-- 用户信息数量：{len(session_info)}
-- AI发送时间记录数量：{len(ai_times)}
-- 最后更新时间：{last_update}"""
-
-                        current_session = event.unified_msg_origin
-                        if current_session in session_info:
-                            user_info = session_info[current_session]
-                            debug_info += f"""
-
-🔍 当前会话在持久化文件中：✅
-- 用户昵称：{user_info.get("username", "未知")}
-- 最后活跃时间：{user_info.get("last_active_time", "未知")}"""
-                        else:
-                            debug_info += """
-
-🔍 当前会话在持久化文件中：❌"""
-                    else:
-                        debug_info += """
-❌ 无法解析文件内容"""
-
-                except Exception as e:
-                    debug_info += f"""
-❌ 读取文件失败：{str(e)}"""
-            else:
-                debug_info += """
-❌ 文件不存在"""
-
-            debug_info += """
-
-💡 独立持久化文件用于在AstrBot重启时保持数据
-💡 即使配置文件被重置，持久化文件中的数据也会被恢复"""
-
-            yield event.plain_result(debug_info)
-
-        except Exception as e:
-            yield event.plain_result(f"❌ 调试持久化文件失败：{str(e)}")
-            logger.error(f"调试持久化文件失败: {e}")
-
-    @proactive_group.command("test_placeholders")
-    async def test_placeholders(self, event: AstrMessageEvent):
-        """测试占位符替换功能"""
-        current_session = event.unified_msg_origin
-
-        try:
-            # 测试用的提示词，包含所有占位符
-            test_prompt = """测试占位符替换：
-- 完整用户上下文：{user_context}
-- 用户上次发消息时间：{user_last_message_time}
-- 用户上次发消息相对时间：{user_last_message_time_ago}
-- 用户昵称：{username}
-- 平台：{platform}
-- 聊天类型：{chat_type}
-- AI上次发送时间：{ai_last_sent_time}
-- 当前时间：{current_time}"""
-
-            # 执行占位符替换
-            result = self.replace_placeholders(test_prompt, current_session)
-
-            test_result = f"""🧪 占位符替换测试结果
-
-📝 原始提示词：
-{test_prompt}
-
-🔄 替换后结果：
-{result}
-
-✅ 测试完成！所有占位符都已正确替换。"""
-
-            yield event.plain_result(test_result)
-
-        except Exception as e:
-            yield event.plain_result(f"❌ 测试占位符替换失败：{str(e)}")
-            logger.error(f"测试占位符替换失败: {e}")
-
-    @proactive_group.command("test_conversation_history")
-    async def test_conversation_history(self, event: AstrMessageEvent):
-        """测试对话历史记录功能"""
-        current_session = event.unified_msg_origin
-
-        try:
-            # 显示测试开始信息
-            yield event.plain_result("🧪 开始测试对话历史记录功能...")
-
-            # 测试消息
-            test_message = f"这是一条测试主动消息，时间戳：{datetime.datetime.now().strftime('%H:%M:%S')}"
-
-            # 添加测试消息到对话历史
-            await self.add_message_to_conversation_history(
-                current_session, test_message
-            )
-
-            # 验证消息是否已添加到历史记录
-            curr_cid = await self.context.conversation_manager.get_curr_conversation_id(
-                current_session
-            )
-            if curr_cid:
-                conversation = await self.context.conversation_manager.get_conversation(
-                    current_session, curr_cid
-                )
-                if conversation and conversation.history:
-                    import json
-
-                    try:
-                        history = json.loads(conversation.history)
-                        # 查找我们刚添加的测试消息
-                        found_test_message = False
-                        matching_messages = []
-
-                        for i, msg in enumerate(
-                            reversed(history)
-                        ):  # 从最新的消息开始查找
-                            if msg.get("role") == "assistant":
-                                if test_message in msg.get("content", ""):
-                                    found_test_message = True
-                                    matching_messages.append(
-                                        f"位置{len(history) - i}: {msg.get('content', '')[:50]}..."
-                                    )
-                                elif "测试主动消息" in msg.get("content", ""):
-                                    matching_messages.append(
-                                        f"位置{len(history) - i}: {msg.get('content', '')[:50]}..."
-                                    )
-
-                        if found_test_message:
-                            result_text = f"""✅ 对话历史记录功能测试成功
-
-🔍 测试结果：
-- 对话ID：{curr_cid}
-- 历史记录条数：{len(history)}
-- 测试消息已成功添加到对话历史中
-
-📝 测试消息内容：
-{test_message}
-
-🎯 找到的匹配消息：
-{chr(10).join(matching_messages[:3])}
-
-💡 这意味着AI主动发送的消息现在会正确地添加到对话历史中，
-   用户下次发消息时LLM能够看到完整的上下文。"""
-                        else:
-                            result_text = f"""⚠️ 对话历史记录功能测试部分成功
-
-🔍 测试结果：
-- 对话ID：{curr_cid}
-- 历史记录条数：{len(history)}
-- 测试消息可能已添加，但在历史记录中未找到完全匹配的内容
-
-🔧 调试信息：
-- 对话对象类型：{type(conversation).__name__}
-- 最近3条历史记录：{history[-3:] if len(history) >= 3 else history}
-
-🎯 找到的相似消息：
-{chr(10).join(matching_messages[:3]) if matching_messages else "无"}
-
-💡 即使没有找到完全匹配，消息可能仍然被正确添加到内存中。"""
-
-                    except json.JSONDecodeError as e:
-                        result_text = f"❌ 解析对话历史失败：{e}"
-                else:
-                    result_text = "❌ 无法获取对话历史记录"
-            else:
-                result_text = "❌ 当前会话没有对话记录"
-
-            yield event.plain_result(result_text)
-
-        except Exception as e:
-            yield event.plain_result(f"❌ 对话历史记录测试失败：{str(e)}")
-            logger.error(f"对话历史记录测试失败: {e}")
-
-    @proactive_group.command("debug_conversation_object")
-    async def debug_conversation_object(self, event: AstrMessageEvent):
-        """调试对话对象结构，帮助了解保存机制"""
-        current_session = event.unified_msg_origin
-
-        try:
-            # 获取对话对象
-            curr_cid = await self.context.conversation_manager.get_curr_conversation_id(
-                current_session
-            )
-            if not curr_cid:
-                yield event.plain_result("❌ 当前会话没有对话记录")
-                return
-
-            conversation = await self.context.conversation_manager.get_conversation(
-                current_session, curr_cid
-            )
-            if not conversation:
-                yield event.plain_result("❌ 无法获取对话对象")
-                return
-
-            # 分析对话对象结构
-            obj_type = type(conversation).__name__
-            obj_module = type(conversation).__module__
-
-            # 获取所有属性和方法
-            attributes = []
-            methods = []
-            save_methods = []
-
-            for attr_name in dir(conversation):
-                if attr_name.startswith("_"):
-                    continue
-
-                attr = getattr(conversation, attr_name)
-                if callable(attr):
-                    methods.append(attr_name)
-                    if "save" in attr_name.lower() or "update" in attr_name.lower():
-                        save_methods.append(attr_name)
-                else:
-                    attributes.append(f"{attr_name}: {type(attr).__name__}")
-
-            debug_info = f"""🔍 对话对象调试信息
-
-📋 基本信息：
-- 对话ID：{curr_cid}
-- 对象类型：{obj_type}
-- 模块：{obj_module}
-
-📊 属性列表：
-{chr(10).join(attributes[:10])}
-{"..." if len(attributes) > 10 else ""}
-
-🔧 方法列表：
-{chr(10).join(methods[:15])}
-{"..." if len(methods) > 15 else ""}
-
-💾 可能的保存方法：
-{chr(10).join(save_methods) if save_methods else "未找到明显的保存方法"}
-
-🗄️ 数据库对象信息：
-- 数据库对象：{type(self.context.get_db()).__name__ if self.context.get_db() else "None"}
-- 数据库模块：{type(self.context.get_db()).__module__ if self.context.get_db() else "None"}
-
-💡 这些信息可以帮助开发者了解如何正确保存对话历史。"""
-
-            yield event.plain_result(debug_info)
-
-        except Exception as e:
-            yield event.plain_result(f"❌ 调试对话对象失败：{str(e)}")
-            logger.error(f"调试对话对象失败: {e}")
-
-    @proactive_group.command("debug_database")
-    async def debug_database(self, event: AstrMessageEvent):
-        """调试数据库对象，查看可用的保存方法"""
-        try:
-            db = self.context.get_db()
-            if not db:
-                yield event.plain_result("❌ 无法获取数据库对象")
-                return
-
-            # 分析数据库对象
-            db_type = type(db).__name__
-            db_module = type(db).__module__
-
-            # 获取所有方法
-            methods = []
-            save_methods = []
-            execute_methods = []
-
-            for attr_name in dir(db):
-                if attr_name.startswith("_"):
-                    continue
-
-                attr = getattr(db, attr_name)
-                if callable(attr):
-                    methods.append(attr_name)
-                    if "save" in attr_name.lower() or "update" in attr_name.lower():
-                        save_methods.append(attr_name)
-                    if "execute" in attr_name.lower():
-                        execute_methods.append(attr_name)
-
-            debug_info = f"""🗄️ 数据库对象调试信息
-
-📋 基本信息：
-- 数据库类型：{db_type}
-- 模块：{db_module}
-
-🔧 所有方法：
-{chr(10).join(methods[:20])}
-{"..." if len(methods) > 20 else ""}
-
-💾 可能的保存/更新方法：
-{chr(10).join(save_methods) if save_methods else "未找到明显的保存方法"}
-
-⚡ 执行方法：
-{chr(10).join(execute_methods) if execute_methods else "未找到执行方法"}
-
-🔍 ConversationManager方法：
-{chr(10).join([m for m in dir(self.context.conversation_manager) if not m.startswith("_") and callable(getattr(self.context.conversation_manager, m))][:10])}
-
-💡 这些信息可以帮助确定正确的数据库操作方法。"""
-
-            yield event.plain_result(debug_info)
-
-        except Exception as e:
-            yield event.plain_result(f"❌ 调试数据库对象失败：{str(e)}")
-            logger.error(f"调试数据库对象失败: {e}")
-
-    @proactive_group.command("debug_db_schema")
-    async def debug_db_schema(self, event: AstrMessageEvent):
-        """调试数据库表结构，查看conversations表的字段"""
-        try:
-            db = self.context.get_db()
-            if not db:
-                yield event.plain_result("❌ 无法获取数据库对象")
-                return
-
-            # 查询数据库表结构
-            try:
-                # 尝试通过conn属性访问数据库连接
-                if hasattr(db, "conn"):
-                    conn = db.conn
-                    cursor = conn.cursor()
-
-                    # 首先查询所有表名
-                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-                    tables = cursor.fetchall()
-
-                    schema_info = f"""🗄️ 数据库表结构信息
-
-📋 所有表名：
-{chr(10).join([f"- {table[0]}" for table in tables]) if tables else "无法获取表信息"}
-
-"""
-
-                    # 查找对话相关的表
-                    conversation_tables = [
-                        table[0]
-                        for table in tables
-                        if "conversation" in table[0].lower()
-                    ]
-
-                    if conversation_tables:
-                        # 查询第一个对话表的结构
-                        table_name = conversation_tables[0]
-                        cursor.execute(f"PRAGMA table_info({table_name})")
-                        table_info = cursor.fetchall()
-
-                        schema_info += f"""🔍 {table_name}表字段信息：
-{chr(10).join([f"- {field}" for field in table_info]) if table_info else "无法获取字段信息"}
-
-"""
-
-                        # 获取当前会话的对话信息
-                        current_session = event.unified_msg_origin
-                        curr_cid = await self.context.conversation_manager.get_curr_conversation_id(
-                            current_session
-                        )
-
-                        if curr_cid:
-                            # 查询当前对话的数据库记录
-                            try:
-                                # 尝试不同的字段名
-                                for id_field in ["cid", "id", "conversation_id"]:
-                                    try:
-                                        cursor.execute(
-                                            f"SELECT * FROM {table_name} WHERE {id_field} = ?",
-                                            (curr_cid,),
-                                        )
-                                        conversation_data = cursor.fetchone()
-                                        if conversation_data:
-                                            schema_info += f"""🔍 当前会话信息：
-- 对话ID：{curr_cid}
-- 使用字段：{id_field}
-- 数据库记录：{conversation_data}"""
-                                            break
-                                    except Exception:
-                                        continue
-                                else:
-                                    schema_info += f"""🔍 当前会话信息：
-- 对话ID：{curr_cid}
-- 查询记录失败：未找到匹配的ID字段"""
-                            except Exception as e:
-                                schema_info += f"""🔍 当前会话信息：
-- 对话ID：{curr_cid}
-- 查询记录失败：{e}"""
-                        else:
-                            schema_info += "\n🔍 当前会话没有对话记录"
-                    else:
-                        schema_info += "❌ 未找到对话相关的表"
-
-                    yield event.plain_result(schema_info)
-                else:
-                    yield event.plain_result("❌ 无法访问数据库连接对象")
-
-            except Exception as e:
-                yield event.plain_result(f"❌ 查询表结构失败：{str(e)}")
-
-        except Exception as e:
-            yield event.plain_result(f"❌ 调试数据库表结构失败：{str(e)}")
-            logger.error(f"调试数据库表结构失败: {e}")
-
-    @proactive_group.command("force_save_config")
-    async def force_save_config(self, event: AstrMessageEvent):
-        """强制保存配置文件"""
-        try:
-            # 先尝试正常保存
-            try:
-                self.config.save_config()
-                yield event.plain_result("✅ 配置文件保存成功（正常方式）")
-                logger.info("配置文件保存成功（正常方式）")
-                return
-            except Exception as e:
-                logger.warning(f"正常保存失败: {e}，尝试强制保存")
-
-            # 强制保存
-            import json
-
-            # 尝试多种方式获取配置文件路径
-            config_path = None
-            for attr in ["_config_path", "config_path", "_path", "path"]:
-                if hasattr(self.config, attr):
-                    config_path = getattr(self.config, attr)
-                    if config_path:
-                        break
-
-            if not config_path:
-                yield event.plain_result(
-                    "❌ 无法获取配置文件路径，当前可能使用内存配置\n💡 这意味着数据将在重启后丢失，这可能是AstrBot的正常行为"
-                )
-                return
-
-            with open(config_path, "w", encoding="utf-8") as f:
-                json.dump(dict(self.config), f, ensure_ascii=False, indent=2)
-
-            yield event.plain_result(f"✅ 配置文件强制保存成功\n📁 路径: {config_path}")
-            logger.info(f"配置文件强制保存成功: {config_path}")
-
-        except Exception as e:
-            yield event.plain_result(f"❌ 强制保存配置失败：{str(e)}")
-            logger.error(f"强制保存配置失败: {e}")
-
-    @proactive_group.command("test_prompt")
-    async def test_system_prompt(self, event: AstrMessageEvent):
-        """测试系统提示词构建（包含人格系统兼容性）"""
+    async def _debug_times(self, event: AstrMessageEvent):
+        """调试时间记录数据"""
         current_session = event.unified_msg_origin
         proactive_config = self.config.get("proactive_reply", {})
 
+        last_sent_times = proactive_config.get("last_sent_times", {})
+        ai_last_sent_times = proactive_config.get("ai_last_sent_times", {})
+
+        debug_text = f"""🔍 时间记录调试信息
+
+📊 当前会话: {current_session}
+
+⏰ 用户发送时间记录:
+{last_sent_times.get(current_session, "无记录")}
+
+🤖 AI发送时间记录:
+{ai_last_sent_times.get(current_session, "无记录")}
+
+📋 所有会话的时间记录:
+用户发送时间记录数: {len(last_sent_times)}
+AI发送时间记录数: {len(ai_last_sent_times)}
+
+🧪 LLM生成测试:
+使用 /proactive test generation 测试LLM生成功能"""
+
+        yield event.plain_result(debug_text)
+
+
+
+
+
+    async def _debug_send(self, event: AstrMessageEvent):
+        """调试LLM主动发送功能"""
+        current_session = event.unified_msg_origin
+
         try:
-            # 获取配置
-            default_persona = proactive_config.get("proactive_default_persona", "")
+            proactive_config = self.config.get("proactive_reply", {})
+
+            # 检查配置
+            debug_info = []
+            debug_info.append("🔧 配置检查:")
+            debug_info.append(
+                f"  - 功能启用: {'是' if proactive_config.get('enabled', False) else '否'}"
+            )
+            debug_info.append(
+                f"  - 当前在活跃时间: {'是' if self.is_active_time() else '否'}"
+            )
+
+            # 检查会话列表
+            sessions_data = proactive_config.get("sessions", [])
+            sessions = self.parse_sessions_list(sessions_data)
+            debug_info.append(f"  - 配置的会话数: {len(sessions)}")
+            debug_info.append(
+                f"  - 当前会话在列表中: {'是' if current_session in sessions else '否'}"
+            )
+
+            # 检查LLM
+            provider = self.context.get_using_provider()
+            debug_info.append(f"  - LLM提供商可用: {'是' if provider else '否'}")
+
+            yield event.plain_result("\n".join(debug_info))
+
+            if not provider:
+                yield event.plain_result("❌ LLM提供商不可用，无法继续测试")
+                return
+
+            # 测试生成消息
+            yield event.plain_result("🧪 开始测试LLM生成...")
+            generated_message = await self.generate_proactive_message_with_llm(current_session)
+
+            if generated_message:
+                result_text = f"""✅ LLM生成测试成功
+
+🤖 生成的消息：
+{generated_message}
+
+💡 如果生成或发送失败，请检查LLM配置和系统提示词设置"""
+                yield event.plain_result(result_text)
+            else:
+                yield event.plain_result("❌ LLM生成失败")
+
+        except Exception as e:
+            yield event.plain_result(f"❌ 调试LLM发送功能失败：{str(e)}")
+            logger.error(f"调试LLM发送功能失败: {e}")
+
+
+
+
+
+
+
+
+
+
+
+    @proactive_group.command("show")
+    async def show_info(self, event: AstrMessageEvent, show_type: str = "prompt"):
+        """显示信息 - 支持多种显示类型
+
+        参数:
+        - prompt: 显示当前配置下会输入给LLM的组合话术 (默认)
+        - users: 显示记录的用户信息
+        """
+        show_type = show_type.lower()
+
+        if show_type in ["prompt", ""]:
+            async for result in self._show_prompt(event):
+                yield result
+        elif show_type == "users":
+            async for result in self._show_users(event):
+                yield result
+        else:
+            available_types = ["prompt", "users"]
+            yield event.plain_result(f"""❌ 未知的显示类型: {show_type}
+
+📋 可用的显示类型：
+{chr(10).join([f"  • {t}" for t in available_types])}
+
+💡 使用方法: /proactive show [类型]
+例如: /proactive show users""")
+
+    async def _show_prompt(self, event: AstrMessageEvent):
+        """显示当前配置下会输入给LLM的组合话术"""
+        try:
+            target_session = event.unified_msg_origin
+            proactive_config = self.config.get("proactive_reply", {})
             prompt_list_data = proactive_config.get("proactive_prompt_list", [])
 
             if not prompt_list_data:
                 yield event.plain_result("❌ 未配置主动对话提示词列表")
                 return
 
-            # 解析主动对话提示词列表
             prompt_list = self.parse_prompt_list(prompt_list_data)
             if not prompt_list:
                 yield event.plain_result("❌ 主动对话提示词列表为空")
                 return
 
-            # 随机选择一个主动对话提示词
+            # 随机选择一个提示词进行演示
             selected_prompt = random.choice(prompt_list)
+            final_prompt = self.replace_placeholders(selected_prompt, target_session)
 
-            # 构建用户上下文
-            user_context = self.build_user_context_for_proactive(current_session)
+            # 获取基础系统提示词
+            base_system_prompt = self.get_base_system_prompt()
+            combined_system_prompt = f"{base_system_prompt}\n\n{final_prompt}"
 
-            # 替换占位符
-            final_prompt = selected_prompt.replace("{user_context}", user_context)
+            # 获取历史记录信息
+            history_info = "未启用"
+            if proactive_config.get("include_history_enabled", False):
+                history_count = proactive_config.get("history_message_count", 10)
+                history_info = f"启用 (最近{history_count}条)"
 
-            # 获取当前使用的人格系统提示词
-            base_system_prompt = ""
-            persona_info = "未使用人格"
-            try:
-                uid = current_session
-                curr_cid = (
-                    await self.context.conversation_manager.get_curr_conversation_id(
-                        uid
-                    )
-                )
+            part1 = f"""📋 主动对话话术预览
 
-                if curr_cid:
-                    conversation = (
-                        await self.context.conversation_manager.get_conversation(
-                            uid, curr_cid
-                        )
-                    )
-                    if (
-                        conversation
-                        and conversation.persona_id
-                        and conversation.persona_id != "[%None]"
-                    ):
-                        # 有指定人格
-                        personas = self.context.provider_manager.personas
-                        for persona in personas:
-                            if (
-                                hasattr(persona, "name")
-                                and persona.name == conversation.persona_id
-                            ):
-                                base_system_prompt = getattr(persona, "prompt", "")
-                                persona_info = f"会话人格: {conversation.persona_id}"
-                                break
-                    else:
-                        # 使用默认人格
-                        default_persona = (
-                            self.context.provider_manager.selected_default_persona
-                        )
-                        if default_persona and default_persona.get("name"):
-                            personas = self.context.provider_manager.personas
-                            for persona in personas:
-                                if (
-                                    hasattr(persona, "name")
-                                    and persona.name == default_persona["name"]
-                                ):
-                                    base_system_prompt = getattr(persona, "prompt", "")
-                                    persona_info = (
-                                        f"默认人格: {default_persona['name']}"
-                                    )
-                                    break
-                else:
-                    # 没有对话记录，使用默认人格
-                    default_persona = (
-                        self.context.provider_manager.selected_default_persona
-                    )
-                    if default_persona and default_persona.get("name"):
-                        personas = self.context.provider_manager.personas
-                        for persona in personas:
-                            if (
-                                hasattr(persona, "name")
-                                and persona.name == default_persona["name"]
-                            ):
-                                base_system_prompt = getattr(persona, "prompt", "")
-                                persona_info = f"默认人格: {default_persona['name']}"
-                                break
-
-            except Exception as e:
-                persona_info = f"获取人格失败: {str(e)}"
-
-            # 组合最终系统提示词
-            if base_system_prompt:
-                # 有AstrBot人格：使用AstrBot人格 + 主动对话提示词
-                final_system_prompt = (
-                    f"{base_system_prompt}\n\n--- 主动对话指令 ---\n{final_prompt}"
-                )
-            else:
-                # 没有AstrBot人格：使用默认人格 + 主动对话提示词
-                if default_persona:
-                    final_system_prompt = (
-                        f"{default_persona}\n\n--- 主动对话指令 ---\n{final_prompt}"
-                    )
-                else:
-                    final_system_prompt = final_prompt
-
-            result_text = f"""🧪 系统提示词构建测试
-
-🎭 人格系统状态：
-{persona_info}
-
-📝 主动对话配置：
-- 默认人格长度：{len(default_persona)} 字符
-- 提示词列表数量：{len(prompt_list)} 个
-
-🎲 随机选择的提示词：
+🎯 随机选中的提示词：
 {selected_prompt}
 
-👤 用户上下文：
-{user_context}
+🔄 占位符替换后：
+{final_prompt}
 
-🔧 处理后的最终提示词：
-{final_prompt[:200]}{"..." if len(final_prompt) > 200 else ""}
+🤖 基础人格提示词：
+{base_system_prompt[:300] + "..." if len(base_system_prompt) > 300 else base_system_prompt}"""
 
-🤖 最终组合系统提示词：
-{final_system_prompt[:300]}{"..." if len(final_system_prompt) > 300 else ""}
+            part2 = f"""
+🎭 最终组合系统提示词：
+{combined_system_prompt[:500] + "..." if len(combined_system_prompt) > 500 else combined_system_prompt}
 
-📊 统计信息：
-- AstrBot人格提示词长度：{len(base_system_prompt)} 字符
-- 默认人格长度：{len(default_persona)} 字符
-- 最终主动对话提示词长度：{len(final_prompt)} 字符
-- 最终系统提示词长度：{len(final_system_prompt)} 字符
+📊 统计信息:
+- 可用提示词数量: {len(prompt_list)}
+- 人格提示词长度: {len(base_system_prompt)} 字符
+- 主动对话提示词长度: {len(final_prompt)} 字符
+- 最终系统提示词长度: {len(combined_system_prompt)} 字符
+- 历史记录状态: {history_info}
 
-💡 这就是发送给LLM的完整系统提示词！"""
+💡 提示: 这就是LLM会收到的完整系统提示词和历史上下文，用于生成主动消息"""
 
-            yield event.plain_result(result_text)
+            yield event.plain_result(part1)
+            yield event.plain_result(part2)
 
         except Exception as e:
-            yield event.plain_result(f"❌ 测试系统提示词构建失败：{str(e)}")
-            logger.error(f"测试系统提示词构建失败: {e}")
+            yield event.plain_result(f"❌ 显示主动对话话术失败: {str(e)}")
+            logger.error(f"显示主动对话话术失败: {e}")
+
+    async def _show_users(self, event: AstrMessageEvent):
+        """显示记录的用户信息"""
+        proactive_config = self.config.get("proactive_reply", {})
+        session_user_info = proactive_config.get("session_user_info", {})
+        last_sent_times = proactive_config.get("last_sent_times", {})
+        ai_last_sent_times = proactive_config.get("ai_last_sent_times", {})
+
+        if not session_user_info:
+            yield event.plain_result(
+                "📝 暂无记录的用户信息\n\n💡 提示：与机器人对话后会自动记录用户信息"
+            )
+            return
+
+        # 构建用户信息列表
+        info_list = []
+        for session_id, user_data in session_user_info.items():
+            user_last_time = last_sent_times.get(session_id, "无记录")
+            ai_last_time = ai_last_sent_times.get(session_id, "无记录")
+
+            info_text = f"会话: {session_id[:50]}...\n"
+            info_text += f"  用户信息: {user_data}\n"
+            info_text += f"  用户最后发送: {user_last_time}\n"
+            info_text += f"  AI最后发送: {ai_last_time}"
+            info_list.append(info_text)
+
+        result_text = f"""📝 记录的用户信息
+
+📊 统计信息：
+- 记录的会话数：{len(session_user_info)}
+- 用户发送时间记录数：{len(last_sent_times)}
+- AI发送时间记录数：{len(ai_last_sent_times)}
+
+📋 详细信息：
+{chr(10).join([f"{i + 1}. {info}" for i, info in enumerate(info_list)])}
+
+💡 这些信息用于主动消息的占位符替换"""
+
+        yield event.plain_result(result_text)
+
+    @proactive_group.command("manage")
+    async def manage_functions(self, event: AstrMessageEvent, action: str = ""):
+        """管理功能 - 支持多种管理操作
+
+        参数:
+        - clear: 清除记录的用户信息和发送时间
+        - task_status: 检查定时任务状态
+        - force_stop: 强制停止所有定时任务
+        - force_start: 强制启动定时任务
+        - save_config: 强制保存配置文件
+        - debug_info: 调试用户信息（故障排查用）
+        - debug_send: 调试发送功能（故障排查用）
+        - debug_times: 调试时间记录（故障排查用）
+        """
+        action = action.lower()
+
+        if action == "clear":
+            async for result in self._manage_clear(event):
+                yield result
+        elif action == "task_status":
+            async for result in self._manage_task_status(event):
+                yield result
+        elif action == "force_stop":
+            async for result in self._manage_force_stop(event):
+                yield result
+        elif action == "force_start":
+            async for result in self._manage_force_start(event):
+                yield result
+        elif action == "save_config":
+            async for result in self._manage_save_config(event):
+                yield result
+        elif action == "debug_info":
+            async for result in self._debug_basic(event):
+                yield result
+        elif action == "debug_send":
+            async for result in self._debug_send(event):
+                yield result
+        elif action == "debug_times":
+            async for result in self._debug_times(event):
+                yield result
+        else:
+            available_actions = ["clear", "task_status", "force_stop", "force_start", "save_config",
+                               "debug_info", "debug_send", "debug_times"]
+            yield event.plain_result(f"""❌ 请指定管理操作类型
+
+📋 基础管理操作：
+  • clear - 清除记录的用户信息和发送时间
+  • task_status - 检查定时任务状态
+  • force_stop - 强制停止所有定时任务
+  • force_start - 强制启动定时任务
+  • save_config - 强制保存配置文件
+
+🔧 故障排查操作：
+  • debug_info - 调试用户信息（查看AI收到的信息）
+  • debug_send - 调试发送功能（检查LLM生成过程）
+  • debug_times - 调试时间记录（查看发送时间记录）
+
+💡 使用方法: /proactive manage [操作]
+例如: /proactive manage clear""")
+
+    async def _manage_clear(self, event: AstrMessageEvent):
+        """清除记录的用户信息和发送时间"""
+        try:
+            if "proactive_reply" not in self.config:
+                self.config["proactive_reply"] = {}
+
+            # 清除记录
+            self.config["proactive_reply"]["session_user_info"] = {}
+            self.config["proactive_reply"]["last_sent_times"] = {}
+            self.config["proactive_reply"]["ai_last_sent_times"] = {}
+
+            # 保存配置
+            self.config.save_config()
+
+            yield event.plain_result("✅ 已清除所有用户信息记录和AI发送时间记录")
+            logger.info(f"用户 {event.get_sender_name()} 清除了所有记录")
+
+        except Exception as e:
+            yield event.plain_result(f"❌ 清除记录失败：{str(e)}")
+            logger.error(f"清除记录失败: {e}")
+
+    async def _manage_task_status(self, event: AstrMessageEvent):
+        """检查定时任务状态"""
+        try:
+            task_info = []
+
+            # 检查当前记录的任务
+            current_task = self.proactive_task
+            if current_task:
+                task_info.append(f"✅ 当前记录的定时任务: ID {id(current_task)}")
+                task_info.append(f"   状态: {'运行中' if not current_task.done() else '已完成'}")
+                if current_task.done():
+                    try:
+                        result = current_task.result()
+                        task_info.append(f"   结果: {result}")
+                    except Exception as e:
+                        task_info.append(f"   异常: {str(e)}")
+            else:
+                task_info.append("❌ 当前没有记录的定时任务")
+
+            # 检查所有相关任务
+            all_tasks = asyncio.all_tasks()
+            proactive_tasks = []
+            for task in all_tasks:
+                task_name = getattr(getattr(task, "_coro", {}), "__name__", "unknown")
+                if "proactive" in task_name.lower():
+                    proactive_tasks.append(f"- {task_name} (ID: {id(task)})")
+
+            task_info.append(f"\n📊 系统中的相关任务 ({len(proactive_tasks)} 个):")
+            if proactive_tasks:
+                task_info.extend(proactive_tasks)
+            else:
+                task_info.append("- 无")
+
+            # 检查配置状态
+            proactive_config = self.config.get("proactive_reply", {})
+            enabled = proactive_config.get("enabled", False)
+            task_info.append(f"\n⚙️ 配置状态:")
+            task_info.append(f"- 定时发送功能: {'✅ 启用' if enabled else '❌ 禁用'}")
+
+            yield event.plain_result("\n".join(task_info))
+
+        except Exception as e:
+            yield event.plain_result(f"❌ 检查任务状态失败：{str(e)}")
+            logger.error(f"检查任务状态失败: {e}")
+
+    async def _manage_force_stop(self, event: AstrMessageEvent):
+        """强制停止所有定时任务"""
+        try:
+            await self.force_stop_all_tasks()
+            yield event.plain_result("✅ 已强制停止所有相关任务")
+            logger.info(f"用户 {event.get_sender_name()} 强制停止了所有任务")
+        except Exception as e:
+            yield event.plain_result(f"❌ 强制停止任务失败：{str(e)}")
+            logger.error(f"强制停止任务失败: {e}")
+
+    async def _manage_force_start(self, event: AstrMessageEvent):
+        """强制启动定时任务"""
+        try:
+            logger.info("用户请求强制启动定时任务")
+
+            # 停止现有任务
+            await self.stop_proactive_task()
+
+            # 强制启动任务（忽略配置中的enabled状态）
+            self.proactive_task = asyncio.create_task(self.proactive_message_loop())
+
+            yield event.plain_result("✅ 已强制启动定时任务（忽略配置状态）")
+            logger.info("定时任务已强制启动")
+
+        except Exception as e:
+            yield event.plain_result(f"❌ 强制启动任务失败：{str(e)}")
+            logger.error(f"强制启动任务失败: {e}")
+
+    async def _manage_save_config(self, event: AstrMessageEvent):
+        """强制保存配置文件"""
+        try:
+            # 先尝试正常保存
+            try:
+                self.config.save_config()
+                yield event.plain_result("✅ 配置文件保存成功")
+                logger.info(f"用户 {event.get_sender_name()} 强制保存了配置文件")
+                return
+            except Exception as e:
+                yield event.plain_result(f"⚠️ 正常保存失败，尝试其他方法: {str(e)}")
+
+            # 尝试其他保存方法
+            if hasattr(self.config, '_save'):
+                self.config._save()
+                yield event.plain_result("✅ 使用备用方法保存配置成功")
+                return
+
+            yield event.plain_result("❌ 所有保存方法都失败了，请检查配置文件权限")
+
+        except Exception as e:
+            yield event.plain_result(f"❌ 强制保存配置失败：{str(e)}")
+            logger.error(f"强制保存配置失败: {e}")
+
+    def get_base_system_prompt(self):
+        """获取基础系统提示词（人格提示词）"""
+        try:
+            # 获取当前使用的人格系统提示词
+            base_system_prompt = ""
+
+            # 尝试获取人格管理器
+            personas = self.context.provider_manager.personas if hasattr(self.context, 'provider_manager') else []
+            default_persona_obj = None
+
+            if hasattr(self.context, 'provider_manager') and hasattr(self.context.provider_manager, 'selected_default_persona'):
+                default_persona_obj = self.context.provider_manager.selected_default_persona
+
+            # 如果有默认人格，使用默认人格的提示词
+            if default_persona_obj and default_persona_obj.get("prompt"):
+                base_system_prompt = self._ensure_string_encoding(default_persona_obj["prompt"])
+            elif personas:
+                # 如果没有默认人格但有人格列表，使用第一个人格
+                for persona in personas:
+                    if hasattr(persona, "prompt") and persona.prompt:
+                        base_system_prompt = self._ensure_string_encoding(persona.prompt)
+                        break
+
+            # 如果还是没有获取到，使用插件默认人格
+            if not base_system_prompt:
+                proactive_config = self.config.get("proactive_reply", {})
+                default_persona = proactive_config.get("proactive_default_persona", "你是一个友好、轻松的AI助手。")
+                base_system_prompt = self._ensure_string_encoding(default_persona)
+
+            return base_system_prompt
+
+        except Exception as e:
+            logger.warning(f"获取基础系统提示词失败: {e}")
+            # 返回插件默认人格
+            proactive_config = self.config.get("proactive_reply", {})
+            default_persona = proactive_config.get("proactive_default_persona", "你是一个友好、轻松的AI助手。")
+            return self._ensure_string_encoding(default_persona)
 
     @proactive_group.command("config")
     async def show_config(self, event: AstrMessageEvent):
@@ -2823,339 +2411,45 @@ AI发送消息: {ai_last_sent}""")
 
         yield event.plain_result(config_info)
 
-    @proactive_group.command("test_llm")
-    async def test_llm_request(self, event: AstrMessageEvent):
-        """测试LLM请求 - 发送一个测试消息给AI，查看完整的系统提示"""
-        test_message = "这是一个测试消息，请简单回复确认收到。"
-
-        # 创建一个LLM请求来测试用户信息附加
-        try:
-            yield event.request_llm(
-                prompt=test_message,
-                system_prompt="",  # 让插件自动添加用户信息
-            )
-
-            # 这个请求会触发我们的 add_user_info 钩子
-            logger.info(f"用户 {event.get_sender_name()} 测试了LLM请求功能")
-
-        except Exception as e:
-            yield event.plain_result(f"❌ 测试LLM请求失败：{str(e)}")
-            logger.error(f"测试LLM请求失败: {e}")
-
-    @proactive_group.command("debug_encoding")
-    async def debug_encoding(self, event: AstrMessageEvent):
-        """调试编码问题，检查配置中的提示词编码"""
-        try:
-            proactive_config = self.config.get("proactive_reply", {})
-            prompt_list_data = proactive_config.get("proactive_prompt_list", [])
-
-            debug_info = ["🔍 编码调试信息\n"]
-
-            # 检查原始配置数据
-            debug_info.append(f"📋 原始配置类型: {type(prompt_list_data)}")
-            debug_info.append(
-                f"📋 原始配置长度: {len(prompt_list_data) if hasattr(prompt_list_data, '__len__') else 'N/A'}"
-            )
-
-            if isinstance(prompt_list_data, list):
-                debug_info.append("📋 配置格式: 列表格式")
-                for i, item in enumerate(prompt_list_data[:3]):  # 只显示前3个
-                    debug_info.append(f"  项目 {i + 1}: {type(item)} - {repr(item)}")
-            elif isinstance(prompt_list_data, str):
-                debug_info.append("📋 配置格式: 字符串格式")
-                debug_info.append(f"  内容预览: {repr(prompt_list_data[:100])}")
-
-            # 解析提示词列表
-            prompt_list = self.parse_prompt_list(prompt_list_data)
-            debug_info.append(f"\n🔧 解析结果: {len(prompt_list)} 个提示词")
-
-            for i, prompt in enumerate(prompt_list[:3]):  # 只显示前3个
-                debug_info.append(f"  提示词 {i + 1}:")
-                debug_info.append(f"    类型: {type(prompt)}")
-                debug_info.append(f"    长度: {len(prompt)} 字符")
-                debug_info.append(f"    编码表示: {repr(prompt)}")
-                debug_info.append(f"    显示内容: {prompt}")
-
-                # 测试编码处理
-                encoded_prompt = self._ensure_string_encoding(prompt)
-                debug_info.append(f"    编码处理后: {repr(encoded_prompt)}")
-                debug_info.append("")
-
-            # 测试占位符替换
-            if prompt_list:
-                test_prompt = prompt_list[0]
-                session = event.unified_msg_origin
-                debug_info.append("🔄 测试占位符替换:")
-                debug_info.append(f"  原始提示词: {repr(test_prompt)}")
-
-                replaced_prompt = self.replace_placeholders(test_prompt, session)
-                debug_info.append(f"  替换后: {repr(replaced_prompt)}")
-                debug_info.append(f"  显示内容: {replaced_prompt}")
-
-            result_text = "\n".join(debug_info)
-            yield event.plain_result(result_text)
-
-        except Exception as e:
-            logger.error(f"编码调试失败: {e}")
-            import traceback
-
-            error_info = (
-                f"❌ 编码调试失败: {str(e)}\n\n详细错误:\n{traceback.format_exc()}"
-            )
-            yield event.plain_result(error_info)
-
-    @proactive_group.command("show_prompt")
-    async def show_prompt(self, event: AstrMessageEvent, session_id: str = None):
-        """显示当前配置下会输入给LLM的组合话术"""
-        try:
-            # 确定目标会话ID
-            target_session = session_id if session_id else event.unified_msg_origin
-
-            # 检查LLM是否可用
-            provider = self.context.get_using_provider()
-            if not provider:
-                yield event.plain_result("❌ LLM提供商不可用，无法生成主动消息")
-                return
-
-            # 获取配置
-            proactive_config = self.config.get("proactive_reply", {})
-            default_persona = proactive_config.get("proactive_default_persona", "")
-            prompt_list_data = proactive_config.get("proactive_prompt_list", [])
-
-            if not prompt_list_data:
-                yield event.plain_result("❌ 未配置主动对话提示词列表")
-                return
-
-            # 解析主动对话提示词列表
-            prompt_list = self.parse_prompt_list(prompt_list_data)
-            if not prompt_list:
-                yield event.plain_result("❌ 主动对话提示词列表为空")
-                return
-
-            # 随机选择一个主动对话提示词
-            selected_prompt = random.choice(prompt_list)
-
-            # 构建用户上下文信息
-            user_context = self.build_user_context_for_proactive(target_session)
-
-            # 替换提示词中的占位符
-            final_prompt = self.replace_placeholders(selected_prompt, target_session)
-
-            # 获取当前使用的人格系统提示词
-            base_system_prompt = ""
-            persona_info = "无人格设置"
-
-            try:
-                # 尝试获取当前会话的人格设置
-                uid = target_session
-                curr_cid = (
-                    await self.context.conversation_manager.get_curr_conversation_id(
-                        uid
-                    )
-                )
-
-                # 获取默认人格设置
-                default_persona_obj = (
-                    self.context.provider_manager.selected_default_persona
-                )
-
-                if curr_cid:
-                    conversation = (
-                        await self.context.conversation_manager.get_conversation(
-                            uid, curr_cid
-                        )
-                    )
-
-                    if (
-                        conversation
-                        and conversation.persona_id
-                        and conversation.persona_id != "[%None]"
-                    ):
-                        # 有指定人格，尝试获取人格的系统提示词
-                        personas = self.context.provider_manager.personas
-                        if personas:
-                            for persona in personas:
-                                if (
-                                    hasattr(persona, "name")
-                                    and persona.name == conversation.persona_id
-                                ):
-                                    base_system_prompt = getattr(persona, "prompt", "")
-                                    persona_info = (
-                                        f"会话人格: {conversation.persona_id}"
-                                    )
-                                    break
-
-                # 如果没有获取到人格提示词，尝试使用默认人格
-                if (
-                    not base_system_prompt
-                    and default_persona_obj
-                    and default_persona_obj.get("prompt")
-                ):
-                    base_system_prompt = default_persona_obj["prompt"]
-                    persona_info = (
-                        f"默认人格: {default_persona_obj.get('name', '未知')}"
-                    )
-
-            except Exception as e:
-                logger.warning(f"获取人格系统提示词失败: {e}")
-                persona_info = f"获取失败: {str(e)}"
-
-            # 获取历史记录（如果启用）
-            contexts = []
-            history_info = "未启用历史记录"
-            history_display = ""
-
-            if proactive_config.get("include_history_enabled", False):
-                history_count = proactive_config.get("history_message_count", 10)
-                # 限制历史记录数量在合理范围内
-                history_count = max(1, min(50, history_count))
-
-                logger.debug(
-                    f"正在获取会话 {target_session} 的历史记录，数量限制: {history_count}"
-                )
-                contexts = await self.get_conversation_history(
-                    target_session, history_count
-                )
-
-                if contexts:
-                    history_info = f"已获取 {len(contexts)} 条历史记录"
-                    # 构建历史记录显示信息
-                    history_preview = []
-                    for i, ctx in enumerate(contexts[-3:]):  # 显示最后3条的简要信息
-                        role = ctx.get("role", "unknown")
-                        content = ctx.get("content", "")
-                        content_preview = (
-                            content[:100] + "..." if len(content) > 100 else content
-                        )
-                        history_preview.append(f"  {i + 1}. {role}: {content_preview}")
-
-                    history_display = f"""
-📚 历史记录信息:
-- 启用状态: ✅ 已启用
-- 配置数量: {history_count} 条
-- 实际获取: {len(contexts)} 条
-- 最近3条预览:
-{chr(10).join(history_preview)}"""
-                else:
-                    history_info = "历史记录为空"
-                    history_display = f"""
-📚 历史记录信息:
-- 启用状态: ✅ 已启用
-- 配置数量: {history_count} 条
-- 实际获取: 0 条
-- 说明: 该会话暂无历史记录"""
-            else:
-                history_display = """
-📚 历史记录信息:
-- 启用状态: ❌ 未启用
-- 说明: 不会向LLM提供历史对话上下文"""
-
-            # 构建历史记录引导提示词（简化版，避免与主动对话提示词冲突）
-            history_guidance = ""
-            if proactive_config.get("include_history_enabled", False) and contexts:
-                history_guidance = "\n\n--- 上下文说明 ---\n你可以参考上述对话历史来生成更自然和连贯的回复。"
-
-            # 组合系统提示词：人格提示词 + 主动对话提示词 + 历史记录引导
-            if base_system_prompt:
-                # 有AstrBot人格：使用AstrBot人格 + 主动对话提示词 + 历史记录引导
-                combined_system_prompt = f"{base_system_prompt}\n\n--- 主动对话指令 ---\n{final_prompt}{history_guidance}"
-                prompt_source = "AstrBot人格 + 主动对话提示词" + (
-                    " + 历史记录引导" if history_guidance else ""
-                )
-            else:
-                # 没有AstrBot人格：使用默认人格 + 主动对话提示词 + 历史记录引导
-                if default_persona:
-                    combined_system_prompt = f"{default_persona}\n\n--- 主动对话指令 ---\n{final_prompt}{history_guidance}"
-                    prompt_source = "插件默认人格 + 主动对话提示词" + (
-                        " + 历史记录引导" if history_guidance else ""
-                    )
-                    persona_info = "插件默认人格"
-                else:
-                    combined_system_prompt = f"{final_prompt}{history_guidance}"
-                    prompt_source = "仅主动对话提示词" + (
-                        " + 历史记录引导" if history_guidance else ""
-                    )
-                    persona_info = "无人格设置"
-
-            # 格式化输出 - 分段发送避免消息过长
-            # 第一部分：基本信息
-            part1 = f"""🎯 主动对话话术预览
-
-📋 目标会话: {target_session[:50]}{"..." if len(target_session) > 50 else ""}
-
-🎭 人格信息: {persona_info}
-{"📝 人格提示词 (" + str(len(base_system_prompt)) + " 字符):" if base_system_prompt else ""}
-{base_system_prompt[:150] + "..." if len(base_system_prompt) > 150 else base_system_prompt if base_system_prompt else ""}
-
-🎲 随机选择的主动对话提示词:
-原始: {selected_prompt}
-替换后: {final_prompt}
-
-👤 用户上下文信息:
-{user_context}{history_display}"""
-
-            # 第二部分：组合话术（截断显示）
-            part2 = f"""🔗 最终组合话术 ({prompt_source}):
-总长度: {len(combined_system_prompt)} 字符
-
-{combined_system_prompt[:500] + "..." if len(combined_system_prompt) > 500 else combined_system_prompt}
-
-📊 统计信息:
-- 可用提示词数量: {len(prompt_list)}
-- 人格提示词长度: {len(base_system_prompt)} 字符
-- 主动对话提示词长度: {len(final_prompt)} 字符
-- 最终系统提示词长度: {len(combined_system_prompt)} 字符
-- 历史记录状态: {history_info}
-
-💡 提示: 这就是LLM会收到的完整系统提示词和历史上下文，用于生成主动消息"""
-
-            # 发送第一部分
-            yield event.plain_result(part1)
-
-            # 发送第二部分
-            yield event.plain_result(part2)
-
-        except Exception as e:
-            logger.error(f"显示主动对话话术失败: {e}")
-            yield event.plain_result(f"❌ 显示主动对话话术失败: {str(e)}")
-
     @proactive_group.command("help")
     async def help_command(self, event: AstrMessageEvent):
         """显示插件帮助信息"""
         help_text = """📖 主动回复插件帮助
 
-🔧 基础指令：
-  /proactive status - 查看插件状态
-  /proactive debug - 调试用户信息，查看AI收到的信息
-  /proactive config - 显示完整的插件配置信息
-  /proactive show_prompt - 显示当前配置下会输入给LLM的组合话术
-  /proactive debug_encoding - 调试编码问题，检查提示词编码状态
+🔧 核心功能：
   /proactive help - 显示此帮助信息
-
-🤖 定时发送管理：
-  /proactive current_session - 显示当前会话ID和状态
+  /proactive status - 查看插件状态和当前会话信息
+  /proactive config - 显示完整的插件配置信息
   /proactive add_session - 将当前会话添加到定时发送列表
   /proactive remove_session - 将当前会话从定时发送列表中移除
-  /proactive test - 测试发送一条主动消息到当前会话
-  /proactive restart - 重启定时主动发送任务（配置更改后使用）
+  /proactive restart - 重启定时任务（配置更改后必须使用）
 
 🧪 测试功能：
-  /proactive test_llm - 测试LLM请求，实际体验用户信息附加功能
-  /proactive test_llm_generation - 测试LLM生成主动消息功能
-  /proactive test_prompt - 测试系统提示词构建过程
-  /proactive test_placeholders - 测试占位符替换功能
-  /proactive test_conversation_history - 测试对话历史记录功能（新增）
-  /proactive debug_conversation_object - 调试对话对象结构（新增）
-  /proactive debug_database - 调试数据库对象和方法（新增）
-  /proactive debug_db_schema - 调试数据库表结构（新增）
-  /proactive show_user_info - 显示记录的用户信息
-  /proactive clear_records - 清除记录的用户信息和发送时间
-  /proactive task_status - 检查定时任务状态（调试用）
-  /proactive debug_send - 调试LLM主动发送功能（详细显示生成和发送过程）
-  /proactive debug_config - 调试配置文件持久化状态
-  /proactive debug_persistent - 调试独立持久化文件状态
-  /proactive force_save_config - 强制保存配置文件
-  /proactive force_start - 强制启动定时任务（调试用）
+  /proactive test [type] - 测试功能
+    • test 或 test basic - 基础测试发送
+    • test llm - 测试LLM请求，体验用户信息附加功能
+    • test generation - 测试LLM生成主动消息功能
+    • test prompt - 测试系统提示词构建过程
+    • test placeholders - 测试占位符替换功能
+    • test history - 测试对话历史记录功能
+
+
+
+📋 显示功能：
+  /proactive show [type] - 显示信息
+    • show prompt - 显示当前配置下会输入给LLM的组合话术
+    • show users - 显示记录的用户信息
+
+⚙️ 管理功能：
+  /proactive manage [action] - 管理功能
+    • manage clear - 清除记录的用户信息和发送时间
+    • manage task_status - 检查定时任务状态
+    • manage force_stop - 强制停止所有定时任务
+    • manage force_start - 强制启动定时任务
+    • manage save_config - 强制保存配置文件
+    • manage debug_info - 调试用户信息（故障排查用）
+    • manage debug_send - 调试发送功能（故障排查用）
+    • manage debug_times - 调试时间记录（故障排查用）
 
 📝 功能说明：
 1. 用户信息附加：在与AI对话时自动附加用户信息和时间

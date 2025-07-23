@@ -5,7 +5,63 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [v1.0.0] - 2025-01-22 (更新)
+## [v1.0.0] - 2025-07-23 (重大优化)
+
+### 🎯 指令系统重大优化
+- **指令结构大幅精简**：从28个分散指令优化为9个逻辑化指令（精简率68%）
+  - 🔧 **核心功能指令**（6个）：help, status, config, add_session, remove_session, restart
+  - 🧪 **测试功能指令**（1个指令，6种功能）：test [basic|llm|generation|prompt|placeholders|history]
+  - 📋 **显示功能指令**（1个指令，2种功能）：show [prompt|users]
+  - ⚙️ **管理功能指令**（1个指令，8种操作）：manage [clear|task_status|force_stop|force_start|save_config|debug_info|debug_send|debug_times]
+- **用户体验大幅提升**：
+  - 指令按功能逻辑分组，更容易理解和记忆
+  - 统一的参数格式，减少学习成本
+  - 完善的错误提示和使用说明
+  - 普通用户只需关注6个核心指令，高级功能按需使用
+
+### 🔧 功能整合与优化
+- **合并current_session到status**：status指令现在显示当前会话状态，无需单独指令
+- **debug功能重新组织**：将调试功能合并到manage指令中，保留最有用的3个调试功能
+  - `manage debug_info` - 调试用户信息（最常用）
+  - `manage debug_send` - 调试发送功能（故障排查）
+  - `manage debug_times` - 调试时间记录（状态查看）
+- **test prompt历史记录修复**：修复了test prompt功能无法显示历史记录的问题
+  - 使用正确的`get_conversation_history`方法替代不存在的`get_conversation_context`
+  - 现在能正确显示历史记录状态、预览和在系统提示词中的位置
+- **restart指令说明优化**：提供详细的使用场景说明，用户更清楚何时需要重启
+
+### 📚 文档全面更新
+- **README.md完全重写**：所有指令描述与实际代码保持同步
+- **指令说明结构化**：按功能分组展示，包含详细的使用说明和示例
+- **测试指南更新**：所有测试步骤使用新的指令格式
+- **故障排查指南优化**：使用当前可用的调试指令
+
+### 🛠️ 技术改进
+- **代码质量提升**：
+  - 删除了所有冗余和残留代码片段
+  - 修复了语法错误和方法调用问题
+  - 优化了异常处理和错误提示
+- **方法整合**：保留16个核心子方法，删除不必要的调试方法
+- **向后兼容**：所有原有功能完整保留，只是访问方式更加统一
+
+### 💡 用户指导
+- **普通用户推荐指令**：
+  ```
+  /proactive help          # 查看帮助
+  /proactive status        # 查看状态
+  /proactive add_session   # 添加当前会话
+  /proactive test          # 基础测试
+  /proactive restart       # 配置更改后重启
+  ```
+- **高级用户/故障排查**：
+  ```
+  /proactive test prompt           # 测试提示词构建
+  /proactive show prompt           # 查看完整话术
+  /proactive manage debug_info     # 调试用户信息
+  /proactive manage debug_send     # 调试发送功能
+  ```
+
+## [v1.0.0] - 2025-01-22 (历史记录功能)
 
 ### 🔥 重大改进
 - **历史记录功能增强主动消息生成**：新增基于对话历史的智能主动消息生成
