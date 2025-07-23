@@ -5,6 +5,31 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v1.0.1] - 2025-07-24
+
+### 代码质量优化
+- **重构核心函数**：大幅提升代码可读性和可维护性
+  - 将 `proactive_message_loop` 函数从120多行重构为52行主函数 + 6个职责单一的辅助函数
+  - 拆分 `generate_proactive_message_with_llm` 函数为45行主函数 + 4个辅助函数
+  - 每个函数职责明确，符合单一职责原则
+
+- **减少重复代码**：提高代码复用性
+  - 添加 `_proactive_config` 和 `_user_config` 属性方法
+  - 消除多处重复的配置获取代码
+  - 统一配置访问模式，提高代码一致性
+
+- **函数拆分详情**：
+  - `_should_terminate()` - 检查是否应该终止任务
+  - `_is_proactive_enabled()` - 检查主动回复功能是否启用
+  - `_get_target_sessions()` - 获取目标会话列表
+  - `_send_messages_to_sessions()` - 向所有会话发送消息
+  - `_calculate_wait_interval()` - 计算下一次执行的等待时间
+  - `_wait_with_status_check()` - 分段等待并检查状态
+  - `_get_llm_provider()` - 获取LLM提供商
+  - `_get_proactive_prompt()` - 获取并处理主动对话提示词
+  - `_get_persona_system_prompt()` - 获取人格系统提示词
+  - `_build_combined_system_prompt()` - 构建组合系统提示词
+
 ## [v1.0.0] - 2025-07-23
 
 ### 核心功能

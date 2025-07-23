@@ -10,7 +10,7 @@ import datetime
     "astrbot_proactive_reply",
     "AstraSolis",
     "一个支持聊天附带用户信息和定时主动发送消息的插件",
-    "1.0.0",
+    "1.0.1",
     "https://github.com/AstraSolis/astrbot_proactive_reply",
 )
 class ProactiveReplyPlugin(Star):
@@ -399,25 +399,118 @@ class ProactiveReplyPlugin(Star):
         except Exception as e:
             logger.error(f"记录AI发送消息时间失败: {e}")
 
+    def _should_terminate(self) -> bool:
+        """检查是否应该终止任务"""
+        if self._is_terminating:
+            logger.info("插件正在终止，退出定时循环")
+            return True
+
+        if self.proactive_task and self.proactive_task.cancelled():
+            logger.info("定时主动发送任务已被取消，退出循环")
+            return True
+
+        return False
+
+    @property
+    def _proactive_config(self) -> dict:
+        """获取主动回复配置"""
+        return self.config.get("proactive_reply", {})
+
+    @property
+    def _user_config(self) -> dict:
+        """获取用户信息配置"""
+        return self.config.get("user_info", {})
+
+    def _is_proactive_enabled(self) -> bool:
+        """检查主动回复功能是否启用"""
+        return self._proactive_config.get("enabled", False)
+
+    def _get_target_sessions(self) -> list:
+        """获取目标会话列表"""
+        sessions_data = self._proactive_config.get("sessions", [])
+        return self.parse_sessions_list(sessions_data)
+
+    async def _send_messages_to_sessions(self, sessions: list) -> int:
+        """向所有会话发送消息，返回成功发送的数量"""
+        logger.info(f"开始向 {len(sessions)} 个会话发送主动消息")
+        sent_count = 0
+
+        for session in sessions:
+            try:
+                await self.send_proactive_message(session)
+                sent_count += 1
+            except Exception as e:
+                logger.error(f"向会话 {session} 发送主动消息失败: {e}")
+
+        return sent_count
+
+    def _calculate_wait_interval(self) -> int:
+        """计算下一次执行的等待时间（分钟）"""
+        proactive_config = self._proactive_config
+        timing_mode = proactive_config.get("timing_mode", "fixed_interval")
+
+        if timing_mode == "random_interval":
+            # 随机间隔模式
+            random_min = proactive_config.get("random_min_minutes", 600)
+            random_max = proactive_config.get("random_max_minutes", 1200)
+            total_interval = random.randint(random_min, random_max)
+            logger.info(f"随机间隔模式：下次发送将在 {total_interval} 分钟后")
+        else:
+            # 固定间隔模式（默认）
+            base_interval = proactive_config.get("interval_minutes", 600)
+            total_interval = base_interval
+
+            # 检查是否启用随机延迟
+            random_delay_enabled = proactive_config.get("random_delay_enabled", False)
+            if random_delay_enabled:
+                min_delay = proactive_config.get("min_random_minutes", 0)
+                max_delay = proactive_config.get("max_random_minutes", 30)
+                random_delay = random.randint(min_delay, max_delay)
+                total_interval += random_delay
+                logger.info(f"固定间隔模式：基础间隔 {base_interval} 分钟 + 随机延迟 {random_delay} 分钟 = {total_interval} 分钟")
+            else:
+                logger.info(f"固定间隔模式：下次发送将在 {total_interval} 分钟后")
+
+        return total_interval
+
+    async def _wait_with_status_check(self, total_interval: int) -> bool:
+        """分段等待并检查状态变化，返回是否应该继续循环"""
+        remaining_time = total_interval
+        check_interval = 60  # 每60秒检查一次状态
+
+        while remaining_time > 0:
+            # 检查插件是否正在终止
+            if self._is_terminating:
+                return False
+
+            # 检查任务是否被取消
+            if self.proactive_task and self.proactive_task.cancelled():
+                return False
+
+            # 检查功能是否被禁用
+            current_config = self.config.get("proactive_reply", {})
+            if not current_config.get("enabled", False):
+                return False
+
+            # 等待较短的时间间隔
+            wait_time = min(check_interval, remaining_time)
+            await asyncio.sleep(wait_time)
+            remaining_time -= wait_time
+
+        return True
+
     async def proactive_message_loop(self):
         """定时主动发送消息的循环"""
         logger.info("定时主动发送消息循环已启动")
+
         while True:
             try:
-                # 检查插件是否正在终止
-                if self._is_terminating:
-                    logger.info("插件正在终止，退出定时循环")
+                # 检查是否应该终止
+                if self._should_terminate():
                     break
 
-                # 检查任务是否被取消
-                if self.proactive_task and self.proactive_task.cancelled():
-                    logger.info("定时主动发送任务已被取消，退出循环")
-                    break
-
-                proactive_config = self.config.get("proactive_reply", {})
-                enabled = proactive_config.get("enabled", False)
-
-                if not enabled:
+                # 检查功能是否启用
+                if not self._is_proactive_enabled():
                     # 检查是否在等待期间被终止
                     for i in range(60):  # 分成60次1秒的等待，便于快速响应终止
                         if self._is_terminating:
@@ -430,90 +523,26 @@ class ProactiveReplyPlugin(Star):
                     await asyncio.sleep(60)
                     continue
 
-                # 获取配置的会话列表
-                sessions_data = proactive_config.get("sessions", [])
-                sessions = self.parse_sessions_list(sessions_data)
-
+                # 获取目标会话列表
+                sessions = self._get_target_sessions()
                 if not sessions:
                     await asyncio.sleep(60)
                     continue
 
-                logger.info(f"开始向 {len(sessions)} 个会话发送主动消息")
-
-                # 向每个会话发送消息
-                sent_count = 0
-                for session in sessions:
-                    try:
-                        await self.send_proactive_message(session)
-                        sent_count += 1
-                    except Exception as e:
-                        logger.error(f"向会话 {session} 发送主动消息失败: {e}")
+                # 向所有会话发送消息
+                sent_count = await self._send_messages_to_sessions(sessions)
 
                 # 计算下一次发送的等待时间
-                timing_mode = proactive_config.get("timing_mode", "fixed_interval")
+                wait_interval_minutes = self._calculate_wait_interval()
 
-                if timing_mode == "random_interval":
-                    # 随机间隔模式：在最小和最大时间之间随机选择
-                    random_min = proactive_config.get("random_min_minutes", 1) * 60
-                    random_max = proactive_config.get("random_max_minutes", 60) * 60
+                logger.info(f"发送完成 {sent_count}/{len(sessions)} 条消息，等待 {wait_interval_minutes} 分钟")
 
-                    if random_max > random_min:
-                        total_interval = random.randint(random_min, random_max)
-                        logger.info(
-                            f"发送完成 {sent_count}/{len(sessions)} 条消息，随机等待 {total_interval // 60} 分钟"
-                        )
-                    else:
-                        logger.warning("随机间隔配置错误，使用默认60分钟")
-                        total_interval = 60 * 60
-                        logger.info(
-                            f"发送完成 {sent_count}/{len(sessions)} 条消息，等待 60 分钟"
-                        )
-                else:
-                    # 固定间隔模式（原有逻辑）
-                    base_interval = proactive_config.get("interval_minutes", 60) * 60
-                    total_interval = base_interval
+                # 分段等待并检查状态变化
+                wait_interval_seconds = wait_interval_minutes * 60
+                should_continue = await self._wait_with_status_check(wait_interval_seconds)
 
-                    if proactive_config.get("random_delay_enabled", False):
-                        min_random = proactive_config.get("min_random_minutes", 0) * 60
-                        max_random = proactive_config.get("max_random_minutes", 30) * 60
-                        if max_random > min_random:
-                            random_delay = random.randint(min_random, max_random)
-                            total_interval += random_delay
-                            logger.info(
-                                f"发送完成 {sent_count}/{len(sessions)} 条消息，等待 {total_interval // 60} 分钟（含随机延迟）"
-                            )
-                        else:
-                            logger.warning("随机延迟配置错误，使用基础间隔")
-                            logger.info(
-                                f"发送完成 {sent_count}/{len(sessions)} 条消息，等待 {base_interval // 60} 分钟"
-                            )
-                    else:
-                        logger.info(
-                            f"发送完成 {sent_count}/{len(sessions)} 条消息，等待 {base_interval // 60} 分钟"
-                        )
-
-                # 分段等待，定期检查状态变化
-                remaining_time = total_interval
-                check_interval = 60  # 每60秒检查一次状态
-
-                while remaining_time > 0:
-                    # 检查插件是否正在终止
-                    if self._is_terminating:
-                        return
-
-                    # 检查任务是否被取消
-                    if self.proactive_task and self.proactive_task.cancelled():
-                        break
-
-                    # 检查功能是否被禁用
-                    current_config = self.config.get("proactive_reply", {})
-                    if not current_config.get("enabled", False):
-                        break
-
-                    # 等待较短的时间间隔
-                    wait_time = min(check_interval, remaining_time)
-                    await asyncio.sleep(wait_time)
-                    remaining_time -= wait_time
+                if not should_continue:
+                    break
 
             except asyncio.CancelledError:
                 logger.info("定时主动发送消息循环已取消")
@@ -524,8 +553,7 @@ class ProactiveReplyPlugin(Star):
 
     def is_active_time(self):
         """检查当前是否在活跃时间段内"""
-        proactive_config = self.config.get("proactive_reply", {})
-        active_hours = proactive_config.get("active_hours", "9:00-22:00")
+        active_hours = self._proactive_config.get("active_hours", "9:00-22:00")
 
         try:
             start_time, end_time = active_hours.split("-")
@@ -572,124 +600,120 @@ class ProactiveReplyPlugin(Star):
             logger.warning(f"字符串替换失败: {e}")
             return text
 
+    def _get_llm_provider(self):
+        """获取LLM提供商"""
+        provider = self.context.get_using_provider()
+        if not provider:
+            logger.warning("LLM提供商不可用，无法生成主动消息")
+        return provider
+
+    def _get_proactive_prompt(self, session: str) -> str:
+        """获取并处理主动对话提示词"""
+        prompt_list_data = self._proactive_config.get("proactive_prompt_list", [])
+
+        if not prompt_list_data:
+            logger.warning("未配置主动对话提示词列表")
+            return None
+
+        # 解析主动对话提示词列表
+        prompt_list = self.parse_prompt_list(prompt_list_data)
+        if not prompt_list:
+            logger.warning("主动对话提示词列表为空")
+            return None
+
+        # 随机选择一个主动对话提示词
+        selected_prompt = random.choice(prompt_list)
+        selected_prompt = self._ensure_string_encoding(selected_prompt)
+
+        # 替换提示词中的占位符
+        final_prompt = self.replace_placeholders(selected_prompt, session)
+        return self._ensure_string_encoding(final_prompt)
+
+    async def _get_persona_system_prompt(self, session: str) -> str:
+        """获取人格系统提示词"""
+        base_system_prompt = ""
+        try:
+            # 尝试获取当前会话的人格设置
+            uid = session  # session 就是 unified_msg_origin
+            curr_cid = await self.context.conversation_manager.get_curr_conversation_id(uid)
+
+            # 获取默认人格设置
+            default_persona_obj = self.context.provider_manager.selected_default_persona
+
+            if curr_cid:
+                conversation = await self.context.conversation_manager.get_conversation(uid, curr_cid)
+
+                if (conversation and conversation.persona_id and conversation.persona_id != "[%None]"):
+                    # 有指定人格，尝试获取人格的系统提示词
+                    personas = self.context.provider_manager.personas
+                    if personas:
+                        for persona in personas:
+                            if (hasattr(persona, "name") and persona.name == conversation.persona_id):
+                                base_system_prompt = self._ensure_string_encoding(
+                                    getattr(persona, "prompt", "")
+                                )
+                                break
+
+            # 如果没有获取到人格提示词，尝试使用默认人格
+            if (not base_system_prompt and default_persona_obj and default_persona_obj.get("prompt")):
+                base_system_prompt = self._ensure_string_encoding(default_persona_obj["prompt"])
+
+        except Exception as e:
+            logger.warning(f"获取人格系统提示词失败: {e}")
+
+        return base_system_prompt
+
+    def _build_combined_system_prompt(self, base_system_prompt: str, final_prompt: str, history_guidance: str) -> str:
+        """构建组合系统提示词"""
+        default_persona = self._ensure_string_encoding(
+            self._proactive_config.get("proactive_default_persona", "")
+        )
+
+        if base_system_prompt:
+            # 有AstrBot人格：使用AstrBot人格 + 主动对话提示词 + 历史记录引导
+            combined_system_prompt = f"{base_system_prompt}\n\n--- 主动对话指令 ---\n{final_prompt}{history_guidance}"
+        else:
+            # 没有AstrBot人格：使用插件默认人格 + 主动对话提示词 + 历史记录引导
+            if default_persona:
+                combined_system_prompt = f"{default_persona}\n\n--- 主动对话指令 ---\n{final_prompt}{history_guidance}"
+            else:
+                combined_system_prompt = f"{final_prompt}{history_guidance}"
+
+        return self._ensure_string_encoding(combined_system_prompt)
+
     async def generate_proactive_message_with_llm(self, session: str) -> str:
         """使用LLM生成主动消息内容"""
         try:
             # 检查LLM是否可用
-            provider = self.context.get_using_provider()
+            provider = self._get_llm_provider()
             if not provider:
-                logger.warning("LLM提供商不可用，无法生成主动消息")
                 return None
 
-            # 获取配置
-            proactive_config = self.config.get("proactive_reply", {})
-            default_persona = self._ensure_string_encoding(
-                proactive_config.get("proactive_default_persona", "")
-            )
-            prompt_list_data = proactive_config.get("proactive_prompt_list", [])
-
-            if not prompt_list_data:
-                logger.warning("未配置主动对话提示词列表")
+            # 获取并处理主动对话提示词
+            final_prompt = self._get_proactive_prompt(session)
+            if not final_prompt:
                 return None
 
-            # 解析主动对话提示词列表
-            prompt_list = self.parse_prompt_list(prompt_list_data)
-            if not prompt_list:
-                logger.warning("主动对话提示词列表为空")
-                return None
-
-            # 随机选择一个主动对话提示词
-            selected_prompt = random.choice(prompt_list)
-            selected_prompt = self._ensure_string_encoding(selected_prompt)
-
-            # 替换提示词中的占位符
-            final_prompt = self.replace_placeholders(selected_prompt, session)
-            final_prompt = self._ensure_string_encoding(final_prompt)
-
-            # 获取当前使用的人格系统提示词
-            base_system_prompt = ""
-            try:
-                # 尝试获取当前会话的人格设置
-                uid = session  # session 就是 unified_msg_origin
-                curr_cid = (
-                    await self.context.conversation_manager.get_curr_conversation_id(
-                        uid
-                    )
-                )
-
-                # 获取默认人格设置
-                default_persona_obj = (
-                    self.context.provider_manager.selected_default_persona
-                )
-
-                if curr_cid:
-                    conversation = (
-                        await self.context.conversation_manager.get_conversation(
-                            uid, curr_cid
-                        )
-                    )
-
-                    if (
-                        conversation
-                        and conversation.persona_id
-                        and conversation.persona_id != "[%None]"
-                    ):
-                        # 有指定人格，尝试获取人格的系统提示词
-                        personas = self.context.provider_manager.personas
-                        if personas:
-                            for persona in personas:
-                                if (
-                                    hasattr(persona, "name")
-                                    and persona.name == conversation.persona_id
-                                ):
-                                    base_system_prompt = self._ensure_string_encoding(
-                                        getattr(persona, "prompt", "")
-                                    )
-
-                                    break
-
-                # 如果没有获取到人格提示词，尝试使用默认人格
-                if (
-                    not base_system_prompt
-                    and default_persona_obj
-                    and default_persona_obj.get("prompt")
-                ):
-                    base_system_prompt = self._ensure_string_encoding(
-                        default_persona_obj["prompt"]
-                    )
-
-            except Exception as e:
-                logger.warning(f"获取人格系统提示词失败: {e}")
+            # 获取人格系统提示词
+            base_system_prompt = await self._get_persona_system_prompt(session)
 
             # 获取历史记录（如果启用）
             contexts = []
 
-            if proactive_config.get("include_history_enabled", False):
-                history_count = proactive_config.get("history_message_count", 10)
+            if self._proactive_config.get("include_history_enabled", False):
+                history_count = self._proactive_config.get("history_message_count", 10)
                 # 限制历史记录数量在合理范围内
                 history_count = max(1, min(50, history_count))
-
                 contexts = await self.get_conversation_history(session, history_count)
 
             # 构建历史记录引导提示词（简化版，避免与主动对话提示词冲突）
             history_guidance = ""
-            if proactive_config.get("include_history_enabled", False) and contexts:
+            if self._proactive_config.get("include_history_enabled", False) and contexts:
                 history_guidance = "\n\n--- 上下文说明 ---\n你可以参考上述对话历史来生成更自然和连贯的回复。"
 
-            # 组合系统提示词：人格提示词 + 主动对话提示词 + 历史记录引导
-            if base_system_prompt:
-                # 有AstrBot人格：使用AstrBot人格 + 主动对话提示词 + 历史记录引导
-                combined_system_prompt = f"{base_system_prompt}\n\n--- 主动对话指令 ---\n{final_prompt}{history_guidance}"
-            else:
-                # 没有AstrBot人格：使用插件默认人格 + 主动对话提示词 + 历史记录引导
-                if default_persona:
-                    combined_system_prompt = f"{default_persona}\n\n--- 主动对话指令 ---\n{final_prompt}{history_guidance}"
-                else:
-                    combined_system_prompt = f"{final_prompt}{history_guidance}"
-
-            # 确保最终系统提示词的编码正确
-            combined_system_prompt = self._ensure_string_encoding(
-                combined_system_prompt
+            # 构建组合系统提示词
+            combined_system_prompt = self._build_combined_system_prompt(
+                base_system_prompt, final_prompt, history_guidance
             )
 
             # 调用LLM生成主动消息
@@ -706,9 +730,7 @@ class ProactiveReplyPlugin(Star):
                 generated_message = llm_response.completion_text
                 if generated_message:
                     # 确保生成的消息编码正确
-                    generated_message = self._ensure_string_encoding(
-                        generated_message.strip()
-                    )
+                    generated_message = self._ensure_string_encoding(generated_message.strip())
                     logger.info("LLM生成主动消息成功")
                     return generated_message
                 else:
@@ -721,7 +743,6 @@ class ProactiveReplyPlugin(Star):
         except Exception as e:
             logger.error(f"使用LLM生成主动消息失败: {e}")
             import traceback
-
             logger.error(f"详细错误信息: {traceback.format_exc()}")
             return None
 
