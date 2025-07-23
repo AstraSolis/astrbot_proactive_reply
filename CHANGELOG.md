@@ -5,202 +5,61 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [v1.0.0] - 2025-07-23 (重大优化)
+## [v1.0.0] - 2025-07-23
 
-### 🎯 指令系统重大优化
-- **指令结构大幅精简**：从28个分散指令优化为9个逻辑化指令（精简率68%）
-  - 🔧 **核心功能指令**（6个）：help, status, config, add_session, remove_session, restart
-  - 🧪 **测试功能指令**（1个指令，6种功能）：test [basic|llm|generation|prompt|placeholders|history]
-  - 📋 **显示功能指令**（1个指令，2种功能）：show [prompt|users]
-  - ⚙️ **管理功能指令**（1个指令，8种操作）：manage [clear|task_status|force_stop|force_start|save_config|debug_info|debug_send|debug_times]
-- **用户体验大幅提升**：
-  - 指令按功能逻辑分组，更容易理解和记忆
-  - 统一的参数格式，减少学习成本
-  - 完善的错误提示和使用说明
-  - 普通用户只需关注6个核心指令，高级功能按需使用
+### 核心功能
+- **聊天附带用户信息**：自动在AI对话中附加用户信息
+  - 自动获取用户昵称、用户ID、时间信息
+  - 支持自定义时间格式和信息模板
+  - 智能追加到系统提示末尾，不覆盖现有人格设置
+  - 支持占位符：`{username}`, `{user_id}`, `{time}`, `{platform}`, `{chat_type}`
 
-### 🔧 功能整合与优化
-- **合并current_session到status**：status指令现在显示当前会话状态，无需单独指令
-- **debug功能重新组织**：将调试功能合并到manage指令中，保留最有用的3个调试功能
-  - `manage debug_info` - 调试用户信息（最常用）
-  - `manage debug_send` - 调试发送功能（故障排查）
-  - `manage debug_times` - 调试时间记录（状态查看）
-- **test prompt历史记录修复**：修复了test prompt功能无法显示历史记录的问题
-  - 使用正确的`get_conversation_history`方法替代不存在的`get_conversation_context`
-  - 现在能正确显示历史记录状态、预览和在系统提示词中的位置
-- **restart指令说明优化**：提供详细的使用场景说明，用户更清楚何时需要重启
-
-### 📚 文档全面更新
-- **README.md完全重写**：所有指令描述与实际代码保持同步
-- **指令说明结构化**：按功能分组展示，包含详细的使用说明和示例
-- **测试指南更新**：所有测试步骤使用新的指令格式
-- **故障排查指南优化**：使用当前可用的调试指令
-
-### 🛠️ 技术改进
-- **代码质量提升**：
-  - 删除了所有冗余和残留代码片段
-  - 修复了语法错误和方法调用问题
-  - 优化了异常处理和错误提示
-- **方法整合**：保留16个核心子方法，删除不必要的调试方法
-- **向后兼容**：所有原有功能完整保留，只是访问方式更加统一
-
-### 💡 用户指导
-- **普通用户推荐指令**：
-  ```
-  /proactive help          # 查看帮助
-  /proactive status        # 查看状态
-  /proactive add_session   # 添加当前会话
-  /proactive test          # 基础测试
-  /proactive restart       # 配置更改后重启
-  ```
-- **高级用户/故障排查**：
-  ```
-  /proactive test prompt           # 测试提示词构建
-  /proactive show prompt           # 查看完整话术
-  /proactive manage debug_info     # 调试用户信息
-  /proactive manage debug_send     # 调试发送功能
-  ```
-
-## [v1.0.0] - 2025-01-22 (历史记录功能)
-
-### 🔥 重大改进
-- **历史记录功能增强主动消息生成**：新增基于对话历史的智能主动消息生成
-  - 新增 `include_history_enabled` 配置项：控制是否附带历史记录
-  - 新增 `history_message_count` 配置项：控制附带的历史记录条数（默认10条）
-  - 实现安全的对话历史获取方法 `get_conversation_history()`
-  - AI生成主动消息时会参考之前的对话历史，生成更加拟人和连贯的主动消息
-  - 添加简洁的上下文说明，避免与主动对话提示词冲突
-  - 支持历史记录数量限制（1-50条），确保性能和稳定性
-- **解决AI主动消息上下文断裂问题**：AI主动发送的消息现在会自动添加到对话历史记录中
-  - 用户下次发消息时，LLM能够看到AI之前主动发送的内容，保持对话连贯性
-  - 自动处理对话创建和历史记录解析
-  - 使用高效的SQL直接更新方式保存到数据库
-
-### 新增功能
-- 新增历史记录功能相关方法和配置
-  - `get_conversation_history()` 方法：安全地获取会话的对话历史记录
-  - 完整的错误处理和格式验证
-  - 支持OpenAI格式的历史记录兼容性
-- 增强 `/proactive show_prompt` 指令：支持历史记录预览和测试
-  - 显示历史记录获取状态和预览信息
-  - 与主动消息生成使用相同的逻辑，确保一致性
-- 更新 `/proactive status` 指令：显示历史记录功能状态
-- 新增 `add_message_to_conversation_history()` 方法，专门处理对话历史记录
-- 新增 `/proactive test_conversation_history` 指令，用于测试对话历史记录功能
-- 新增调试工具：`debug_conversation_object`、`debug_database`、`debug_db_schema`
-
-### 技术改进
-- **智能历史记录集成**：
-  - 使用AstrBot官方API安全地获取聊天记录
-  - 支持历史记录格式验证和错误处理
-  - 智能的历史记录数量限制和性能优化
-  - 与现有人格系统完美兼容，不产生冲突
-- 优化对话历史的JSON格式处理
-- 识别正确的数据库表结构（`webchat_conversation`表）
-- 使用最优的SQL直接更新方式
-- 简化代码结构，提高性能和可维护性
-- 增强错误处理和日志记录
-- 使用ruff工具格式化代码，确保代码质量
-
-## [v1.0.0] - 2025-07-22
-
-### 重大更新
-- **智能主动对话系统**：完全重构主动消息生成机制
-  - 移除预设消息模板，改为基于LLM的智能生成
-  - 支持AstrBot人格系统兼容，自动组合人格提示词与主动对话指令
-  - 新增主动对话默认人格配置，当无AstrBot人格时使用
-  - 实现主动对话提示词列表，支持随机选择不同的对话风格
+- **智能主动对话系统**：基于LLM的智能主动消息生成
+  - 移除预设消息模板，改为LLM智能生成个性化主动消息
+  - 深度集成AstrBot人格系统，自动组合人格提示词与主动对话指令
+  - 支持主动对话默认人格配置，当无AstrBot人格时使用
+  - 主动对话提示词列表，支持随机选择不同的对话风格
   - 基于用户信息和对话历史的上下文感知生成
 
-### 配置界面优化
-- **列表配置格式**：配置项改为可视化列表管理
+- **历史记录功能增强**：基于对话历史的智能主动消息生成
+  - 可配置是否附带历史记录（`include_history_enabled`）
+  - 可配置历史记录条数（`history_message_count`，默认10条）
+  - AI主动发送的消息自动添加到对话历史记录中，保持对话连贯性
+  - 使用AstrBot官方API安全地获取聊天记录
+  - 支持OpenAI格式的历史记录兼容性
+
+### 时间管理系统
+- **双时间模式支持**：
+  - **固定间隔模式**：传统的固定时间间隔，可选随机延迟
+  - **随机间隔模式**：完全随机的时间间隔（配置范围内随机）
+- **活跃时间段设置**：只在指定时间段内发送消息
+- **多会话管理**：支持多个会话的独立时间管理
+
+### 用户界面
+- **指令系统优化**：精简为9个逻辑化指令
+  - **核心功能指令**（6个）：help, status, config, add_session, remove_session, restart
+  - **测试功能指令**（1个指令，6种功能）：test [basic|llm|generation|prompt|placeholders|history]
+  - **显示功能指令**（1个指令，2种功能）：show [prompt|users]
+  - **管理功能指令**（1个指令，8种操作）：manage [clear|task_status|force_stop|force_start|save_config|debug_info|debug_send|debug_times]
+
+- **可视化配置管理**：支持现代化的列表配置界面
   - 主动对话提示词列表：每个提示词可单独添加、编辑、删除
   - 目标会话列表：每个会话ID可单独管理
   - 支持拖拽排序和批量操作
-  - 提供直观的用户界面，类似其他AstrBot配置项
-
-### 新增功能
-- 初始版本发布
-- 实现聊天附带用户信息功能
-  - 自动获取用户昵称、用户ID、时间信息
-  - 支持自定义时间格式
-  - 支持自定义信息模板
-  - 智能追加到系统提示，不覆盖人格设置
-  - 自动记录用户消息时间用于占位符
-- 实现定时主动发送消息功能
-  - 支持多会话管理
-  - 支持多消息模板随机选择
-  - **双时间模式支持**：
-    - 固定间隔模式：传统的固定时间间隔，可选随机延迟
-    - 随机间隔模式：完全随机的时间间隔（配置范围内随机）
-  - 支持活跃时间段设置
-  - 支持引号格式的消息模板解析
-  - 消息模板支持时间占位符
-- 占位符系统
-  - 消息模板占位符：`{time}`, `{last_sent_time}`, `{user_last_message_time}`
-  - 用户信息模板占位符：`{username}`, `{user_id}`, `{time}`, `{platform}`, `{chat_type}`
-  - **主动对话提示词占位符**：支持细粒度的占位符定制
-    - `{user_context}` - 完整的用户上下文信息（向后兼容）
-    - `{user_last_message_time}` - 用户上次主动发送消息的时间
-    - `{user_last_message_time_ago}` - 用户上次主动发送消息的相对时间（如"5分钟前"）
-    - `{username}` - 用户昵称
-    - `{platform}` - 平台名称（如：aiocqhttp、telegram等）
-    - `{chat_type}` - 聊天类型（群聊/私聊）
-    - `{ai_last_sent_time}` - AI上次发送消息的时间
-    - `{current_time}` - 当前时间
-- 提供完整的管理指令系统
-  - `/proactive status` - 查看插件状态
-  - `/proactive current_session` - 显示当前会话ID和状态
-  - `/proactive add_session` - 添加当前会话到定时发送列表
-  - `/proactive remove_session` - 移除当前会话
-  - `/proactive test` - 测试主动消息发送
-  - `/proactive restart` - 重启定时任务
-  - `/proactive debug` - 调试用户信息
-  - `/proactive test_llm` - 测试LLM请求
-  - `/proactive test_llm_generation` - 测试LLM生成主动消息功能
-  - `/proactive test_prompt` - 测试系统提示词构建过程
-  - `/proactive test_placeholders` - 测试占位符替换功能
-  - `/proactive show_user_info` - 显示记录的用户信息
-  - `/proactive clear_records` - 清除记录数据
-  - `/proactive task_status` - 检查定时任务状态
-  - `/proactive debug_send` - 调试定时发送功能
-  - `/proactive debug_config` - 调试配置文件持久化状态
-  - `/proactive debug_persistent` - 调试独立持久化文件状态
-  - `/proactive force_save_config` - 强制保存配置文件
-  - `/proactive force_start` - 强制启动定时任务
-  - `/proactive config` - 显示完整配置
-  - `/proactive help` - 显示帮助信息
 
 ### 技术特性
-- 完全符合 AstrBot 插件开发规范
-- 使用官方 API，无任何非标准功能
-- 支持异步处理和错误恢复
-- 完整的日志记录和调试功能
-- 优雅的资源清理和任务管理
-- **人格系统深度集成**：自动检测并组合AstrBot人格与主动对话指令
-- **智能LLM调用**：使用底层LLM API生成个性化主动消息
-- **多格式配置解析**：支持列表、JSON、传统换行格式的自动识别
-- 自动配置检查和补充机制
-- 安全的占位符替换机制
-- 强化的定时任务停止机制
-- 详细的调试和诊断工具
-- **智能时间模式切换**：支持固定间隔和随机间隔两种模式
-- **配置参数智能提示**：每个配置项明确标注适用模式
-- **向后兼容性保证**：现有配置无需修改即可正常使用
-- **可视化配置管理**：支持现代化的列表配置界面
-- **强化配置持久化**：改进配置保存机制，确保用户信息在重启后不丢失
-  - **双重持久化机制**：同时保存到配置文件和独立持久化文件
-  - **自动数据恢复**：启动时自动从持久化文件恢复数据，避免配置重置影响
-  - **多重保存机制**：正常保存失败时自动尝试强制保存
-  - **配置加载验证**：启动时验证已保存的用户信息
-  - **详细的保存日志**：记录每次配置保存的结果
-  - **调试工具**：提供配置持久化状态检查和强制保存功能
-  - **编码兼容性**：自动处理UTF-8 BOM等编码问题，支持多种编码格式读取配置文件
+- **完全符合AstrBot插件开发规范**：使用官方API，无任何非标准功能
+- **异步处理和错误恢复**：支持优雅的资源清理和任务管理
+- **完整的日志记录和调试功能**：提供详细的调试和诊断工具
+- **强化配置持久化**：双重持久化机制，确保用户信息在重启后不丢失
+- **占位符系统**：支持丰富的占位符定制
+  - 用户信息模板占位符：`{username}`, `{user_id}`, `{time}`, `{platform}`, `{chat_type}`
+  - 主动对话提示词占位符：`{user_context}`, `{user_last_message_time}`, `{user_last_message_time_ago}`, `{username}`, `{platform}`, `{chat_type}`, `{ai_last_sent_time}`, `{current_time}`
 
 ### 兼容性
-- 与 AstrBot 人格系统完全兼容
-- 与 AstrBot 对话管理系统完全兼容
-- 支持所有 AstrBot 支持的消息平台
+- 与AstrBot人格系统完全兼容
+- 与AstrBot对话管理系统完全兼容
+- 支持所有AstrBot支持的消息平台
 - 支持可视化配置管理
 
 ---
