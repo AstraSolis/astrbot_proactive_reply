@@ -30,6 +30,26 @@
   - 重构 `add_message_to_conversation_history` 方法，实现多层保存机制
   - 每个函数职责明确，符合单一职责原则
 
+- **异常处理全面改进**：提升代码稳定性和可维护性
+  - **问题**：代码中存在超过30处宽泛的 `except Exception as e:` 异常捕获
+  - **解决方案**：实现精确的异常类型处理
+    - 文件操作：使用 `FileNotFoundError`, `PermissionError`, `OSError`, `json.JSONDecodeError` 等具体异常
+    - 数据库操作：使用 `sqlite3.IntegrityError`, `sqlite3.OperationalError`, `sqlite3.DatabaseError` 等
+    - 配置管理：使用 `KeyError`, `ValueError`, `AttributeError` 等
+    - 异步任务：使用 `asyncio.CancelledError`, `asyncio.TimeoutError`, `RuntimeError` 等
+    - 网络操作：使用 `ConnectionError`, `TimeoutError` 等
+  - **新增辅助方法**：
+    - `_validate_persistent_data()` - 验证持久化数据结构
+    - `_backup_corrupted_file()` - 备份损坏的文件
+    - `_save_config_safely()` - 安全的配置保存方法
+    - `_verify_database_schema()` - 验证数据库表结构
+  - **技术改进**：
+    - 原子性文件写入（临时文件+重命名）
+    - 超时控制和错误恢复机制
+    - 输入参数验证和数据结构检查
+    - 避免捕获系统级异常（KeyboardInterrupt, SystemExit）
+  - **效果**：更精确的错误诊断、更容易调试、更稳定的程序运行
+
 - **减少重复代码**：提高代码复用性
   - 添加 `_proactive_config` 和 `_user_config` 属性方法
   - 消除多处重复的配置获取代码

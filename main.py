@@ -4,6 +4,9 @@ from astrbot.api import logger, AstrBotConfig
 import asyncio
 import random
 import datetime
+import sqlite3
+import os
+import json
 
 
 @register(
@@ -40,8 +43,12 @@ class ProactiveReplyPlugin(Star):
             else:
                 logger.info("ℹ️ 暂无已保存的用户信息（首次运行）")
 
-        except Exception as e:
-            logger.error(f"❌ 验证配置加载状态失败: {e}")
+        except KeyError as e:
+            logger.error(f"配置键错误: {e}")
+        except AttributeError as e:
+            logger.error(f"配置对象属性错误: {e}")
+        except TypeError as e:
+            logger.error(f"配置数据类型错误: {e}")
 
     def _get_plugin_data_dir(self):
         """获取插件专用的数据目录路径"""
@@ -59,8 +66,12 @@ class ProactiveReplyPlugin(Star):
                 else:
                     # 如果配置中没有数据目录，使用默认的data目录
                     base_data_dir = os.path.join(os.getcwd(), "data")
-            except Exception as e:
-                logger.warning(f"⚠️ 无法从AstrBot配置获取数据目录: {e}")
+            except AttributeError as e:
+                logger.warning(f"⚠️ AstrBot配置对象属性错误: {e}")
+                # 使用默认的data目录
+                base_data_dir = os.path.join(os.getcwd(), "data")
+            except KeyError as e:
+                logger.warning(f"⚠️ AstrBot配置键不存在: {e}")
                 # 使用默认的data目录
                 base_data_dir = os.path.join(os.getcwd(), "data")
 
@@ -75,8 +86,8 @@ class ProactiveReplyPlugin(Star):
             logger.info(f"✅ 插件数据目录: {plugin_data_dir}")
             return plugin_data_dir
 
-        except Exception as e:
-            logger.error(f"❌ 获取插件数据目录失败: {e}")
+        except OSError as e:
+            logger.error(f"❌ 文件系统错误: {e}")
             # 最后的回退方案：使用当前工作目录下的data目录
             fallback_dir = os.path.join(
                 os.getcwd(), "data", "plugins", "astrbot_proactive_reply"
@@ -85,10 +96,15 @@ class ProactiveReplyPlugin(Star):
                 os.makedirs(fallback_dir, exist_ok=True)
                 logger.warning(f"⚠️ 使用回退数据目录: {fallback_dir}")
                 return fallback_dir
-            except Exception as fallback_error:
+            except OSError as fallback_error:
                 logger.error(f"❌ 创建回退数据目录失败: {fallback_error}")
                 # 最终回退到当前目录
                 return os.getcwd()
+        except AttributeError as e:
+            logger.error(f"❌ 对象属性错误: {e}")
+            return os.path.join(
+                os.getcwd(), "data", "plugins", "astrbot_proactive_reply"
+            )
 
     def _load_persistent_data(self):
         """从独立的持久化文件加载用户数据"""
@@ -107,6 +123,11 @@ class ProactiveReplyPlugin(Star):
                         with open(persistent_file, "r", encoding=encoding) as f:
                             persistent_data = json.load(f)
 
+                        # 验证数据结构
+                        if not isinstance(persistent_data, dict):
+                            logger.error("持久化文件格式错误：根对象不是字典")
+                            continue
+
                         # 将持久化数据合并到配置中
                         if "proactive_reply" not in self.config:
                             self.config["proactive_reply"] = {}
@@ -123,16 +144,29 @@ class ProactiveReplyPlugin(Star):
 
                         logger.info("✅ 从新的持久化文件加载数据成功")
                         return
-                    except (UnicodeDecodeError, json.JSONDecodeError):
+                    except UnicodeDecodeError as e:
+                        logger.warning(f"编码 {encoding} 读取失败: {e}")
                         continue
+                    except json.JSONDecodeError as e:
+                        logger.error(f"JSON解析失败: {e}")
+                        # 备份损坏的文件
+                        self._backup_corrupted_file(persistent_file)
+                        break
+                    except PermissionError as e:
+                        logger.error(f"文件权限不足: {e}")
+                        break
 
                 logger.warning("⚠️ 无法读取新的持久化文件")
 
             # 尝试从旧的持久化文件迁移数据（向后兼容）
             self._migrate_old_persistent_data(plugin_data_dir)
 
-        except Exception as e:
-            logger.error(f"❌ 加载持久化数据失败: {e}")
+        except FileNotFoundError:
+            logger.info("持久化文件不存在，将在首次保存时创建")
+        except OSError as e:
+            logger.error(f"文件系统错误: {e}")
+        except AttributeError as e:
+            logger.error(f"对象属性错误: {e}")
 
     def _migrate_old_persistent_data(self, new_data_dir):
         """迁移旧的持久化数据到新的数据目录（向后兼容）"""
@@ -237,15 +271,51 @@ class ProactiveReplyPlugin(Star):
                 "data_version": "2.0",  # 添加版本标识
             }
 
-            # 保存到标准数据目录
-            with open(persistent_file, "w", encoding="utf-8") as f:
-                json.dump(persistent_data, f, ensure_ascii=False, indent=2)
+            # 验证数据结构
+            if not self._validate_persistent_data(persistent_data):
+                logger.error("持久化数据验证失败")
+                return False
 
-            logger.debug(f"✅ 持久化数据已保存到: {persistent_file}")
-            return True
+            # 原子性写入：先写临时文件，再重命名
+            temp_file = persistent_file + ".tmp"
+            try:
+                with open(temp_file, "w", encoding="utf-8") as f:
+                    json.dump(persistent_data, f, ensure_ascii=False, indent=2)
 
-        except Exception as e:
-            logger.error(f"❌ 保存持久化数据失败: {e}")
+                # 原子性重命名
+                if os.name == "nt":  # Windows
+                    if os.path.exists(persistent_file):
+                        os.remove(persistent_file)
+                os.rename(temp_file, persistent_file)
+
+                logger.debug(f"✅ 持久化数据已保存到: {persistent_file}")
+                return True
+
+            except json.JSONEncodeError as e:
+                logger.error(f"JSON序列化失败: {e}")
+                return False
+            except PermissionError as e:
+                logger.error(f"文件写入权限不足: {e}")
+                return False
+            except OSError as e:
+                logger.error(f"文件系统错误: {e}")
+                return False
+            finally:
+                # 清理临时文件
+                if os.path.exists(temp_file):
+                    try:
+                        os.remove(temp_file)
+                    except OSError:
+                        pass
+
+        except KeyError as e:
+            logger.error(f"配置键缺失: {e}")
+            return False
+        except ValueError as e:
+            logger.error(f"数据值错误: {e}")
+            return False
+        except AttributeError as e:
+            logger.error(f"对象属性错误: {e}")
             return False
 
     def _ensure_config_structure(self):
@@ -343,14 +413,17 @@ class ProactiveReplyPlugin(Star):
                 )
 
                 # 保存配置
-                try:
-                    self.config.save_config()
+                if self._save_config_safely():
                     logger.info(f"成功迁移 {len(last_sent_times)} 条时间记录")
-                except Exception as e:
-                    logger.warning(f"保存迁移数据失败: {e}")
+                else:
+                    logger.warning("保存迁移数据失败")
 
-        except Exception as e:
-            logger.error(f"数据迁移失败: {e}")
+        except KeyError as e:
+            logger.error(f"配置键错误: {e}")
+        except ValueError as e:
+            logger.error(f"数据值错误: {e}")
+        except AttributeError as e:
+            logger.error(f"对象属性错误: {e}")
 
     async def initialize(self):
         """插件初始化方法"""
@@ -442,6 +515,11 @@ class ProactiveReplyPlugin(Star):
             session_id = event.unified_msg_origin
             current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+            # 验证输入参数
+            if not session_id:
+                logger.warning("会话ID为空，跳过用户信息记录")
+                return
+
             # 确保配置结构存在
             if "proactive_reply" not in self.config:
                 self.config["proactive_reply"] = {}
@@ -449,30 +527,29 @@ class ProactiveReplyPlugin(Star):
                 self.config["proactive_reply"]["session_user_info"] = {}
 
             # 记录用户信息
-            self.config["proactive_reply"]["session_user_info"][session_id] = {
-                "username": username,
-                "user_id": user_id,
-                "platform": platform_name,
-                "chat_type": message_type,
+            user_info = {
+                "username": username or "未知用户",
+                "user_id": user_id or "未知",
+                "platform": platform_name or "未知平台",
+                "chat_type": message_type or "未知",
                 "last_active_time": current_time,
             }
 
-            # 保存配置到文件
-            config_saved = False
-            try:
-                self.config.save_config()
-                config_saved = True
-            except Exception as e:
-                logger.warning(f"⚠️ 配置文件保存失败: {e}")
+            self.config["proactive_reply"]["session_user_info"][session_id] = user_info
 
-            # 同时保存到独立的持久化文件
+            # 保存配置到文件
+            config_saved = self._save_config_safely()
             persistent_saved = self._save_persistent_data()
 
             if not (config_saved or persistent_saved):
                 logger.error("❌ 用户信息保存失败")
 
-        except Exception as e:
-            logger.error(f"记录用户信息失败: {e}")
+        except KeyError as e:
+            logger.error(f"配置键错误: {e}")
+        except ValueError as e:
+            logger.error(f"参数值错误: {e}")
+        except AttributeError as e:
+            logger.error(f"对象属性错误: {e}")
 
     @filter.after_message_sent()
     async def record_ai_message_time(self, event: AstrMessageEvent):
@@ -480,6 +557,11 @@ class ProactiveReplyPlugin(Star):
         try:
             session_id = event.unified_msg_origin
             current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            # 验证输入参数
+            if not session_id:
+                logger.warning("会话ID为空，跳过AI消息时间记录")
+                return
 
             # 确保配置结构存在
             if "proactive_reply" not in self.config:
@@ -493,16 +575,18 @@ class ProactiveReplyPlugin(Star):
             )
 
             # 保存配置
-            try:
-                self.config.save_config()
-            except Exception as e:
-                logger.warning(f"⚠️ 配置文件保存失败: {e}")
+            config_saved = self._save_config_safely()
+            persistent_saved = self._save_persistent_data()
 
-            # 同时保存到独立的持久化文件
-            self._save_persistent_data()
+            if not (config_saved or persistent_saved):
+                logger.warning("⚠️ AI消息时间记录保存失败")
 
-        except Exception as e:
-            logger.error(f"记录AI发送消息时间失败: {e}")
+        except KeyError as e:
+            logger.error(f"配置键错误: {e}")
+        except ValueError as e:
+            logger.error(f"参数值错误: {e}")
+        except AttributeError as e:
+            logger.error(f"对象属性错误: {e}")
 
     def _should_terminate(self) -> bool:
         """检查是否应该终止任务"""
@@ -1402,32 +1486,8 @@ class ProactiveReplyPlugin(Star):
             conn = db.conn
             cursor = conn.cursor()
 
-            # 检查表是否存在
-            try:
-                cursor.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name='webchat_conversation'"
-                )
-                if not cursor.fetchone():
-                    logger.error(
-                        "❌ webchat_conversation 表不存在，数据库结构可能已变更"
-                    )
-                    return False
-            except Exception as e:
-                logger.error(f"❌ 检查数据库表结构失败: {e}")
-                return False
-
-            # 检查字段是否存在
-            try:
-                cursor.execute("PRAGMA table_info(webchat_conversation)")
-                columns = [column[1] for column in cursor.fetchall()]
-                required_columns = ["history", "updated_at", "cid"]
-
-                for col in required_columns:
-                    if col not in columns:
-                        logger.error(f"❌ 数据库表缺少必需字段: {col}")
-                        return False
-            except Exception as e:
-                logger.error(f"❌ 检查数据库字段失败: {e}")
+            # 检查数据库结构
+            if not self._verify_database_schema(cursor):
                 return False
 
             # 执行更新操作
@@ -1450,19 +1510,35 @@ class ProactiveReplyPlugin(Star):
                     logger.warning("⚠️ 数据库更新未影响任何行，可能对话ID不存在")
                     return False
 
-            except Exception as e:
-                logger.error(f"❌ 数据库更新操作失败: {e}")
-                conn.rollback()  # 回滚事务
+            except sqlite3.IntegrityError as e:
+                logger.error(f"数据库完整性约束违反: {e}")
+                conn.rollback()
+                return False
+            except sqlite3.OperationalError as e:
+                logger.error(f"数据库操作错误: {e}")
+                conn.rollback()
+                return False
+            except sqlite3.DatabaseError as e:
+                logger.error(f"数据库错误: {e}")
+                conn.rollback()
                 return False
 
-        except Exception as e:
-            logger.error(f"❌ 数据库回退方案失败: {e}")
+        except AttributeError as e:
+            logger.error(f"数据库对象属性错误: {e}")
+            return False
+        except TypeError as e:
+            logger.error(f"数据类型错误: {e}")
             return False
 
     def record_sent_time(self, session: str):
         """记录消息发送时间"""
         try:
             current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            # 验证输入参数
+            if not session:
+                logger.warning("会话ID为空，跳过发送时间记录")
+                return
 
             # 确保配置结构存在
             if "proactive_reply" not in self.config:
@@ -1477,34 +1553,37 @@ class ProactiveReplyPlugin(Star):
             self.config["proactive_reply"]["ai_last_sent_times"][session] = current_time
 
             # 保存配置
-            config_saved = False
-            try:
-                self.config.save_config()
-                config_saved = True
-
-            except Exception as e:
-                logger.warning(f"⚠️ 配置文件保存失败: {e}")
-
-            # 同时保存到独立的持久化文件
+            config_saved = self._save_config_safely()
             persistent_saved = self._save_persistent_data()
 
             if not (config_saved or persistent_saved):
                 logger.error("❌ 发送时间保存失败")
 
-        except Exception as e:
-            logger.error(f"记录发送时间失败: {e}")
+        except KeyError as e:
+            logger.error(f"配置键错误: {e}")
+        except ValueError as e:
+            logger.error(f"参数值错误: {e}")
+        except AttributeError as e:
+            logger.error(f"对象属性错误: {e}")
 
     async def stop_proactive_task(self):
         """停止定时主动发送任务"""
-        if self.proactive_task and not self.proactive_task.cancelled():
-            logger.info("正在停止定时主动发送任务...")
-            self.proactive_task.cancel()
-            try:
-                await self.proactive_task
-            except asyncio.CancelledError:
-                logger.info("定时主动发送任务已停止")
-            except Exception as e:
-                logger.error(f"停止定时任务时发生错误: {e}")
+        if not self.proactive_task or self.proactive_task.cancelled():
+            logger.debug("定时任务已停止或不存在")
+            return
+
+        logger.info("正在停止定时主动发送任务...")
+        self.proactive_task.cancel()
+
+        try:
+            await asyncio.wait_for(self.proactive_task, timeout=5.0)
+        except asyncio.CancelledError:
+            logger.info("定时主动发送任务已停止")
+        except asyncio.TimeoutError:
+            logger.warning("停止定时任务超时，任务可能仍在运行")
+        except RuntimeError as e:
+            logger.error(f"任务运行时错误: {e}")
+        finally:
             self.proactive_task = None
 
     async def force_stop_all_tasks(self):
@@ -1532,8 +1611,10 @@ class ProactiveReplyPlugin(Star):
                             await task
                         except asyncio.CancelledError:
                             pass
-                        except Exception as e:
-                            logger.error(f"停止旧定时任务时发生错误: {e}")
+                        except asyncio.TimeoutError:
+                            logger.warning("停止旧定时任务超时")
+                        except RuntimeError as e:
+                            logger.error(f"停止旧定时任务运行时错误: {e}")
 
         # 重置终止标志
         self._is_terminating = False
@@ -1557,8 +1638,12 @@ class ProactiveReplyPlugin(Star):
                 logger.error("定时任务启动后立即结束，可能有错误")
                 try:
                     await self.proactive_task
-                except Exception as e:
-                    logger.error(f"定时任务错误: {e}")
+                except asyncio.CancelledError:
+                    logger.info("定时任务被取消")
+                except RuntimeError as e:
+                    logger.error(f"定时任务运行时错误: {e}")
+                except ValueError as e:
+                    logger.error(f"定时任务参数错误: {e}")
         else:
             logger.info("定时主动发送功能未启用")
 
@@ -1607,8 +1692,12 @@ class ProactiveReplyPlugin(Star):
                 persona_info = f"默认人格: {default_persona['name']}"
             else:
                 persona_info = "无默认人格"
-        except Exception as e:
-            persona_info = f"获取失败: {str(e)}"
+        except AttributeError as e:
+            persona_info = f"人格对象属性错误: {str(e)}"
+        except KeyError as e:
+            persona_info = f"人格配置键不存在: {str(e)}"
+        except TypeError as e:
+            persona_info = f"人格数据类型错误: {str(e)}"
 
         # 检查历史记录功能状态
         history_enabled = proactive_config.get("include_history_enabled", False)
@@ -1672,15 +1761,12 @@ class ProactiveReplyPlugin(Star):
             self.config["proactive_reply"] = {}
 
         self.config["proactive_reply"]["sessions"] = sessions
-        try:
-            self.config.save_config()
+        if self._save_config_safely():
             yield event.plain_result(
                 f"✅ 已将当前会话添加到定时发送列表\n会话ID：{current_session}"
             )
-
-        except Exception as e:
-            yield event.plain_result(f"❌ 保存配置失败：{str(e)}")
-            logger.error(f"保存配置失败: {e}")
+        else:
+            yield event.plain_result("❌ 保存配置失败，请检查文件权限或联系管理员")
 
     @proactive_group.command("remove_session")
     async def remove_session(self, event: AstrMessageEvent):
@@ -1702,13 +1788,10 @@ class ProactiveReplyPlugin(Star):
             self.config["proactive_reply"] = {}
 
         self.config["proactive_reply"]["sessions"] = sessions
-        try:
-            self.config.save_config()
+        if self._save_config_safely():
             yield event.plain_result("✅ 已将当前会话从定时发送列表中移除")
-
-        except Exception as e:
-            yield event.plain_result(f"❌ 保存配置失败：{str(e)}")
-            logger.error(f"保存配置失败: {e}")
+        else:
+            yield event.plain_result("❌ 保存配置失败，请检查文件权限或联系管理员")
 
     @proactive_group.command("test")
     async def test_proactive(self, event: AstrMessageEvent, test_type: str = "basic"):
@@ -1771,9 +1854,18 @@ class ProactiveReplyPlugin(Star):
             await self.send_proactive_message(current_session)
             yield event.plain_result("✅ 测试消息发送成功")
 
-        except Exception as e:
-            yield event.plain_result(f"❌ 测试消息发送失败：{str(e)}")
-            logger.error(f"用户 {event.get_sender_name()} 测试主动消息发送失败: {e}")
+        except ConnectionError as e:
+            yield event.plain_result(f"❌ 网络连接错误：{str(e)}")
+            logger.error(f"测试消息发送网络错误: {e}")
+        except TimeoutError as e:
+            yield event.plain_result(f"❌ 请求超时：{str(e)}")
+            logger.error(f"测试消息发送超时: {e}")
+        except ValueError as e:
+            yield event.plain_result(f"❌ 参数错误：{str(e)}")
+            logger.error(f"测试消息发送参数错误: {e}")
+        except AttributeError as e:
+            yield event.plain_result(f"❌ 对象属性错误：{str(e)}")
+            logger.error(f"测试消息发送属性错误: {e}")
 
     async def _test_llm(self, event: AstrMessageEvent):
         """测试LLM请求"""
@@ -1785,9 +1877,18 @@ class ProactiveReplyPlugin(Star):
                 system_prompt="",  # 让插件自动添加用户信息
             )
 
-        except Exception as e:
-            yield event.plain_result(f"❌ 测试LLM请求失败：{str(e)}")
-            logger.error(f"测试LLM请求失败: {e}")
+        except ConnectionError as e:
+            yield event.plain_result(f"❌ LLM连接错误：{str(e)}")
+            logger.error(f"测试LLM连接错误: {e}")
+        except TimeoutError as e:
+            yield event.plain_result(f"❌ LLM请求超时：{str(e)}")
+            logger.error(f"测试LLM请求超时: {e}")
+        except ValueError as e:
+            yield event.plain_result(f"❌ LLM参数错误：{str(e)}")
+            logger.error(f"测试LLM参数错误: {e}")
+        except AttributeError as e:
+            yield event.plain_result(f"❌ LLM对象属性错误：{str(e)}")
+            logger.error(f"测试LLM属性错误: {e}")
 
     async def _test_generation(self, event: AstrMessageEvent):
         """测试LLM生成主动消息功能"""
@@ -2181,9 +2282,15 @@ class ProactiveReplyPlugin(Star):
 
             yield event.plain_result(result_text)
 
-        except Exception as e:
-            yield event.plain_result(f"❌ 重启任务失败：{str(e)}")
-            logger.error(f"重启定时任务失败: {e}")
+        except asyncio.CancelledError:
+            yield event.plain_result("❌ 重启任务被取消")
+            logger.warning("重启定时任务被取消")
+        except RuntimeError as e:
+            yield event.plain_result(f"❌ 重启任务运行时错误：{str(e)}")
+            logger.error(f"重启定时任务运行时错误: {e}")
+        except AttributeError as e:
+            yield event.plain_result(f"❌ 重启任务对象属性错误：{str(e)}")
+            logger.error(f"重启定时任务属性错误: {e}")
 
     async def _debug_basic(self, event: AstrMessageEvent):
         """基础调试用户信息"""
@@ -2212,7 +2319,11 @@ class ProactiveReplyPlugin(Star):
                 ).strftime(time_format)
             else:
                 current_time = datetime.datetime.now().strftime(time_format)
-        except Exception:
+        except ValueError as e:
+            logger.warning(f"时间格式错误: {e}")
+            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        except TypeError as e:
+            logger.warning(f"时间参数类型错误: {e}")
             current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         # 获取平台信息
@@ -2231,7 +2342,8 @@ class ProactiveReplyPlugin(Star):
                 platform=platform_name,
                 chat_type=message_type,
             )
-        except Exception:
+        except (KeyError, ValueError, TypeError) as e:
+            logger.warning(f"用户信息模板格式化错误: {e}")
             user_info = f"[对话信息] 用户：{username}，时间：{current_time}"
 
         # 获取实际的发送者ID用于调试
@@ -2349,9 +2461,18 @@ AI发送时间记录数: {len(ai_last_sent_times)}
             else:
                 yield event.plain_result("❌ LLM生成失败")
 
-        except Exception as e:
-            yield event.plain_result(f"❌ 调试LLM发送功能失败：{str(e)}")
-            logger.error(f"调试LLM发送功能失败: {e}")
+        except ConnectionError as e:
+            yield event.plain_result(f"❌ LLM连接错误：{str(e)}")
+            logger.error(f"调试LLM连接错误: {e}")
+        except TimeoutError as e:
+            yield event.plain_result(f"❌ LLM请求超时：{str(e)}")
+            logger.error(f"调试LLM请求超时: {e}")
+        except AttributeError as e:
+            yield event.plain_result(f"❌ LLM对象属性错误：{str(e)}")
+            logger.error(f"调试LLM属性错误: {e}")
+        except ValueError as e:
+            yield event.plain_result(f"❌ LLM参数错误：{str(e)}")
+            logger.error(f"调试LLM参数错误: {e}")
 
     @proactive_group.command("show")
     async def show_info(self, event: AstrMessageEvent, show_type: str = "prompt"):
@@ -2610,9 +2731,15 @@ AI发送时间记录数: {len(ai_last_sent_times)}
             await self.force_stop_all_tasks()
             yield event.plain_result("✅ 已强制停止所有相关任务")
 
-        except Exception as e:
-            yield event.plain_result(f"❌ 强制停止任务失败：{str(e)}")
-            logger.error(f"强制停止任务失败: {e}")
+        except asyncio.CancelledError:
+            yield event.plain_result("❌ 强制停止任务被取消")
+            logger.warning("强制停止任务被取消")
+        except RuntimeError as e:
+            yield event.plain_result(f"❌ 强制停止任务运行时错误：{str(e)}")
+            logger.error(f"强制停止任务运行时错误: {e}")
+        except AttributeError as e:
+            yield event.plain_result(f"❌ 强制停止任务对象属性错误：{str(e)}")
+            logger.error(f"强制停止任务属性错误: {e}")
 
     async def _manage_force_start(self, event: AstrMessageEvent):
         """强制启动定时任务"""
@@ -2625,9 +2752,15 @@ AI发送时间记录数: {len(ai_last_sent_times)}
 
             yield event.plain_result("✅ 已强制启动定时任务（忽略配置状态）")
 
-        except Exception as e:
-            yield event.plain_result(f"❌ 强制启动任务失败：{str(e)}")
-            logger.error(f"强制启动任务失败: {e}")
+        except asyncio.CancelledError:
+            yield event.plain_result("❌ 强制启动任务被取消")
+            logger.warning("强制启动任务被取消")
+        except RuntimeError as e:
+            yield event.plain_result(f"❌ 强制启动任务运行时错误：{str(e)}")
+            logger.error(f"强制启动任务运行时错误: {e}")
+        except AttributeError as e:
+            yield event.plain_result(f"❌ 强制启动任务对象属性错误：{str(e)}")
+            logger.error(f"强制启动任务属性错误: {e}")
 
     async def _manage_save_config(self, event: AstrMessageEvent):
         """强制保存配置文件"""
@@ -2638,20 +2771,32 @@ AI发送时间记录数: {len(ai_last_sent_times)}
                 yield event.plain_result("✅ 配置文件保存成功")
 
                 return
-            except Exception as e:
-                yield event.plain_result(f"⚠️ 正常保存失败，尝试其他方法: {str(e)}")
+            except PermissionError as e:
+                yield event.plain_result(f"⚠️ 权限不足，尝试其他方法: {str(e)}")
+            except OSError as e:
+                yield event.plain_result(f"⚠️ 文件系统错误，尝试其他方法: {str(e)}")
+            except AttributeError as e:
+                yield event.plain_result(
+                    f"⚠️ 配置对象方法不存在，尝试其他方法: {str(e)}"
+                )
 
             # 尝试其他保存方法
-            if hasattr(self.config, "_save"):
-                self.config._save()
-                yield event.plain_result("✅ 使用备用方法保存配置成功")
-                return
+            try:
+                if hasattr(self.config, "_save"):
+                    self.config._save()
+                    yield event.plain_result("✅ 使用备用方法保存配置成功")
+                    return
+            except (PermissionError, OSError, AttributeError) as e:
+                yield event.plain_result(f"⚠️ 备用方法也失败: {str(e)}")
 
             yield event.plain_result("❌ 所有保存方法都失败了，请检查配置文件权限")
 
-        except Exception as e:
-            yield event.plain_result(f"❌ 强制保存配置失败：{str(e)}")
-            logger.error(f"强制保存配置失败: {e}")
+        except AttributeError as e:
+            yield event.plain_result(f"❌ 配置对象属性错误：{str(e)}")
+            logger.error(f"强制保存配置属性错误: {e}")
+        except TypeError as e:
+            yield event.plain_result(f"❌ 配置数据类型错误：{str(e)}")
+            logger.error(f"强制保存配置类型错误: {e}")
 
     def get_base_system_prompt(self):
         """获取基础系统提示词（人格提示词）"""
@@ -2698,14 +2843,20 @@ AI发送时间记录数: {len(ai_last_sent_times)}
 
             return base_system_prompt
 
-        except Exception as e:
-            logger.warning(f"获取基础系统提示词失败: {e}")
+        except AttributeError as e:
+            logger.warning(f"获取人格对象属性失败: {e}")
             # 返回插件默认人格
             proactive_config = self.config.get("proactive_reply", {})
             default_persona = proactive_config.get(
                 "proactive_default_persona", "你是一个友好、轻松的AI助手。"
             )
             return self._ensure_string_encoding(default_persona)
+        except KeyError as e:
+            logger.warning(f"人格配置键不存在: {e}")
+            return self._ensure_string_encoding("你是一个友好、轻松的AI助手。")
+        except TypeError as e:
+            logger.warning(f"人格数据类型错误: {e}")
+            return self._ensure_string_encoding("你是一个友好、轻松的AI助手。")
 
     @proactive_group.command("config")
     async def show_config(self, event: AstrMessageEvent):
@@ -2795,6 +2946,73 @@ AI发送时间记录数: {len(ai_last_sent_times)}
 🔗 项目地址：
 https://github.com/AstraSolis/astrbot_proactive_reply"""
         yield event.plain_result(help_text)
+
+    def _validate_persistent_data(self, data: dict) -> bool:
+        """验证持久化数据结构"""
+        required_keys = ["session_user_info", "ai_last_sent_times", "last_sent_times"]
+
+        for key in required_keys:
+            if key not in data:
+                logger.error(f"持久化数据缺少必需键: {key}")
+                return False
+            if not isinstance(data[key], dict):
+                logger.error(f"持久化数据键 {key} 不是字典类型")
+                return False
+
+        return True
+
+    def _backup_corrupted_file(self, file_path: str):
+        """备份损坏的文件"""
+        try:
+            backup_path = f"{file_path}.corrupted.{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            os.rename(file_path, backup_path)
+            logger.info(f"损坏文件已备份到: {backup_path}")
+        except OSError as e:
+            logger.error(f"备份损坏文件失败: {e}")
+
+    def _save_config_safely(self) -> bool:
+        """安全的配置保存方法"""
+        try:
+            self.config.save_config()
+            return True
+        except PermissionError as e:
+            logger.error(f"配置文件权限不足: {e}")
+            return False
+        except OSError as e:
+            logger.error(f"配置文件系统错误: {e}")
+            return False
+        except AttributeError as e:
+            logger.error(f"配置对象方法不存在: {e}")
+            return False
+
+    def _verify_database_schema(self, cursor) -> bool:
+        """验证数据库表结构"""
+        try:
+            import sqlite3
+
+            # 检查表是否存在
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='webchat_conversation'"
+            )
+            if not cursor.fetchone():
+                logger.error("❌ webchat_conversation 表不存在")
+                return False
+
+            # 检查必需字段
+            cursor.execute("PRAGMA table_info(webchat_conversation)")
+            columns = [column[1] for column in cursor.fetchall()]
+            required_columns = ["history", "updated_at", "cid"]
+
+            missing_columns = [col for col in required_columns if col not in columns]
+            if missing_columns:
+                logger.error(f"❌ 数据库表缺少必需字段: {missing_columns}")
+                return False
+
+            return True
+
+        except sqlite3.OperationalError as e:
+            logger.error(f"数据库结构检查失败: {e}")
+            return False
 
     async def terminate(self):
         """插件终止时的清理工作"""
