@@ -18,6 +18,14 @@
   - 消除多处重复的配置获取代码
   - 统一配置访问模式，提高代码一致性
 
+- **规范化数据持久化路径处理**：
+  - 新增 `_get_plugin_data_dir()` 方法，使用标准的插件数据目录
+  - 数据存储路径从推断配置路径改为 `data/plugins/astrbot_proactive_reply/`
+  - 移除硬编码的 `/tmp` 回退路径，提供跨平台兼容的解决方案
+  - 添加 `_migrate_old_persistent_data()` 方法，自动迁移现有数据
+  - 持久化文件重命名为 `persistent_data.json`，添加版本标识
+  - 确保数据与其他插件和系统文件隔离，提高安全性
+
 - **函数拆分详情**：
   - `_should_terminate()` - 检查是否应该终止任务
   - `_is_proactive_enabled()` - 检查主动回复功能是否启用

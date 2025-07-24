@@ -43,31 +43,60 @@ class ProactiveReplyPlugin(Star):
         except Exception as e:
             logger.error(f"❌ 验证配置加载状态失败: {e}")
 
+    def _get_plugin_data_dir(self):
+        """获取插件专用的数据目录路径"""
+        try:
+            import os
+
+            # 尝试从AstrBot配置中获取数据目录
+            try:
+                astrbot_config = self.context.get_config()
+                # 检查配置中是否有数据目录设置
+                if hasattr(astrbot_config, 'data_dir') and astrbot_config.data_dir:
+                    base_data_dir = astrbot_config.data_dir
+                elif hasattr(astrbot_config, '_data_dir') and astrbot_config._data_dir:
+                    base_data_dir = astrbot_config._data_dir
+                else:
+                    # 如果配置中没有数据目录，使用默认的data目录
+                    base_data_dir = os.path.join(os.getcwd(), "data")
+            except Exception as e:
+                logger.warning(f"⚠️ 无法从AstrBot配置获取数据目录: {e}")
+                # 使用默认的data目录
+                base_data_dir = os.path.join(os.getcwd(), "data")
+
+            # 创建插件专用的数据子目录
+            plugin_data_dir = os.path.join(base_data_dir, "plugins", "astrbot_proactive_reply")
+
+            # 确保目录存在
+            os.makedirs(plugin_data_dir, exist_ok=True)
+
+            logger.info(f"✅ 插件数据目录: {plugin_data_dir}")
+            return plugin_data_dir
+
+        except Exception as e:
+            logger.error(f"❌ 获取插件数据目录失败: {e}")
+            # 最后的回退方案：使用当前工作目录下的data目录
+            fallback_dir = os.path.join(os.getcwd(), "data", "plugins", "astrbot_proactive_reply")
+            try:
+                os.makedirs(fallback_dir, exist_ok=True)
+                logger.warning(f"⚠️ 使用回退数据目录: {fallback_dir}")
+                return fallback_dir
+            except Exception as fallback_error:
+                logger.error(f"❌ 创建回退数据目录失败: {fallback_error}")
+                # 最终回退到当前目录
+                return os.getcwd()
+
     def _load_persistent_data(self):
         """从独立的持久化文件加载用户数据"""
         try:
             import os
             import json
 
-            # 使用独立的数据文件，避免被配置重置影响
-            config_path = None
-            for attr in ["_config_path", "config_path", "_path", "path"]:
-                if hasattr(self.config, attr):
-                    config_path = getattr(self.config, attr)
-                    if config_path:
-                        break
+            # 使用标准的插件数据目录
+            plugin_data_dir = self._get_plugin_data_dir()
+            persistent_file = os.path.join(plugin_data_dir, "persistent_data.json")
 
-            if config_path:
-                data_dir = os.path.dirname(config_path)
-            else:
-                # 如果无法获取配置路径，使用临时目录
-                data_dir = "/tmp"
-                logger.warning("⚠️ 无法获取配置路径，使用临时目录保存持久化数据")
-
-            persistent_file = os.path.join(
-                data_dir, "astrbot_proactive_reply_persistent.json"
-            )
-
+            # 尝试加载新的持久化文件
             if os.path.exists(persistent_file):
                 for encoding in ["utf-8-sig", "utf-8", "gbk"]:
                     try:
@@ -88,17 +117,85 @@ class ProactiveReplyPlugin(Star):
                                     key
                                 ]
 
-                        logger.info("✅ 从持久化文件加载数据成功")
+                        logger.info("✅ 从新的持久化文件加载数据成功")
                         return
                     except (UnicodeDecodeError, json.JSONDecodeError):
                         continue
 
-                logger.warning("⚠️ 无法读取持久化文件")
-            else:
-                pass  # 持久化文件不存在，将在首次保存时创建
+                logger.warning("⚠️ 无法读取新的持久化文件")
+
+            # 尝试从旧的持久化文件迁移数据（向后兼容）
+            self._migrate_old_persistent_data(plugin_data_dir)
 
         except Exception as e:
             logger.error(f"❌ 加载持久化数据失败: {e}")
+
+    def _migrate_old_persistent_data(self, new_data_dir):
+        """迁移旧的持久化数据到新的数据目录（向后兼容）"""
+        try:
+            import os
+            import json
+            import shutil
+
+            # 尝试找到旧的持久化文件
+            old_locations = []
+
+            # 尝试从配置路径推断旧位置
+            config_path = None
+            for attr in ["_config_path", "config_path", "_path", "path"]:
+                if hasattr(self.config, attr):
+                    config_path = getattr(self.config, attr)
+                    if config_path:
+                        old_dir = os.path.dirname(config_path)
+                        old_locations.append(os.path.join(old_dir, "astrbot_proactive_reply_persistent.json"))
+                        break
+
+            # 添加其他可能的旧位置
+            old_locations.extend([
+                os.path.join(os.getcwd(), "astrbot_proactive_reply_persistent.json"),
+                os.path.join("/tmp", "astrbot_proactive_reply_persistent.json") if os.name != 'nt' else None,
+            ])
+
+            # 过滤掉None值
+            old_locations = [loc for loc in old_locations if loc is not None]
+
+            for old_file in old_locations:
+                if os.path.exists(old_file):
+                    try:
+                        # 读取旧文件
+                        with open(old_file, "r", encoding="utf-8") as f:
+                            old_data = json.load(f)
+
+                        # 保存到新位置
+                        new_file = os.path.join(new_data_dir, "persistent_data.json")
+                        with open(new_file, "w", encoding="utf-8") as f:
+                            json.dump(old_data, f, ensure_ascii=False, indent=2)
+
+                        # 将数据合并到配置中
+                        if "proactive_reply" not in self.config:
+                            self.config["proactive_reply"] = {}
+
+                        for key in ["session_user_info", "ai_last_sent_times", "last_sent_times"]:
+                            if key in old_data:
+                                self.config["proactive_reply"][key] = old_data[key]
+
+                        logger.info(f"✅ 成功迁移旧的持久化数据: {old_file} -> {new_file}")
+
+                        # 备份旧文件而不是删除
+                        backup_file = old_file + ".backup"
+                        shutil.move(old_file, backup_file)
+                        logger.info(f"✅ 旧文件已备份到: {backup_file}")
+
+                        return
+
+                    except Exception as e:
+                        logger.warning(f"⚠️ 迁移旧持久化文件失败 {old_file}: {e}")
+                        continue
+
+            logger.info("ℹ️ 未找到旧的持久化文件，将创建新的数据文件")
+
+        except Exception as e:
+            logger.error(f"❌ 迁移旧持久化数据失败: {e}")
 
     def _save_persistent_data(self):
         """保存用户数据到独立的持久化文件"""
@@ -106,24 +203,9 @@ class ProactiveReplyPlugin(Star):
             import os
             import json
 
-            # 使用独立的数据文件
-            config_path = None
-            for attr in ["_config_path", "config_path", "_path", "path"]:
-                if hasattr(self.config, attr):
-                    config_path = getattr(self.config, attr)
-                    if config_path:
-                        break
-
-            if config_path:
-                data_dir = os.path.dirname(config_path)
-            else:
-                # 如果无法获取配置路径，使用临时目录
-                data_dir = "/tmp"
-                logger.warning("⚠️ 无法获取配置路径，使用临时目录保存持久化数据")
-
-            persistent_file = os.path.join(
-                data_dir, "astrbot_proactive_reply_persistent.json"
-            )
+            # 使用标准的插件数据目录
+            plugin_data_dir = self._get_plugin_data_dir()
+            persistent_file = os.path.join(plugin_data_dir, "persistent_data.json")
 
             # 准备要保存的数据
             proactive_config = self.config.get("proactive_reply", {})
@@ -132,12 +214,14 @@ class ProactiveReplyPlugin(Star):
                 "ai_last_sent_times": proactive_config.get("ai_last_sent_times", {}),
                 "last_sent_times": proactive_config.get("last_sent_times", {}),
                 "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "data_version": "2.0",  # 添加版本标识
             }
 
-            # 保存到独立文件
+            # 保存到标准数据目录
             with open(persistent_file, "w", encoding="utf-8") as f:
                 json.dump(persistent_data, f, ensure_ascii=False, indent=2)
 
+            logger.debug(f"✅ 持久化数据已保存到: {persistent_file}")
             return True
 
         except Exception as e:
