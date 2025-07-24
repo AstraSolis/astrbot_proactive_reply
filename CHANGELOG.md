@@ -7,10 +7,27 @@
 
 ## [v1.0.1] - 2025-07-24
 
+### 重大架构改进
+- **解决数据库耦合问题**：重构对话历史保存机制
+  - **问题**：原始实现直接使用硬编码SQL语句操作数据库，与特定表结构紧密耦合
+  - **解决方案**：实现框架抽象接口优先的多层保存机制
+    - 第一层：使用 AstrBot 框架的 `conversation_manager.update_conversation` 标准接口
+    - 第二层：改进的数据库直接操作（包含完整兼容性检查）
+    - 第三层：备份文件保存（确保数据不丢失）
+  - **技术突破**：通过方法签名分析确定正确的框架接口调用格式
+  - **效果**：完全解耦数据库依赖，提高插件健壮性和兼容性
+
+- **框架接口集成**：深度集成 AstrBot 框架标准接口
+  - 发现并正确使用 `update_conversation(unified_msg_origin, conversation_id, history)` 方法
+  - 实现正确的数据格式转换（JSON字符串 → List[Dict]）
+  - 添加完整的错误处理和回退机制
+  - 确保与框架更新的向前兼容性
+
 ### 代码质量优化
 - **重构核心函数**：大幅提升代码可读性和可维护性
   - 将 `proactive_message_loop` 函数从120多行重构为52行主函数 + 6个职责单一的辅助函数
   - 拆分 `generate_proactive_message_with_llm` 函数为45行主函数 + 4个辅助函数
+  - 重构 `add_message_to_conversation_history` 方法，实现多层保存机制
   - 每个函数职责明确，符合单一职责原则
 
 - **减少重复代码**：提高代码复用性
@@ -37,6 +54,9 @@
   - `_get_proactive_prompt()` - 获取并处理主动对话提示词
   - `_get_persona_system_prompt()` - 获取人格系统提示词
   - `_build_combined_system_prompt()` - 构建组合系统提示词
+  - `_save_conversation_safely()` - 安全保存对话（框架接口优先）
+  - `_fallback_database_save()` - 数据库回退保存（包含兼容性检查）
+  - `_backup_conversation_history()` - 备份对话历史到文件
 
 ## [v1.0.0] - 2025-07-23
 

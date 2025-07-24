@@ -140,6 +140,13 @@
                 "default": {},
                 "invisible": true,
                 "items": {}
+            },
+            "use_database_fallback": {
+                "description": "数据库回退方案状态（信息展示）",
+                "type": "bool",
+                "default": true,
+                "hint": "ℹ️ 信息：当框架接口不可用时，插件会自动尝试使用改进的数据库回退方案（包含兼容性检查）。同时会将数据备份到文件中。这个配置项主要用于状态展示，修改它不会影响实际行为",
+                "invisible": true
             }
         }
     }

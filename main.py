@@ -52,9 +52,9 @@ class ProactiveReplyPlugin(Star):
             try:
                 astrbot_config = self.context.get_config()
                 # 检查配置中是否有数据目录设置
-                if hasattr(astrbot_config, 'data_dir') and astrbot_config.data_dir:
+                if hasattr(astrbot_config, "data_dir") and astrbot_config.data_dir:
                     base_data_dir = astrbot_config.data_dir
-                elif hasattr(astrbot_config, '_data_dir') and astrbot_config._data_dir:
+                elif hasattr(astrbot_config, "_data_dir") and astrbot_config._data_dir:
                     base_data_dir = astrbot_config._data_dir
                 else:
                     # 如果配置中没有数据目录，使用默认的data目录
@@ -65,7 +65,9 @@ class ProactiveReplyPlugin(Star):
                 base_data_dir = os.path.join(os.getcwd(), "data")
 
             # 创建插件专用的数据子目录
-            plugin_data_dir = os.path.join(base_data_dir, "plugins", "astrbot_proactive_reply")
+            plugin_data_dir = os.path.join(
+                base_data_dir, "plugins", "astrbot_proactive_reply"
+            )
 
             # 确保目录存在
             os.makedirs(plugin_data_dir, exist_ok=True)
@@ -76,7 +78,9 @@ class ProactiveReplyPlugin(Star):
         except Exception as e:
             logger.error(f"❌ 获取插件数据目录失败: {e}")
             # 最后的回退方案：使用当前工作目录下的data目录
-            fallback_dir = os.path.join(os.getcwd(), "data", "plugins", "astrbot_proactive_reply")
+            fallback_dir = os.path.join(
+                os.getcwd(), "data", "plugins", "astrbot_proactive_reply"
+            )
             try:
                 os.makedirs(fallback_dir, exist_ok=True)
                 logger.warning(f"⚠️ 使用回退数据目录: {fallback_dir}")
@@ -147,14 +151,24 @@ class ProactiveReplyPlugin(Star):
                     config_path = getattr(self.config, attr)
                     if config_path:
                         old_dir = os.path.dirname(config_path)
-                        old_locations.append(os.path.join(old_dir, "astrbot_proactive_reply_persistent.json"))
+                        old_locations.append(
+                            os.path.join(
+                                old_dir, "astrbot_proactive_reply_persistent.json"
+                            )
+                        )
                         break
 
             # 添加其他可能的旧位置
-            old_locations.extend([
-                os.path.join(os.getcwd(), "astrbot_proactive_reply_persistent.json"),
-                os.path.join("/tmp", "astrbot_proactive_reply_persistent.json") if os.name != 'nt' else None,
-            ])
+            old_locations.extend(
+                [
+                    os.path.join(
+                        os.getcwd(), "astrbot_proactive_reply_persistent.json"
+                    ),
+                    os.path.join("/tmp", "astrbot_proactive_reply_persistent.json")
+                    if os.name != "nt"
+                    else None,
+                ]
+            )
 
             # 过滤掉None值
             old_locations = [loc for loc in old_locations if loc is not None]
@@ -175,11 +189,17 @@ class ProactiveReplyPlugin(Star):
                         if "proactive_reply" not in self.config:
                             self.config["proactive_reply"] = {}
 
-                        for key in ["session_user_info", "ai_last_sent_times", "last_sent_times"]:
+                        for key in [
+                            "session_user_info",
+                            "ai_last_sent_times",
+                            "last_sent_times",
+                        ]:
                             if key in old_data:
                                 self.config["proactive_reply"][key] = old_data[key]
 
-                        logger.info(f"✅ 成功迁移旧的持久化数据: {old_file} -> {new_file}")
+                        logger.info(
+                            f"✅ 成功迁移旧的持久化数据: {old_file} -> {new_file}"
+                        )
 
                         # 备份旧文件而不是删除
                         backup_file = old_file + ".backup"
@@ -270,6 +290,7 @@ class ProactiveReplyPlugin(Star):
                 "session_user_info": {},
                 "last_sent_times": {},  # AI主动发送消息的时间（保持向后兼容）
                 "ai_last_sent_times": {},  # AI发送消息的时间（包括主动发送和回复）
+                "use_database_fallback": True,  # 数据库回退方案状态（自动启用，包含兼容性检查）
             },
         }
 
@@ -551,7 +572,9 @@ class ProactiveReplyPlugin(Star):
                 max_delay = proactive_config.get("max_random_minutes", 30)
                 random_delay = random.randint(min_delay, max_delay)
                 total_interval += random_delay
-                logger.info(f"固定间隔模式：基础间隔 {base_interval} 分钟 + 随机延迟 {random_delay} 分钟 = {total_interval} 分钟")
+                logger.info(
+                    f"固定间隔模式：基础间隔 {base_interval} 分钟 + 随机延迟 {random_delay} 分钟 = {total_interval} 分钟"
+                )
             else:
                 logger.info(f"固定间隔模式：下次发送将在 {total_interval} 分钟后")
 
@@ -619,11 +642,15 @@ class ProactiveReplyPlugin(Star):
                 # 计算下一次发送的等待时间
                 wait_interval_minutes = self._calculate_wait_interval()
 
-                logger.info(f"发送完成 {sent_count}/{len(sessions)} 条消息，等待 {wait_interval_minutes} 分钟")
+                logger.info(
+                    f"发送完成 {sent_count}/{len(sessions)} 条消息，等待 {wait_interval_minutes} 分钟"
+                )
 
                 # 分段等待并检查状态变化
                 wait_interval_seconds = wait_interval_minutes * 60
-                should_continue = await self._wait_with_status_check(wait_interval_seconds)
+                should_continue = await self._wait_with_status_check(
+                    wait_interval_seconds
+                )
 
                 if not should_continue:
                     break
@@ -719,35 +746,54 @@ class ProactiveReplyPlugin(Star):
         try:
             # 尝试获取当前会话的人格设置
             uid = session  # session 就是 unified_msg_origin
-            curr_cid = await self.context.conversation_manager.get_curr_conversation_id(uid)
+            curr_cid = await self.context.conversation_manager.get_curr_conversation_id(
+                uid
+            )
 
             # 获取默认人格设置
             default_persona_obj = self.context.provider_manager.selected_default_persona
 
             if curr_cid:
-                conversation = await self.context.conversation_manager.get_conversation(uid, curr_cid)
+                conversation = await self.context.conversation_manager.get_conversation(
+                    uid, curr_cid
+                )
 
-                if (conversation and conversation.persona_id and conversation.persona_id != "[%None]"):
+                if (
+                    conversation
+                    and conversation.persona_id
+                    and conversation.persona_id != "[%None]"
+                ):
                     # 有指定人格，尝试获取人格的系统提示词
                     personas = self.context.provider_manager.personas
                     if personas:
                         for persona in personas:
-                            if (hasattr(persona, "name") and persona.name == conversation.persona_id):
+                            if (
+                                hasattr(persona, "name")
+                                and persona.name == conversation.persona_id
+                            ):
                                 base_system_prompt = self._ensure_string_encoding(
                                     getattr(persona, "prompt", "")
                                 )
                                 break
 
             # 如果没有获取到人格提示词，尝试使用默认人格
-            if (not base_system_prompt and default_persona_obj and default_persona_obj.get("prompt")):
-                base_system_prompt = self._ensure_string_encoding(default_persona_obj["prompt"])
+            if (
+                not base_system_prompt
+                and default_persona_obj
+                and default_persona_obj.get("prompt")
+            ):
+                base_system_prompt = self._ensure_string_encoding(
+                    default_persona_obj["prompt"]
+                )
 
         except Exception as e:
             logger.warning(f"获取人格系统提示词失败: {e}")
 
         return base_system_prompt
 
-    def _build_combined_system_prompt(self, base_system_prompt: str, final_prompt: str, history_guidance: str) -> str:
+    def _build_combined_system_prompt(
+        self, base_system_prompt: str, final_prompt: str, history_guidance: str
+    ) -> str:
         """构建组合系统提示词"""
         default_persona = self._ensure_string_encoding(
             self._proactive_config.get("proactive_default_persona", "")
@@ -792,7 +838,10 @@ class ProactiveReplyPlugin(Star):
 
             # 构建历史记录引导提示词（简化版，避免与主动对话提示词冲突）
             history_guidance = ""
-            if self._proactive_config.get("include_history_enabled", False) and contexts:
+            if (
+                self._proactive_config.get("include_history_enabled", False)
+                and contexts
+            ):
                 history_guidance = "\n\n--- 上下文说明 ---\n你可以参考上述对话历史来生成更自然和连贯的回复。"
 
             # 构建组合系统提示词
@@ -814,7 +863,9 @@ class ProactiveReplyPlugin(Star):
                 generated_message = llm_response.completion_text
                 if generated_message:
                     # 确保生成的消息编码正确
-                    generated_message = self._ensure_string_encoding(generated_message.strip())
+                    generated_message = self._ensure_string_encoding(
+                        generated_message.strip()
+                    )
                     logger.info("LLM生成主动消息成功")
                     return generated_message
                 else:
@@ -827,6 +878,7 @@ class ProactiveReplyPlugin(Star):
         except Exception as e:
             logger.error(f"使用LLM生成主动消息失败: {e}")
             import traceback
+
             logger.error(f"详细错误信息: {traceback.format_exc()}")
             return None
 
@@ -1155,7 +1207,10 @@ class ProactiveReplyPlugin(Star):
             logger.error(f"详细错误信息: {traceback.format_exc()}")
 
     async def add_message_to_conversation_history(self, session: str, message: str):
-        """将AI主动发送的消息添加到对话历史记录中"""
+        """将AI主动发送的消息添加到对话历史记录中
+
+        使用框架提供的抽象接口，避免直接操作数据库
+        """
         try:
             import json
 
@@ -1198,43 +1253,211 @@ class ProactiveReplyPlugin(Star):
             # 更新对话历史
             conversation.history = json.dumps(history, ensure_ascii=False)
 
-            # 保存对话历史到数据库
-            try:
-                saved = False
-                db = self.context.get_db()
+            # 尝试使用框架提供的保存方法
+            saved = await self._save_conversation_safely(
+                conversation, curr_cid, session
+            )
 
-                if db and hasattr(db, "conn"):
-                    # 使用数据库连接直接执行SQL
-                    try:
-                        conn = db.conn
-                        cursor = conn.cursor()
+            if not saved:
+                logger.warning("⚠️ 框架接口保存失败，尝试备用方案")
 
-                        # 直接更新webchat_conversation表
-                        cursor.execute(
-                            "UPDATE webchat_conversation SET history = ?, updated_at = ? WHERE cid = ?",
-                            (
-                                conversation.history,
-                                int(datetime.datetime.now().timestamp()),
-                                curr_cid,
-                            ),
-                        )
-                        affected_rows = cursor.rowcount
-                        conn.commit()  # 提交事务
+                # 备用方案1: 尝试数据库直接操作（带兼容性检查）
+                database_saved = await self._fallback_database_save(
+                    conversation, curr_cid
+                )
 
-                        if affected_rows > 0:
-                            saved = True
+                # 备用方案2: 保存到插件自己的数据文件中
+                await self._backup_conversation_history(session, curr_cid, history)
 
-                    except Exception:
-                        pass  # 数据库连接操作失败
-
-                if not saved:
-                    logger.warning("⚠️ 无法保存对话历史到数据库")
-
-            except Exception as save_error:
-                logger.error(f"保存对话历史时发生错误: {save_error}")
+                if database_saved:
+                    logger.info("✅ 使用数据库回退方案保存成功")
+                else:
+                    logger.warning("⚠️ 数据库回退方案也失败，已保存到备份文件")
 
         except Exception as e:
             logger.error(f"将消息添加到对话历史时发生错误: {e}")
+
+    async def _save_conversation_safely(
+        self, conversation, curr_cid: str, session: str = None
+    ) -> bool:
+        """安全地保存对话，使用框架提供的接口
+
+        基于方法签名分析，正确的调用方式是：
+        update_conversation(unified_msg_origin: str, conversation_id: str, history: List[Dict])
+
+        Returns:
+            bool: 是否保存成功
+        """
+        try:
+            # 使用框架提供的 update_conversation 方法
+            if (
+                hasattr(self.context.conversation_manager, "update_conversation")
+                and session
+            ):
+                try:
+                    # 解析历史记录为列表格式（框架期望的格式）
+                    import json
+
+                    if conversation.history:
+                        history_list = json.loads(conversation.history)
+                    else:
+                        history_list = []
+
+                    # 确保是列表格式
+                    if not isinstance(history_list, list):
+                        logger.warning(f"⚠️ 历史记录不是列表格式: {type(history_list)}")
+                        return False
+
+                    # 使用正确的方法签名调用
+                    # update_conversation(unified_msg_origin: str, conversation_id: str, history: List[Dict])
+                    if asyncio.iscoroutinefunction(
+                        self.context.conversation_manager.update_conversation
+                    ):
+                        await self.context.conversation_manager.update_conversation(
+                            session, curr_cid, history_list
+                        )
+                    else:
+                        self.context.conversation_manager.update_conversation(
+                            session, curr_cid, history_list
+                        )
+
+                    logger.info(
+                        "✅ 使用 conversation_manager.update_conversation 保存成功"
+                    )
+                    return True
+
+                except json.JSONDecodeError as e:
+                    logger.error(f"❌ 解析历史记录JSON失败: {e}")
+                    return False
+                except Exception as e:
+                    logger.error(
+                        f"❌ conversation_manager.update_conversation 调用失败: {e}"
+                    )
+                    return False
+            else:
+                if not session:
+                    logger.warning("⚠️ 缺少 session 参数，无法调用框架接口")
+                else:
+                    logger.warning(
+                        "⚠️ conversation_manager.update_conversation 方法不存在"
+                    )
+                return False
+
+        except Exception as e:
+            logger.error(f"使用框架接口保存对话失败: {e}")
+            return False
+
+    async def _backup_conversation_history(
+        self, session: str, curr_cid: str, history: list
+    ):
+        """备用的对话历史保存机制
+
+        当框架接口不可用时，将对话历史保存到插件自己的数据文件中
+        """
+        try:
+            import os
+            import json
+
+            # 使用插件数据目录
+            plugin_data_dir = self._get_plugin_data_dir()
+            backup_dir = os.path.join(plugin_data_dir, "conversation_backup")
+            os.makedirs(backup_dir, exist_ok=True)
+
+            # 保存到备份文件
+            backup_file = os.path.join(backup_dir, f"{curr_cid}.json")
+            backup_data = {
+                "session": session,
+                "conversation_id": curr_cid,
+                "history": history,
+                "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "backup_reason": "framework_interface_unavailable",
+            }
+
+            with open(backup_file, "w", encoding="utf-8") as f:
+                json.dump(backup_data, f, ensure_ascii=False, indent=2)
+
+            logger.info(f"✅ 对话历史已备份到: {backup_file}")
+
+        except Exception as e:
+            logger.error(f"备份对话历史失败: {e}")
+
+    async def _fallback_database_save(self, conversation, curr_cid: str) -> bool:
+        """回退方案：直接操作数据库（仅在框架接口不可用时使用）
+
+        注意：这是一个临时解决方案，应该尽量避免使用
+        建议向 AstrBot 框架提出功能请求，添加对话保存接口
+
+        Returns:
+            bool: 是否保存成功
+        """
+        try:
+            logger.warning("⚠️ 正在使用数据库直接操作作为回退方案，这不是推荐的做法")
+
+            db = self.context.get_db()
+            if not db or not hasattr(db, "conn"):
+                logger.error("❌ 无法获取数据库连接")
+                return False
+
+            # 添加数据库结构兼容性检查
+            conn = db.conn
+            cursor = conn.cursor()
+
+            # 检查表是否存在
+            try:
+                cursor.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='webchat_conversation'"
+                )
+                if not cursor.fetchone():
+                    logger.error(
+                        "❌ webchat_conversation 表不存在，数据库结构可能已变更"
+                    )
+                    return False
+            except Exception as e:
+                logger.error(f"❌ 检查数据库表结构失败: {e}")
+                return False
+
+            # 检查字段是否存在
+            try:
+                cursor.execute("PRAGMA table_info(webchat_conversation)")
+                columns = [column[1] for column in cursor.fetchall()]
+                required_columns = ["history", "updated_at", "cid"]
+
+                for col in required_columns:
+                    if col not in columns:
+                        logger.error(f"❌ 数据库表缺少必需字段: {col}")
+                        return False
+            except Exception as e:
+                logger.error(f"❌ 检查数据库字段失败: {e}")
+                return False
+
+            # 执行更新操作
+            try:
+                cursor.execute(
+                    "UPDATE webchat_conversation SET history = ?, updated_at = ? WHERE cid = ?",
+                    (
+                        conversation.history,
+                        int(datetime.datetime.now().timestamp()),
+                        curr_cid,
+                    ),
+                )
+                affected_rows = cursor.rowcount
+                conn.commit()
+
+                if affected_rows > 0:
+                    logger.debug("✅ 数据库直接操作保存成功")
+                    return True
+                else:
+                    logger.warning("⚠️ 数据库更新未影响任何行，可能对话ID不存在")
+                    return False
+
+            except Exception as e:
+                logger.error(f"❌ 数据库更新操作失败: {e}")
+                conn.rollback()  # 回滚事务
+                return False
+
+        except Exception as e:
+            logger.error(f"❌ 数据库回退方案失败: {e}")
+            return False
 
     def record_sent_time(self, session: str):
         """记录消息发送时间"""
@@ -1519,6 +1742,9 @@ class ProactiveReplyPlugin(Star):
         elif test_type == "history":
             async for result in self._test_history(event):
                 yield result
+        elif test_type == "save":
+            async for result in self._test_save_conversation(event):
+                yield result
         else:
             available_types = [
                 "basic",
@@ -1527,6 +1753,7 @@ class ProactiveReplyPlugin(Star):
                 "prompt",
                 "placeholders",
                 "history",
+                "save",
             ]
             yield event.plain_result(f"""❌ 未知的测试类型: {test_type}
 
@@ -1759,6 +1986,173 @@ class ProactiveReplyPlugin(Star):
         except Exception as e:
             yield event.plain_result(f"❌ 测试对话历史记录功能失败：{str(e)}")
             logger.error(f"测试对话历史记录功能失败: {e}")
+
+    async def _test_save_conversation(self, event: AstrMessageEvent):
+        """测试对话保存功能 - 同时测试框架接口和数据库方法"""
+        current_session = event.unified_msg_origin
+
+        try:
+            curr_cid = await self.context.conversation_manager.get_curr_conversation_id(
+                current_session
+            )
+
+            if not curr_cid:
+                yield event.plain_result("❌ 当前会话没有对话ID，无法测试保存功能")
+                return
+
+            conversation = await self.context.conversation_manager.get_conversation(
+                current_session, curr_cid
+            )
+
+            if not conversation:
+                yield event.plain_result("❌ 无法获取对话对象")
+                return
+
+            yield event.plain_result("🔧 开始测试对话保存功能...")
+
+            # 备份原始历史
+            original_history = conversation.history
+
+            # 解析现有历史
+            import json
+
+            try:
+                if conversation.history:
+                    history = json.loads(conversation.history)
+                else:
+                    history = []
+            except (json.JSONDecodeError, TypeError):
+                history = []
+
+            # 测试1: 框架接口方法
+            yield event.plain_result("📋 测试1: 框架接口方法")
+
+            # 添加框架接口测试消息
+            framework_test_message = {
+                "role": "assistant",
+                "content": f"✅ 框架接口测试成功 {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            }
+            test_history_1 = history + [framework_test_message]
+            conversation.history = json.dumps(test_history_1, ensure_ascii=False)
+
+            # 测试框架接口保存
+            framework_saved = await self._save_conversation_safely(
+                conversation, curr_cid, current_session
+            )
+
+            if framework_saved:
+                yield event.plain_result("✅ 框架接口保存成功")
+
+                # 等待异步更新
+                import asyncio
+
+                await asyncio.sleep(0.1)
+
+                # 验证框架接口保存
+                updated_conversation = (
+                    await self.context.conversation_manager.get_conversation(
+                        current_session, curr_cid
+                    )
+                )
+                if updated_conversation:
+                    try:
+                        updated_history = (
+                            json.loads(updated_conversation.history)
+                            if updated_conversation.history
+                            else []
+                        )
+                        framework_test_found = any(
+                            "框架接口测试成功" in msg.get("content", "")
+                            for msg in updated_history
+                        )
+                        if framework_test_found:
+                            yield event.plain_result(
+                                "✅ 框架接口验证成功：测试消息已保存"
+                            )
+                        else:
+                            yield event.plain_result("⚠️ 框架接口验证：未找到测试消息")
+                    except Exception as e:
+                        yield event.plain_result(f"⚠️ 框架接口验证异常：{str(e)}")
+            else:
+                yield event.plain_result("❌ 框架接口保存失败")
+
+            # 测试2: 数据库直接操作方法
+            yield event.plain_result("📋 测试2: 数据库直接操作方法")
+
+            # 获取当前最新的历史记录
+            current_conversation = (
+                await self.context.conversation_manager.get_conversation(
+                    current_session, curr_cid
+                )
+            )
+            if current_conversation and current_conversation.history:
+                try:
+                    current_history = json.loads(current_conversation.history)
+                except (json.JSONDecodeError, TypeError):
+                    current_history = history
+            else:
+                current_history = history
+
+            # 添加数据库测试消息
+            database_test_message = {
+                "role": "assistant",
+                "content": f"✅ 数据库操作测试成功 {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            }
+            test_history_2 = current_history + [database_test_message]
+            current_conversation.history = json.dumps(
+                test_history_2, ensure_ascii=False
+            )
+
+            # 测试数据库直接操作保存
+            database_saved = await self._fallback_database_save(
+                current_conversation, curr_cid
+            )
+
+            if database_saved:
+                yield event.plain_result("✅ 数据库操作保存成功")
+
+                # 验证数据库操作保存
+                final_conversation = (
+                    await self.context.conversation_manager.get_conversation(
+                        current_session, curr_cid
+                    )
+                )
+                if final_conversation:
+                    try:
+                        final_history = (
+                            json.loads(final_conversation.history)
+                            if final_conversation.history
+                            else []
+                        )
+                        database_test_found = any(
+                            "数据库操作测试成功" in msg.get("content", "")
+                            for msg in final_history
+                        )
+                        if database_test_found:
+                            yield event.plain_result(
+                                "✅ 数据库操作验证成功：测试消息已保存"
+                            )
+                        else:
+                            yield event.plain_result("⚠️ 数据库操作验证：未找到测试消息")
+                    except Exception as e:
+                        yield event.plain_result(f"⚠️ 数据库操作验证异常：{str(e)}")
+            else:
+                yield event.plain_result("❌ 数据库操作保存失败")
+
+            # 总结测试结果
+            yield event.plain_result("📊 测试总结：")
+            if framework_saved and database_saved:
+                yield event.plain_result("🎉 两种保存方法都正常工作！")
+            elif framework_saved:
+                yield event.plain_result("✅ 框架接口正常，数据库方法需要检查")
+            elif database_saved:
+                yield event.plain_result("✅ 数据库方法正常，框架接口需要检查")
+            else:
+                yield event.plain_result("❌ 两种方法都存在问题，需要进一步调试")
+
+        except Exception as e:
+            yield event.plain_result(f"❌ 测试保存功能失败：{str(e)}")
+            logger.error(f"测试保存功能失败: {e}")
 
     @proactive_group.command("restart")
     async def restart_task(self, event: AstrMessageEvent):
@@ -2355,6 +2749,7 @@ AI发送时间记录数: {len(ai_last_sent_times)}
     • test prompt - 测试系统提示词构建过程
     • test placeholders - 测试占位符替换功能
     • test history - 测试对话历史记录功能
+    • test save - 测试对话保存功能（框架接口+数据库方法）
 
 
 
