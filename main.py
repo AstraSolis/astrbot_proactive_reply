@@ -357,6 +357,8 @@ class ProactiveReplyPlugin(Star):
                 "max_random_minutes": 30,
                 "random_min_minutes": 600,
                 "random_max_minutes": 1200,
+                "split_by_backslash": True,  # 是否按反斜线分割消息
+                "split_message_delay_ms": 500,  # 分割消息间的延迟(毫秒)
                 "session_user_info": {},
                 "last_sent_times": {},  # AI主动发送消息的时间（保持向后兼容）
                 "ai_last_sent_times": {},  # AI发送消息的时间（包括主动发送和回复）
@@ -883,15 +885,26 @@ class ProactiveReplyPlugin(Star):
             self._proactive_config.get("proactive_default_persona", "")
         )
 
+        # 添加时间信息使用指南
+        time_guidance = """
+
+--- 时间信息使用指南 ---
+1. 系统提示中的时间占位符(如{current_time}、{user_last_message_time}等)已被替换为准确的实际时间
+2. 生成消息时,如果不需要提及时间,就不要提及
+3. 如果确实需要提及时间,请使用模糊、相对的表述(如"最近"、"刚才"、"之前"、"一会儿"等),而不是具体的时间点
+4. 不要尝试计算、推测或编造时间,因为这可能与实际时间不符
+5. 不要说出类似"现在是XX点"这样的具体时间,除非系统提示中明确包含了当前时间信息
+"""
+
         if base_system_prompt:
-            # 有AstrBot人格：使用AstrBot人格 + 主动对话提示词 + 历史记录引导
-            combined_system_prompt = f"{base_system_prompt}\n\n--- 主动对话指令 ---\n{final_prompt}{history_guidance}"
+            # 有AstrBot人格：使用AstrBot人格 + 时间指导 + 主动对话提示词 + 历史记录引导
+            combined_system_prompt = f"{base_system_prompt}\n\n{time_guidance}\n\n--- 主动对话指令 ---\n{final_prompt}{history_guidance}"
         else:
-            # 没有AstrBot人格：使用插件默认人格 + 主动对话提示词 + 历史记录引导
+            # 没有AstrBot人格：使用插件默认人格 + 时间指导 + 主动对话提示词 + 历史记录引导
             if default_persona:
-                combined_system_prompt = f"{default_persona}\n\n--- 主动对话指令 ---\n{final_prompt}{history_guidance}"
+                combined_system_prompt = f"{default_persona}\n\n{time_guidance}\n\n--- 主动对话指令 ---\n{final_prompt}{history_guidance}"
             else:
-                combined_system_prompt = f"{final_prompt}{history_guidance}"
+                combined_system_prompt = f"{time_guidance}\n\n{final_prompt}{history_guidance}"
 
         return self._ensure_string_encoding(combined_system_prompt)
 
@@ -1260,24 +1273,91 @@ class ProactiveReplyPlugin(Star):
 
             # 确保消息的编码正确
             message = self._ensure_string_encoding(message)
+            original_message = message  # 保存原始消息用于历史记录
 
             # 使用 context.send_message 发送消息
             from astrbot.api.event import MessageChain
 
             try:
-                message_chain = MessageChain().message(message)
-                success = await self.context.send_message(session, message_chain)
-
-                if success:
-                    # 记录发送时间
-                    self.record_sent_time(session)
-
-                    # 重要：将AI主动发送的消息添加到对话历史记录中
-                    await self.add_message_to_conversation_history(session, message)
-
-                    logger.info("✅ 成功发送主动消息")
+                # 检查是否启用消息分割功能
+                proactive_config = self.config.get("proactive_reply", {})
+                split_enabled = proactive_config.get("split_by_backslash", True)
+                
+                if split_enabled:
+                    # 按反斜线分割消息
+                    message_parts = message.split('\\')
+                    # 清理空白并过滤空消息片段
+                    message_parts = [part.strip() for part in message_parts if part.strip()]
+                    
+                    if len(message_parts) > 1:
+                        # 如果消息被分割成多个片段,逐条发送
+                        logger.info(f"📨 消息包含反斜线,将分割为 {len(message_parts)} 条消息发送")
+                        
+                        # 获取延迟配置
+                        delay_ms = proactive_config.get("split_message_delay_ms", 500)
+                        delay_seconds = delay_ms / 1000.0
+                        
+                        sent_count = 0
+                        for i, part in enumerate(message_parts, 1):
+                            try:
+                                message_chain = MessageChain().message(part)
+                                success = await self.context.send_message(session, message_chain)
+                                
+                                if success:
+                                    sent_count += 1
+                                    logger.debug(f"  ✅ 已发送第 {i}/{len(message_parts)} 条消息")
+                                    
+                                    # 如果不是最后一条消息,添加延迟
+                                    if i < len(message_parts):
+                                        await asyncio.sleep(delay_seconds)
+                                else:
+                                    logger.warning(f"  ⚠️ 第 {i}/{len(message_parts)} 条消息发送失败")
+                                    
+                            except Exception as part_error:
+                                logger.error(f"  ❌ 发送第 {i}/{len(message_parts)} 条消息时出错: {part_error}")
+                        
+                        if sent_count > 0:
+                            # 至少发送成功一条消息
+                            # 记录发送时间
+                            self.record_sent_time(session)
+                            
+                            # 重要：将完整的原始消息添加到对话历史记录中(而非分割后的片段)
+                            await self.add_message_to_conversation_history(session, original_message)
+                            
+                            logger.info(f"✅ 成功发送主动消息({sent_count}/{len(message_parts)} 条)")
+                        else:
+                            logger.warning("⚠️ 所有消息片段都发送失败")
+                    else:
+                        # 消息没有被分割(没有反斜线或只有一个片段),正常发送
+                        message_chain = MessageChain().message(message)
+                        success = await self.context.send_message(session, message_chain)
+                        
+                        if success:
+                            # 记录发送时间
+                            self.record_sent_time(session)
+                            
+                            # 重要：将AI主动发送的消息添加到对话历史记录中
+                            await self.add_message_to_conversation_history(session, message)
+                            
+                            logger.info("✅ 成功发送主动消息")
+                        else:
+                            logger.warning("⚠️ 主动消息发送失败，可能是会话不存在或平台不支持")
                 else:
-                    logger.warning("⚠️ 主动消息发送失败，可能是会话不存在或平台不支持")
+                    # 未启用分割功能,直接发送完整消息
+                    message_chain = MessageChain().message(message)
+                    success = await self.context.send_message(session, message_chain)
+                    
+                    if success:
+                        # 记录发送时间
+                        self.record_sent_time(session)
+                        
+                        # 重要：将AI主动发送的消息添加到对话历史记录中
+                        await self.add_message_to_conversation_history(session, message)
+                        
+                        logger.info("✅ 成功发送主动消息")
+                    else:
+                        logger.warning("⚠️ 主动消息发送失败，可能是会话不存在或平台不支持")
+                        
             except Exception as send_error:
                 logger.error(f"❌ 发送消息时发生错误: {send_error}")
                 import traceback

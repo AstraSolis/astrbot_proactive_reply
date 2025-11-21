@@ -32,7 +32,10 @@
                 "description": "时间模式",
                 "type": "string",
                 "default": "fixed_interval",
-                "options": ["fixed_interval", "random_interval"],
+                "options": [
+                    "fixed_interval",
+                    "random_interval"
+                ],
                 "hint": "选择时间模式：fixed_interval=固定间隔（可选随机延迟），random_interval=完全随机间隔"
             },
             "interval_minutes": {
@@ -119,6 +122,18 @@
                 "type": "string",
                 "default": "9:00-22:00",
                 "hint": "只在此时间段内发送主动消息，格式：开始时间-结束时间（24小时制）"
+            },
+            "split_by_backslash": {
+                "description": "启用消息分割",
+                "type": "bool",
+                "default": true,
+                "hint": "是否按反斜线(\\)分割主动消息并逐条发送。启用后，LLM生成的消息如果包含反斜线，会被分割成多条消息依次发送，模拟更自然的对话节奏"
+            },
+            "split_message_delay_ms": {
+                "description": "分割消息延迟(毫秒)",
+                "type": "int",
+                "default": 500,
+                "hint": "分割后的消息之间的发送延迟，单位：毫秒。建议设置为300-1000ms，模拟自然的消息发送节奏"
             },
             "session_user_info": {
                 "description": "会话用户信息记录（内部数据）",
