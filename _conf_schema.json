@@ -123,11 +123,31 @@
                 "default": "9:00-22:00",
                 "hint": "只在此时间段内发送主动消息，格式：开始时间-结束时间（24小时制）"
             },
-            "split_by_backslash": {
+            "split_enabled": {
                 "description": "启用消息分割",
                 "type": "bool",
                 "default": true,
-                "hint": "是否按反斜线(\\)分割主动消息并逐条发送。启用后，LLM生成的消息如果包含反斜线，会被分割成多条消息依次发送，模拟更自然的对话节奏"
+                "hint": "是否启用消息分割功能。启用后,LLM生成的消息将按照配置的分割模式进行分割,逐条发送,模拟更自然的对话节奏"
+            },
+            "split_mode": {
+                "description": "分割模式",
+                "type": "string",
+                "default": "backslash",
+                "options": [
+                    "backslash",
+                    "newline",
+                    "comma",
+                    "semicolon",
+                    "punctuation",
+                    "custom"
+                ],
+                "hint": "消息分割模式。预设模式: backslash(反斜线\\),newline(换行符),comma(逗号),semicolon(分号),punctuation(多种标点)。选择custom可使用自定义正则表达式"
+            },
+            "custom_split_pattern": {
+                "description": "自定义分割正则表达式",
+                "type": "string",
+                "default": "",
+                "hint": "仅当分割模式为custom时使用。输入Python正则表达式,例如: \\\\(反斜线), \\n(换行), [,;](逗号或分号), [,;。!?](多种标点)。注意JSON中反斜线需要双重转义"
             },
             "split_message_delay_ms": {
                 "description": "分割消息延迟(毫秒)",

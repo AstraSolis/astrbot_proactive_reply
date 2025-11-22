@@ -7,6 +7,7 @@ import datetime
 import sqlite3
 import os
 import json
+import re
 
 
 @register(
@@ -17,6 +18,15 @@ import json
     "https://github.com/AstraSolis/astrbot_proactive_reply",
 )
 class ProactiveReplyPlugin(Star):
+    # 预设分割模式的正则表达式映射
+    SPLIT_MODE_PATTERNS = {
+        "backslash": r"\\",
+        "newline": r"\n",
+        "comma": r",",
+        "semicolon": r";",
+        "punctuation": r"[,;。!?]",
+    }
+    
     def __init__(self, context: Context, config: AstrBotConfig = None):
         super().__init__(context)
         self.config = config or {}
@@ -357,7 +367,9 @@ class ProactiveReplyPlugin(Star):
                 "max_random_minutes": 30,
                 "random_min_minutes": 600,
                 "random_max_minutes": 1200,
-                "split_by_backslash": True,  # 是否按反斜线分割消息
+                "split_enabled": True,  # 是否启用消息分割
+                "split_mode": "backslash",  # 分割模式:backslash/newline/comma/semicolon/punctuation/custom
+                "custom_split_pattern": "",  # 自定义正则表达式(仅custom模式使用)
                 "split_message_delay_ms": 500,  # 分割消息间的延迟(毫秒)
                 "session_user_info": {},
                 "last_sent_times": {},  # AI主动发送消息的时间（保持向后兼容）
@@ -426,6 +438,24 @@ class ProactiveReplyPlugin(Star):
             logger.error(f"数据值错误: {e}")
         except AttributeError as e:
             logger.error(f"对象属性错误: {e}")
+        
+        # 迁移旧的split_by_backslash配置项到新配置
+        try:
+            if "split_by_backslash" in proactive_config and "split_enabled" not in proactive_config:
+                split_value = proactive_config.get("split_by_backslash", True)
+                self.config["proactive_reply"]["split_enabled"] = split_value
+                # 默认使用反斜线模式保持向后兼容
+                if "split_mode" not in proactive_config:
+                    self.config["proactive_reply"]["split_mode"] = "backslash"
+                logger.info(f"已将 split_by_backslash 迁移到 split_enabled (值: {split_value}, 使用backslash模式)")
+                
+                # 保存配置
+                if self._save_config_safely():
+                    logger.info("分割配置迁移已保存")
+                else:
+                    logger.warning("分割配置迁移保存失败")
+        except Exception as e:
+            logger.error(f"迁移分割配置失败: {e}")
 
     async def initialize(self):
         """插件初始化方法"""
@@ -1281,67 +1311,98 @@ class ProactiveReplyPlugin(Star):
             try:
                 # 检查是否启用消息分割功能
                 proactive_config = self.config.get("proactive_reply", {})
-                split_enabled = proactive_config.get("split_by_backslash", True)
+                # 向后兼容: 优先使用新配置,回退到旧配置
+                split_enabled = proactive_config.get("split_enabled", 
+                                                     proactive_config.get("split_by_backslash", True))
                 
                 if split_enabled:
-                    # 按反斜线分割消息
-                    message_parts = message.split('\\')
-                    # 清理空白并过滤空消息片段
-                    message_parts = [part.strip() for part in message_parts if part.strip()]
+                    # 获取分割模式
+                    split_mode = proactive_config.get("split_mode", "backslash")
                     
-                    if len(message_parts) > 1:
-                        # 如果消息被分割成多个片段,逐条发送
-                        logger.info(f"📨 消息包含反斜线,将分割为 {len(message_parts)} 条消息发送")
-                        
-                        # 获取延迟配置
-                        delay_ms = proactive_config.get("split_message_delay_ms", 500)
-                        delay_seconds = delay_ms / 1000.0
-                        
-                        sent_count = 0
-                        for i, part in enumerate(message_parts, 1):
-                            try:
-                                message_chain = MessageChain().message(part)
-                                success = await self.context.send_message(session, message_chain)
-                                
-                                if success:
-                                    sent_count += 1
-                                    logger.debug(f"  ✅ 已发送第 {i}/{len(message_parts)} 条消息")
-                                    
-                                    # 如果不是最后一条消息,添加延迟
-                                    if i < len(message_parts):
-                                        await asyncio.sleep(delay_seconds)
-                                else:
-                                    logger.warning(f"  ⚠️ 第 {i}/{len(message_parts)} 条消息发送失败")
-                                    
-                            except Exception as part_error:
-                                logger.error(f"  ❌ 发送第 {i}/{len(message_parts)} 条消息时出错: {part_error}")
-                        
-                        if sent_count > 0:
-                            # 至少发送成功一条消息
-                            # 记录发送时间
-                            self.record_sent_time(session)
-                            
-                            # 重要：将完整的原始消息添加到对话历史记录中(而非分割后的片段)
-                            await self.add_message_to_conversation_history(session, original_message)
-                            
-                            logger.info(f"✅ 成功发送主动消息({sent_count}/{len(message_parts)} 条)")
-                        else:
-                            logger.warning("⚠️ 所有消息片段都发送失败")
+                    # 确定使用的正则表达式
+                    if split_mode == "custom":
+                        split_pattern = proactive_config.get("custom_split_pattern", "")
+                        if not split_pattern:
+                            logger.warning("custom模式下未配置正则表达式,使用默认backslash模式")
+                            split_pattern = self.SPLIT_MODE_PATTERNS["backslash"]
+                            split_mode = "backslash"  # 降级到backslash模式
                     else:
-                        # 消息没有被分割(没有反斜线或只有一个片段),正常发送
+                        split_pattern = self.SPLIT_MODE_PATTERNS.get(split_mode, self.SPLIT_MODE_PATTERNS["backslash"])
+                    
+                    try:
+                        # 使用正则表达式分割
+                        message_parts = re.split(split_pattern, message)
+                        # 清理空白并过滤空消息片段
+                        message_parts = [part.strip() for part in message_parts if part.strip()]
+                    
+                        if len(message_parts) > 1:
+                            # 如果消息被分割成多个片段,逐条发送
+                            mode_display = f"{split_mode}模式" if split_mode != "custom" else f"自定义模式(/{split_pattern}/)"
+                            logger.info(f"📨 使用{mode_display}分割消息,共 {len(message_parts)} 条")
+                        
+                            # 获取延迟配置
+                            delay_ms = proactive_config.get("split_message_delay_ms", 500)
+                            delay_seconds = delay_ms / 1000.0
+                            
+                            sent_count = 0
+                            for i, part in enumerate(message_parts, 1):
+                                try:
+                                    message_chain = MessageChain().message(part)
+                                    success = await self.context.send_message(session, message_chain)
+                                    
+                                    if success:
+                                        sent_count += 1
+                                        logger.debug(f"  ✅ 已发送第 {i}/{len(message_parts)} 条消息")
+                                        
+                                        # 如果不是最后一条消息,添加延迟
+                                        if i < len(message_parts):
+                                            await asyncio.sleep(delay_seconds)
+                                    else:
+                                        logger.warning(f"  ⚠️ 第 {i}/{len(message_parts)} 条消息发送失败")
+                                        
+                                except Exception as part_error:
+                                    logger.error(f"  ❌ 发送第 {i}/{len(message_parts)} 条消息时出错: {part_error}")
+                            
+                            if sent_count > 0:
+                                # 至少发送成功一条消息
+                                # 记录发送时间
+                                self.record_sent_time(session)
+                                
+                                # 重要：将完整的原始消息添加到对话历史记录中(而非分割后的片段)
+                                await self.add_message_to_conversation_history(session, original_message)
+                                
+                                logger.info(f"✅ 成功发送主动消息({sent_count}/{len(message_parts)} 条)")
+                            else:
+                                logger.warning("⚠️ 所有消息片段都发送失败")
+                        else:
+                            # 消息没有被分割(没有分隔符或只有一个片段),正常发送
+                            message_chain = MessageChain().message(message)
+                            success = await self.context.send_message(session, message_chain)
+                            
+                            if success:
+                                # 记录发送时间
+                                self.record_sent_time(session)
+                                
+                                # 重要：将AI主动发送的消息添加到对话历史记录中
+                                await self.add_message_to_conversation_history(session, message)
+                                
+                                logger.info("✅ 成功发送主动消息")
+                            else:
+                                logger.warning("⚠️ 主动消息发送失败，可能是会话不存在或平台不支持")
+                    
+                    except re.error as e:
+                        logger.error(f"❌ 正则表达式错误: {e}, 模式: {split_mode}, 表达式: {split_pattern}")
+                        logger.error("将使用原始消息,不进行分割")
+                        # 回退到不分割模式,发送完整消息
                         message_chain = MessageChain().message(message)
                         success = await self.context.send_message(session, message_chain)
                         
                         if success:
-                            # 记录发送时间
                             self.record_sent_time(session)
-                            
-                            # 重要：将AI主动发送的消息添加到对话历史记录中
                             await self.add_message_to_conversation_history(session, message)
-                            
-                            logger.info("✅ 成功发送主动消息")
+                            logger.info("✅ 成功发送主动消息(未分割)")
                         else:
-                            logger.warning("⚠️ 主动消息发送失败，可能是会话不存在或平台不支持")
+                            logger.warning("⚠️ 主动消息发送失败")
                 else:
                     # 未启用分割功能,直接发送完整消息
                     message_chain = MessageChain().message(message)
