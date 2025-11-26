@@ -42,7 +42,7 @@
 
 - **插件配置文件**：`data/config/astrbot_proactive_reply_config.json`
 - **配置模式文件**：`data/plugins/astrbot_proactive_reply/_conf_schema.json`
-- **持久化数据文件**：`data/plugins/astrbot_proactive_reply/persistent_data.json`
+- **持久化数据文件**：`data/astrbot_proactive_reply/persistent_data.json`
 
 **提示**：
 - 推荐通过 AstrBot 管理面板进行配置，会自动生成和保存配置文件
@@ -418,10 +418,8 @@
 ## 开发信息
 
 - **作者**：AstraSolis
-- **版本**：v1.0.0
 - **许可证**：[LICENSE](LICENSE)
 - **项目地址**：https://github.com/AstraSolis/astrbot_proactive_reply
-- **更新日志**：[CHANGELOG.md](CHANGELOG.md)
 
 ## 常见问题
 

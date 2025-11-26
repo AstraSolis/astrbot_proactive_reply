@@ -45,10 +45,9 @@ class PersistenceManager:
                 logger.warning(f"⚠️ AstrBot配置访问错误: {e}")
                 base_data_dir = os.path.join(os.getcwd(), "data")
 
-            # 创建插件专用的数据子目录
-            plugin_data_dir = os.path.join(
-                base_data_dir, "plugins", "astrbot_proactive_reply"
-            )
+            # 创建插件专用的数据子目录（直接在data目录下，不在plugins子目录）
+            # 这符合AstrBot规范，避免插件更新时数据被覆盖
+            plugin_data_dir = os.path.join(base_data_dir, "astrbot_proactive_reply")
 
             # 确保目录存在
             os.makedirs(plugin_data_dir, exist_ok=True)
@@ -58,9 +57,7 @@ class PersistenceManager:
 
         except OSError as e:
             logger.error(f"❌ 文件系统错误: {e}")
-            fallback_dir = os.path.join(
-                os.getcwd(), "data", "plugins", "astrbot_proactive_reply"
-            )
+            fallback_dir = os.path.join(os.getcwd(), "data", "astrbot_proactive_reply")
             try:
                 os.makedirs(fallback_dir, exist_ok=True)
                 logger.warning(f"⚠️ 使用回退数据目录: {fallback_dir}")
@@ -117,13 +114,47 @@ class PersistenceManager:
             new_data_dir: 新的数据目录路径
         """
         try:
+            # 旧的可能存在的数据文件位置
             old_locations = [
+                # 最旧的位置（根目录）
                 os.path.join(os.getcwd(), "astrbot_proactive_reply_persistent.json"),
+                # 旧的插件目录位置（之前的实现）
+                os.path.join(
+                    os.getcwd(),
+                    "data",
+                    "plugins",
+                    "astrbot_proactive_reply",
+                    "persistent_data.json",
+                ),
             ]
+
+            # 尝试从AstrBot配置获取实际的data_dir，构建完整的旧路径
+            try:
+                astrbot_config = self.context.get_config()
+                if hasattr(astrbot_config, "data_dir") and astrbot_config.data_dir:
+                    base_data_dir = astrbot_config.data_dir
+                elif hasattr(astrbot_config, "_data_dir") and astrbot_config._data_dir:
+                    base_data_dir = astrbot_config._data_dir
+                else:
+                    base_data_dir = None
+
+                if base_data_dir:
+                    old_plugin_dir_path = os.path.join(
+                        base_data_dir,
+                        "plugins",
+                        "astrbot_proactive_reply",
+                        "persistent_data.json",
+                    )
+                    if old_plugin_dir_path not in old_locations:
+                        old_locations.insert(0, old_plugin_dir_path)
+            except Exception as e:
+                logger.debug(f"获取AstrBot data_dir失败: {e}")
 
             for old_file in old_locations:
                 if os.path.exists(old_file):
                     try:
+                        logger.info(f"🔄 发现旧的持久化数据文件: {old_file}")
+
                         with open(old_file, "r", encoding="utf-8") as f:
                             old_data = json.load(f)
 
@@ -146,6 +177,7 @@ class PersistenceManager:
                             f"✅ 成功迁移旧的持久化数据: {old_file} -> {new_file}"
                         )
 
+                        # 备份旧文件
                         backup_file = old_file + ".backup"
                         shutil.move(old_file, backup_file)
                         logger.info(f"✅ 旧文件已备份到: {backup_file}")
