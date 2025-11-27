@@ -100,7 +100,7 @@ class ProactiveReplyPlugin(Star):
     async def add_user_info(self, event: AstrMessageEvent, req):
         """在LLM请求前添加用户信息和时间
 
-        自动触发，在每次LLM请求前自动添加用户相关信息
+        自动触发,在每次LLM请求前自动添加用户相关信息
         """
         await self.user_info_manager.add_user_info_to_request(event, req)
 
@@ -108,7 +108,7 @@ class ProactiveReplyPlugin(Star):
     async def record_ai_message_time(self, event: AstrMessageEvent):
         """在AI发送消息后记录发送时间
 
-        自动触发，记录AI每次发送消息的时间
+        自动触发,记录AI每次发送消息的时间
         """
         await self.user_info_manager.record_ai_message_time(event)
 
@@ -158,7 +158,7 @@ class ProactiveReplyPlugin(Star):
     # ==================== 测试命令 ====================
 
     @proactive_group.command("test")
-    async def test_proactive(self, event: AstrMessageEvent):
+    async def test_proactive(self, event: AstrMessageEvent, test_type: str = ""):
         """测试功能 - 支持多种测试类型
 
         参数:
@@ -173,13 +173,13 @@ class ProactiveReplyPlugin(Star):
         使用方法: /proactive test [类型]
         例如: /proactive test generation
         """
-        async for result in self.command_handlers.test_proactive(event):
+        async for result in self.command_handlers.test_proactive(event, test_type):
             yield result
 
     # ==================== 显示命令 ====================
 
     @proactive_group.command("show")
-    async def show_info(self, event: AstrMessageEvent):
+    async def show_info(self, event: AstrMessageEvent, show_type: str = ""):
         """显示信息 - 支持多种显示类型
 
         参数:
@@ -189,7 +189,7 @@ class ProactiveReplyPlugin(Star):
         使用方法: /proactive show [类型]
         例如: /proactive show prompt
         """
-        async for result in self.command_handlers.show_info(event):
+        async for result in self.command_handlers.show_info(event, show_type):
             yield result
 
     @proactive_group.command("config")
@@ -204,7 +204,7 @@ class ProactiveReplyPlugin(Star):
     # ==================== 管理命令 ====================
 
     @proactive_group.command("manage")
-    async def manage_functions(self, event: AstrMessageEvent):
+    async def manage_functions(self, event: AstrMessageEvent, action: str = ""):
         """管理功能 - 支持多种管理操作
 
         参数:
@@ -220,7 +220,7 @@ class ProactiveReplyPlugin(Star):
         使用方法: /proactive manage [操作]
         例如: /proactive manage clear
         """
-        async for result in self.command_handlers.manage_functions(event):
+        async for result in self.command_handlers.manage_functions(event, action):
             yield result
 
     # ==================== 通用命令 ====================

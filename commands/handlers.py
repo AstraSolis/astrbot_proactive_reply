@@ -129,7 +129,7 @@ class CommandHandlers:
 
     # ==================== 测试命令 ====================
 
-    async def test_proactive(self, event: AstrMessageEvent):
+    async def test_proactive(self, event: AstrMessageEvent, test_type: str = ""):
         """测试功能 - 支持多种测试类型
 
         可用的测试类型：
@@ -144,8 +144,6 @@ class CommandHandlers:
         使用方法: /proactive test [类型]
         例如: /proactive test generation
         """
-        message_parts = event.message_str.strip().split()
-        test_type = message_parts[2] if len(message_parts) > 2 else ""
 
         if test_type == "basic":
             async for result in self._test_basic(event):
@@ -218,60 +216,101 @@ class CommandHandlers:
             yield event.plain_result(f"❌ 测试失败: {e}")
 
     async def _test_prompt(self, event: AstrMessageEvent):
-        """测试提示词构建 - 显示完整的组合系统提示词"""
-        yield event.plain_result("⏳ 正在测试提示词构建...")
+        """测试提示词构建 - 显示完整的组合系统提示词（不调用LLM生成）"""
+        yield event.plain_result("⏳ 正在构建提示词...")
         try:
+            import random
             session_id = event.unified_msg_origin
+            proactive_config = self.config.get("proactive_reply", {})
             
-            # 1. 获取主动对话提示词
-            final_prompt = self.plugin.prompt_builder.get_proactive_prompt(
-                session_id,
-                self.plugin.user_info_manager.build_user_context_for_proactive,
-            )
-            if not final_prompt:
-                yield event.plain_result("❌ 主动对话提示词为空")
+            # 1. 获取并选择提示词
+            from ..utils.parsers import parse_prompt_list
+            prompt_list_data = proactive_config.get("proactive_prompt_list", [])
+            if not prompt_list_data:
+                yield event.plain_result("❌ 未配置主动对话提示词列表")
                 return
             
-            # 2. 获取人格系统提示词
+            prompt_list = parse_prompt_list(prompt_list_data)
+            if not prompt_list:
+                yield event.plain_result("❌ 主动对话提示词列表为空")
+                return
+            
+            # 随机选择一个提示词进行演示
+            selected_prompt = random.choice(prompt_list)
+            
+            # 2. 替换占位符
+            from ..llm.placeholder_utils import replace_placeholders
+            final_prompt = replace_placeholders(
+                selected_prompt,
+                session_id,
+                self.config,
+                self.plugin.user_info_manager.build_user_context_for_proactive,
+            )
+            
+            # 3. 获取人格系统提示词
             base_system_prompt = await self.plugin.prompt_builder.get_persona_system_prompt(
                 session_id
             )
             
-            # 3. 获取历史记录（如果启用）
+            # 4. 获取历史记录（如果启用）
+            history_enabled = proactive_config.get("include_history_enabled", False)
+            history_count = proactive_config.get("history_message_count", 10)
+            history_info = ""
+            history_context = ""
             contexts = []
-            proactive_config = self.config.get("proactive_reply", {})
             
-            if proactive_config.get("include_history_enabled", False):
-                history_count = proactive_config.get("history_message_count", 10)
-                history_count = max(1, min(50, history_count))
-                contexts = await self.plugin.conversation_manager.get_conversation_history(
-                    session_id, history_count
-                )
+            if history_enabled:
+                try:
+                    history_count = max(1, min(50, history_count))
+                    contexts = await self.plugin.conversation_manager.get_conversation_history(
+                        session_id, history_count
+                    )
+                    if contexts:
+                        history_context = "\n".join(
+                            [
+                                f"{ctx['role']}: {ctx['content'][:50]}..."
+                                for ctx in contexts[-3:]
+                            ]
+                        )
+                        history_info = f"✅ 已启用 (最近{len(contexts)}条记录)"
+                    else:
+                        history_info = "✅ 已启用 (暂无历史记录)"
+                except Exception as e:
+                    history_info = f"✅ 已启用 (获取失败: {str(e)[:50]}...)"
+            else:
+                history_info = "❌ 未启用"
             
-            # 4. 构建历史记录引导提示词
-            history_guidance = ""
-            if proactive_config.get("include_history_enabled", False) and contexts:
-                history_guidance = "\n\n--- 上下文说明 ---\n你可以参考上述对话历史来生成更自然和连贯的回复。"
-            
-            # 5. 构建完整的组合系统提示词
-            combined_system_prompt = self.plugin.prompt_builder.build_combined_system_prompt(
-                base_system_prompt, final_prompt, history_guidance
-            )
+            # 5. 构建完整的系统提示词（模拟实际生成过程）
+            combined_system_prompt = f"{base_system_prompt}\n\n--- 主动对话指令 ---\n{final_prompt}"
+            if history_enabled and history_context:
+                combined_system_prompt += f"\n\n--- 对话历史 ---\n{history_context}"
             
             # 6. 构建详细的输出信息
-            result_text = "✅ 提示词构建成功!\n\n"
-            result_text += f"📊 统计信息:\n"
-            result_text += f"- 人格提示词长度: {len(base_system_prompt)} 字符\n"
-            result_text += f"- 主动对话提示词长度: {len(final_prompt)} 字符\n"
-            result_text += f"- 历史记录条数: {len(contexts)} 条\n"
-            result_text += f"- 完整系统提示词长度: {len(combined_system_prompt)} 字符\n\n"
-            result_text += f"{'='*50}\n"
-            result_text += f"📝 完整系统提示词预览:\n"
-            result_text += f"{'='*50}\n"
-            result_text += combined_system_prompt[:1000]
-            
-            if len(combined_system_prompt) > 1000:
-                result_text += f"\n\n... (已省略 {len(combined_system_prompt) - 1000} 字符)"
+            result_text = f"""🧪 系统提示词构建测试
+
+📝 原始提示词：
+{selected_prompt}
+
+🔄 占位符替换后：
+{final_prompt}
+
+🤖 基础人格提示词：
+{base_system_prompt[:200] + "..." if len(base_system_prompt) > 200 else base_system_prompt}
+
+📚 历史记录状态：{history_info}
+{f"最近历史记录预览：{chr(10)}{history_context}" if history_context else ""}
+
+🎭 最终组合系统提示词：
+{combined_system_prompt[:400] + "..." if len(combined_system_prompt) > 400 else combined_system_prompt}
+
+📊 统计信息:
+- 可用提示词数量: {len(prompt_list)}
+- 人格提示词长度: {len(base_system_prompt)} 字符
+- 主动对话提示词长度: {len(final_prompt)} 字符
+- 历史记录长度: {len(history_context)} 字符
+- 最终系统提示词长度: {len(combined_system_prompt)} 字符
+
+💡 这就是发送给LLM的完整系统提示词和历史上下文！"""
             
             yield event.plain_result(result_text)
             
@@ -328,7 +367,7 @@ class CommandHandlers:
 
     # ==================== 显示命令 ====================
 
-    async def show_info(self, event: AstrMessageEvent):
+    async def show_info(self, event: AstrMessageEvent, show_type: str = ""):
         """显示信息 - 支持多种显示类型
 
         可用的显示类型：
@@ -338,8 +377,6 @@ class CommandHandlers:
         使用方法: /proactive show [类型]
         例如: /proactive show prompt
         """
-        message_parts = event.message_str.strip().split()
-        show_type = message_parts[2] if len(message_parts) > 2 else ""
 
         if show_type == "prompt":
             prompts = self.config.get("proactive_reply", {}).get(
@@ -370,7 +407,7 @@ class CommandHandlers:
 
     # ==================== 管理命令 ====================
 
-    async def manage_functions(self, event: AstrMessageEvent):
+    async def manage_functions(self, event: AstrMessageEvent, action: str = ""):
         """管理功能 - 支持多种管理操作
 
         基础管理操作：
@@ -388,8 +425,7 @@ class CommandHandlers:
         使用方法: /proactive manage [操作]
         例如: /proactive manage debug_info
         """
-        message_parts = event.message_str.strip().split()
-        manage_type = message_parts[2] if len(message_parts) > 2 else ""
+        manage_type = action
 
         if manage_type == "clear":
             async for result in self._manage_clear(event):
@@ -565,7 +601,76 @@ class CommandHandlers:
             yield event.plain_result(f"❌ 重启失败: {e}")
 
     async def show_config(self, event: AstrMessageEvent):
-        """显示配置"""
-        base_prompt = self.plugin.prompt_builder.get_base_system_prompt()
-        text = f"📋 当前配置:\n\n基础人格提示词:\n{base_prompt[:200]}..."
-        yield event.plain_result(text)
+        """显示完整的插件配置"""
+        try:
+            user_config = self.config.get("user_info", {})
+            proactive_config = self.config.get("proactive_reply", {})
+            
+            # 1. 用户信息配置
+            config_text = "📋 插件完整配置\n\n"
+            config_text += "=" * 50 + "\n"
+            config_text += "👤 用户信息附加配置\n"
+            config_text += "=" * 50 + "\n"
+            config_text += f"时间格式: {user_config.get('time_format', '%Y-%m-%d %H:%M:%S')}\n"
+            template = user_config.get('template', '当前对话信息：\\n用户：{username}\\n时间：{time}\\n平台：{platform}（{chat_type}）\\n\\n')
+            config_text += f"模板: {template[:100]}{'...' if len(template) > 100 else ''}\n\n"
+            
+            # 2. 主动回复功能配置
+            config_text += "=" * 50 + "\n"
+            config_text += "🤖 主动回复功能配置\n"
+            config_text += "=" * 50 + "\n"
+            config_text += f"功能状态: {'✅ 已启用' if proactive_config.get('enabled', False) else '❌ 已禁用'}\n"
+            config_text += f"定时模式: {proactive_config.get('timing_mode', 'fixed_interval')}\n"
+            config_text += f"发送间隔: {proactive_config.get('interval_minutes', 600)} 分钟\n"
+            config_text += f"活跃时间: {proactive_config.get('active_hours', '9:00-22:00')}\n"
+            config_text += f"随机延迟: {'✅ 已启用' if proactive_config.get('random_delay_enabled', False) else '❌ 未启用'}\n"
+            
+            if proactive_config.get('random_delay_enabled', False):
+                config_text += f"  - 随机延迟范围: {proactive_config.get('min_random_minutes', 0)}-{proactive_config.get('max_random_minutes', 30)} 分钟\n"
+            
+            # 3. 历史记录配置
+            config_text += f"\n对话历史记录: {'✅ 已启用' if proactive_config.get('include_history_enabled', False) else '❌ 未启用'}\n"
+            if proactive_config.get('include_history_enabled', False):
+                config_text += f"  - 历史记录条数: {proactive_config.get('history_message_count', 10)} 条\n"
+            
+            # 4. 消息分割配置
+            config_text += f"\n消息分割功能: {'✅ 已启用' if proactive_config.get('split_enabled', True) else '❌ 未启用'}\n"
+            if proactive_config.get('split_enabled', True):
+                config_text += f"  - 分割模式: {proactive_config.get('split_mode', 'backslash')}\n"
+                config_text += f"  - 分割延迟: {proactive_config.get('split_message_delay_ms', 500)} 毫秒\n"
+            
+            # 5. 会话和记录统计
+            config_text += "\n" + "=" * 50 + "\n"
+            config_text += "📊 数据统计\n"
+            config_text += "=" * 50 + "\n"
+            sessions = proactive_config.get('sessions', [])
+            config_text += f"配置的会话数: {len(sessions)}\n"
+            config_text += f"记录的用户信息: {len(proactive_config.get('session_user_info', {}))} 个\n"
+            config_text += f"AI发送时间记录: {len(proactive_config.get('ai_last_sent_times', {}))} 条\n"
+            
+            # 6. 提示词配置
+            config_text += "\n" + "=" * 50 + "\n"
+            config_text += "💬 提示词配置\n"
+            config_text += "=" * 50 + "\n"
+            
+            # 获取基础人格提示词
+            base_prompt = self.plugin.prompt_builder.get_base_system_prompt()
+            config_text += f"基础人格提示词长度: {len(base_prompt)} 字符\n"
+            config_text += f"基础人格提示词预览:\n{base_prompt[:200]}{'...' if len(base_prompt) > 200 else ''}\n\n"
+            
+            # 主动对话提示词列表
+            prompt_list = proactive_config.get('proactive_prompt_list', [])
+            config_text += f"主动对话提示词数量: {len(prompt_list)} 条\n"
+            
+            # 默认人格
+            default_persona = proactive_config.get('proactive_default_persona', '')
+            if default_persona:
+                config_text += f"\n插件默认人格长度: {len(default_persona)} 字符\n"
+            
+            config_text += "\n💡 使用 /proactive show prompt 查看所有主动对话提示词"
+            
+            yield event.plain_result(config_text)
+            
+        except Exception as e:
+            logger.error(f"显示配置失败: {e}")
+            yield event.plain_result(f"❌ 显示配置失败: {e}")
