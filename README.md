@@ -1,4 +1,4 @@
-# AstrBot 主动回复插件
+# AstrBot 主动回复插件(心念)
 
 一个支持聊天附带用户信息和定时主动发送消息的 AstrBot 插件。
 
@@ -429,7 +429,7 @@ A: 请检查配置中的"启用功能"是否为true，重启后需要重新启�
 ### Q: 为什么重启后用户信息丢失了？
 A: 插件使用双重持久化机制保存用户信息：
 1. **配置文件保存**：保存到AstrBot的配置文件中
-2. **独立持久化文件**：保存到 `data/plugins/astrbot_proactive_reply/persistent_data.json`，避免配置重置影响
+2. **独立持久化文件**：保存到 `data/astrbot_proactive_reply/persistent_data.json`，避免配置重置影响
 
 如果重启后信息仍然丢失，请：
 1. 使用 `/proactive config` 检查配置文件状态

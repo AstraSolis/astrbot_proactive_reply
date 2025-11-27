@@ -1,5 +1,5 @@
 name: astrbot_proactive_reply
-display_name: 主动问候
+display_name: 心念
 desc: 一个支持聊天附带用户信息和定时主动发送消息的AstrBot插件
 version: v1.1.0
 author: AstraSolis
