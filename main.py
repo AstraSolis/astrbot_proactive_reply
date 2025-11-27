@@ -97,7 +97,7 @@ class ProactiveReplyPlugin(Star):
     # ==================== 事件过滤器 ====================
 
     @filter.on_llm_request()
-    async def add_user_info(self, event: AstrMessageEvent, req):
+    async def add_user_info(self, event: AstrMessageEvent, req, _ignore=None):
         """在LLM请求前添加用户信息和时间
 
         自动触发,在每次LLM请求前自动添加用户相关信息
@@ -105,7 +105,7 @@ class ProactiveReplyPlugin(Star):
         await self.user_info_manager.add_user_info_to_request(event, req)
 
     @filter.after_message_sent()
-    async def record_ai_message_time(self, event: AstrMessageEvent):
+    async def record_ai_message_time(self, event: AstrMessageEvent, _ignore=None):
         """在AI发送消息后记录发送时间
 
         自动触发,记录AI每次发送消息的时间
@@ -122,7 +122,7 @@ class ProactiveReplyPlugin(Star):
     # ==================== 状态命令 ====================
 
     @proactive_group.command("status")
-    async def status(self, event: AstrMessageEvent):
+    async def status(self, event: AstrMessageEvent, _ignore=None):
         """查看插件状态
 
         显示插件的详细运行状态，包括：
@@ -138,7 +138,7 @@ class ProactiveReplyPlugin(Star):
     # ==================== 会话管理命令 ====================
 
     @proactive_group.command("add_session")
-    async def add_session(self, event: AstrMessageEvent):
+    async def add_session(self, event: AstrMessageEvent, _ignore=None):
         """将当前会话添加到定时发送列表
 
         将执行此命令的会话添加到主动发送目标列表中
@@ -147,7 +147,7 @@ class ProactiveReplyPlugin(Star):
             yield result
 
     @proactive_group.command("remove_session")
-    async def remove_session(self, event: AstrMessageEvent):
+    async def remove_session(self, event: AstrMessageEvent, _ignore=None):
         """将当前会话从定时发送列表中移除
 
         从主动发送目标列表中移除当前会话
@@ -158,7 +158,7 @@ class ProactiveReplyPlugin(Star):
     # ==================== 测试命令 ====================
 
     @proactive_group.command("test")
-    async def test_proactive(self, event: AstrMessageEvent, test_type: str = ""):
+    async def test_proactive(self, event: AstrMessageEvent, test_type: str = "", _ignore=None):
         """测试功能 - 支持多种测试类型
 
         参数:
@@ -173,13 +173,15 @@ class ProactiveReplyPlugin(Star):
         使用方法: /proactive test [类型]
         例如: /proactive test generation
         """
+        if not isinstance(test_type, str):
+            test_type = ""
         async for result in self.command_handlers.test_proactive(event, test_type):
             yield result
 
     # ==================== 显示命令 ====================
 
     @proactive_group.command("show")
-    async def show_info(self, event: AstrMessageEvent, show_type: str = ""):
+    async def show_info(self, event: AstrMessageEvent, show_type: str = "", _ignore=None):
         """显示信息 - 支持多种显示类型
 
         参数:
@@ -189,11 +191,13 @@ class ProactiveReplyPlugin(Star):
         使用方法: /proactive show [类型]
         例如: /proactive show prompt
         """
+        if not isinstance(show_type, str):
+            show_type = ""
         async for result in self.command_handlers.show_info(event, show_type):
             yield result
 
     @proactive_group.command("config")
-    async def show_config_cmd(self, event: AstrMessageEvent):
+    async def show_config_cmd(self, event: AstrMessageEvent, _ignore=None):
         """显示完整的插件配置信息
 
         查看当前插件的完整配置详情
@@ -204,7 +208,7 @@ class ProactiveReplyPlugin(Star):
     # ==================== 管理命令 ====================
 
     @proactive_group.command("manage")
-    async def manage_functions(self, event: AstrMessageEvent, action: str = ""):
+    async def manage_functions(self, event: AstrMessageEvent, action: str = "", _ignore=None):
         """管理功能 - 支持多种管理操作
 
         参数:
@@ -220,13 +224,15 @@ class ProactiveReplyPlugin(Star):
         使用方法: /proactive manage [操作]
         例如: /proactive manage clear
         """
+        if not isinstance(action, str):
+            action = ""
         async for result in self.command_handlers.manage_functions(event, action):
             yield result
 
     # ==================== 通用命令 ====================
 
     @proactive_group.command("help")
-    async def help_command(self, event: AstrMessageEvent):
+    async def help_command(self, event: AstrMessageEvent, _ignore=None):
         """显示插件帮助信息
 
         显示所有可用命令和使用说明
@@ -235,7 +241,7 @@ class ProactiveReplyPlugin(Star):
             yield result
 
     @proactive_group.command("restart")
-    async def restart(self, event: AstrMessageEvent):
+    async def restart(self, event: AstrMessageEvent, _ignore=None):
         """重启定时主动发送任务（配置更改后使用）
 
         重启定时任务以应用新的配置更改
