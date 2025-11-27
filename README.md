@@ -1,6 +1,14 @@
-# AstrBot 主动回复插件(心念)
+<p align="center">
+  <a href="https://github.com/AstraSolis/astrbot_proactive_reply">
+    <img src="logo.png" style="width: 25%; height: auto;">
+  </a>
+</p>
 
-一个支持聊天附带用户信息和定时主动发送消息的 AstrBot 插件。
+<h1 align="center">AstrBot 主动回复插件(心念)</h1>
+
+<p align="center">
+  一个支持聊天附带用户信息和定时主动发送消息的 AstrBot 插件。<br />
+</p>
 
 ## 功能特性
 
