@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://github.com/AstraSolis/astrbot_proactive_reply">
-    <img src="logo.png" style="width: 25%; height: auto;">
+    <img src="https://raw.githubusercontent.com/AstraSolis/astrbot_proactive_reply/refs/heads/master/logo.png" style="width: 25%; height: auto;">
   </a>
 </p>
 
