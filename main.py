@@ -74,6 +74,7 @@ class ProactiveReplyPlugin(Star):
             self.config,
             self.context,
             self.message_generator,
+            self.user_info_manager,
             lambda: self._is_terminating,
         )
 
@@ -109,7 +110,13 @@ class ProactiveReplyPlugin(Star):
         """在AI发送消息后记录发送时间
 
         自动触发,记录AI每次发送消息的时间
+        注意：命令消息（以 / 开头）不会触发时间记录，避免影响主动消息计时
         """
+        # 检查原始消息是否是命令（以 / 开头）
+        original_message = event.message_str or ""
+        if original_message.strip().startswith("/"):
+            logger.debug(f"跳过命令消息的时间记录: {original_message[:20]}...")
+            return
         await self.user_info_manager.record_ai_message_time(event)
 
     # ==================== 命令组定义 ====================

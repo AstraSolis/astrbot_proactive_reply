@@ -15,25 +15,30 @@ class ProactiveTaskManager:
     """定时任务管理器类"""
 
     def __init__(
-        self, config: dict, context, message_generator, is_terminating_flag_getter
+        self, config: dict, context, message_generator, user_info_manager, is_terminating_flag_getter
     ):
         """初始化任务管理器
 
         Args:
-           config: 配置字典
+            config: 配置字典
             context: AstrBot上下文对象
             message_generator: 消息生成器
+            user_info_manager: 用户信息管理器
             is_terminating_flag_getter: 获取终止标志的函数
         """
         self.config = config
         self.context = context
         self.message_generator = message_generator
+        self.user_info_manager = user_info_manager
         self.is_terminating_flag_getter = is_terminating_flag_getter
         self.proactive_task = None
 
     async def proactive_message_loop(self):
-        """定时主动发送消息的循环"""
-        logger.info("定时主动发送消息循环已启动")
+        """定时主动发送消息的循环
+
+        新逻辑：每分钟检查各会话，只对距离AI最后消息超过配置间隔的会话发送主动消息
+        """
+        logger.info("定时主动发送消息循环已启动（基于AI最后消息时间计时）")
 
         while True:
             try:
@@ -60,24 +65,30 @@ class ProactiveTaskManager:
                     await asyncio.sleep(60)
                     continue
 
-                # 向所有会话发送消息
-                sent_count = await self.send_messages_to_sessions(sessions)
+                # 检查每个会话，只向满足条件的会话发送消息
+                sent_count = 0
+                for session in sessions:
+                    if self.should_terminate():
+                        break
 
-                # 计算下一次发送的等待时间
-                wait_interval_minutes = self.calculate_wait_interval()
+                    should_send, reason = self.should_send_to_session(session)
+                    if should_send:
+                        try:
+                            logger.info(f"向会话 {session} 发送主动消息（原因：{reason}）")
+                            await self.message_generator.send_proactive_message(session)
+                            # 发送成功后清除目标间隔，下次检查时会生成新的随机值
+                            self._clear_session_interval(session)
+                            sent_count += 1
+                        except Exception as e:
+                            logger.error(f"向会话 {session} 发送主动消息失败: {e}")
+                    else:
+                        logger.debug(f"会话 {session} 暂不发送主动消息（原因：{reason}）")
 
-                logger.info(
-                    f"发送完成 {sent_count}/{len(sessions)} 条消息，等待 {wait_interval_minutes} 分钟"
-                )
+                if sent_count > 0:
+                    logger.info(f"本轮检查完成，发送了 {sent_count}/{len(sessions)} 条主动消息")
 
-                # 分段等待并检查状态变化
-                wait_interval_seconds = wait_interval_minutes * 60
-                should_continue = await self.wait_with_status_check(
-                    wait_interval_seconds
-                )
-
-                if not should_continue:
-                    break
+                # 每分钟检查一次
+                await self.wait_with_status_check(60)
 
             except asyncio.CancelledError:
                 logger.info("定时主动发送消息循环已取消")
@@ -106,6 +117,116 @@ class ProactiveTaskManager:
         """获取目标会话列表"""
         sessions_data = self.config.get("proactive_reply", {}).get("sessions", [])
         return parse_sessions_list(sessions_data)
+
+    def get_base_interval(self) -> int:
+        """获取基础间隔时间（分钟），不包含随机因素
+
+        Returns:
+            基础间隔时间（分钟）
+        """
+        proactive_config = self.config.get("proactive_reply", {})
+        timing_mode = proactive_config.get("timing_mode", "fixed_interval")
+
+        if timing_mode == "random_interval":
+            return proactive_config.get("random_min_minutes", 600)
+        else:
+            return proactive_config.get("interval_minutes", 600)
+
+    def get_session_target_interval(self, session: str) -> int:
+        """获取指定会话的目标间隔时间
+
+        如果会话没有记录目标间隔，则生成一个新的随机间隔
+
+        Args:
+            session: 会话ID
+
+        Returns:
+            目标间隔时间（分钟）
+        """
+        proactive_config = self.config.get("proactive_reply", {})
+        timing_mode = proactive_config.get("timing_mode", "fixed_interval")
+
+        # 固定间隔模式
+        if timing_mode != "random_interval":
+            interval = proactive_config.get("interval_minutes", 600)
+            # 如果启用随机延迟，为该会话生成并记录随机延迟
+            if proactive_config.get("random_delay_enabled", False):
+                session_intervals = proactive_config.get("session_target_intervals", {})
+                if session in session_intervals:
+                    return session_intervals[session]
+                else:
+                    # 生成新的随机延迟
+                    min_delay = proactive_config.get("min_random_minutes", 0)
+                    max_delay = proactive_config.get("max_random_minutes", 30)
+                    interval += random.randint(min_delay, max_delay)
+                    self._save_session_interval(session, interval)
+            return interval
+
+        # 随机间隔模式：检查是否有记录的目标间隔
+        session_intervals = proactive_config.get("session_target_intervals", {})
+        if session in session_intervals:
+            return session_intervals[session]
+
+        # 没有记录，生成新的随机间隔
+        random_min = proactive_config.get("random_min_minutes", 600)
+        random_max = proactive_config.get("random_max_minutes", 1200)
+        interval = random.randint(random_min, random_max)
+        self._save_session_interval(session, interval)
+        return interval
+
+    def _save_session_interval(self, session: str, interval: int):
+        """保存会话的目标间隔
+
+        Args:
+            session: 会话ID
+            interval: 目标间隔（分钟）
+        """
+        if "proactive_reply" not in self.config:
+            self.config["proactive_reply"] = {}
+        if "session_target_intervals" not in self.config["proactive_reply"]:
+            self.config["proactive_reply"]["session_target_intervals"] = {}
+
+        self.config["proactive_reply"]["session_target_intervals"][session] = interval
+        logger.debug(f"会话 {session} 的目标间隔已设置为 {interval} 分钟")
+
+    def _clear_session_interval(self, session: str):
+        """清除会话的目标间隔（发送后调用，以便下次生成新的随机值）
+
+        Args:
+            session: 会话ID
+        """
+        proactive_config = self.config.get("proactive_reply", {})
+        session_intervals = proactive_config.get("session_target_intervals", {})
+        if session in session_intervals:
+            del session_intervals[session]
+            logger.debug(f"已清除会话 {session} 的目标间隔")
+
+    def should_send_to_session(self, session: str) -> tuple:
+        """检查是否应该向指定会话发送主动消息
+
+        基于AI最后一条消息的时间来判断
+
+        Args:
+            session: 会话ID
+
+        Returns:
+            (应该发送, 原因说明)
+        """
+        # 获取该会话的目标间隔
+        interval_minutes = self.get_session_target_interval(session)
+        minutes_since_last = self.user_info_manager.get_minutes_since_ai_last_message(session)
+
+        if minutes_since_last == -1:
+            # 从未发送过消息，应该发送
+            return True, "首次向该会话发送主动消息"
+
+        if minutes_since_last >= interval_minutes:
+            # 距离上次消息已超过配置间隔
+            return True, f"距离AI上次消息已过 {minutes_since_last} 分钟，超过目标间隔 {interval_minutes} 分钟"
+
+        # 未到发送时间
+        remaining = interval_minutes - minutes_since_last
+        return False, f"距离下次发送还需 {remaining} 分钟（目标间隔 {interval_minutes} 分钟）"
 
     async def send_messages_to_sessions(self, sessions: list) -> int:
         """向所有会话发送消息，返回成功发送的数量"""

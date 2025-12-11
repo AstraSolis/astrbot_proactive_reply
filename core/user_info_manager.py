@@ -267,3 +267,43 @@ class UserInfoManager:
         except Exception as e:
             logger.error(f"构建用户上下文失败: {e}")
             return "无法获取用户信息"
+
+    def get_ai_last_message_time(self, session: str) -> str:
+        """获取指定会话的AI最后消息时间
+
+        Args:
+            session: 会话ID
+
+        Returns:
+            时间字符串，格式为 %Y-%m-%d %H:%M:%S，如果没有记录则返回空字符串
+        """
+        try:
+            proactive_config = self.config.get("proactive_reply", {})
+            ai_last_sent_times = proactive_config.get("ai_last_sent_times", {})
+            return ai_last_sent_times.get(session, "")
+        except Exception as e:
+            logger.error(f"获取AI最后消息时间失败: {e}")
+            return ""
+
+    def get_minutes_since_ai_last_message(self, session: str) -> int:
+        """计算距离AI最后消息的分钟数
+
+        Args:
+            session: 会话ID
+
+        Returns:
+            距离上次消息的分钟数，如果没有记录则返回 -1（表示从未发送）
+        """
+        try:
+            last_time_str = self.get_ai_last_message_time(session)
+            if not last_time_str:
+                return -1  # 从未发送过消息
+
+            last_time = datetime.datetime.strptime(last_time_str, "%Y-%m-%d %H:%M:%S")
+            now = datetime.datetime.now()
+            delta = now - last_time
+            return int(delta.total_seconds() / 60)
+        except Exception as e:
+            logger.error(f"计算距离AI最后消息的分钟数失败: {e}")
+            return -1
+
