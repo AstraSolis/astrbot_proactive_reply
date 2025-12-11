@@ -5,6 +5,7 @@
 """
 
 from astrbot.api import logger
+from .runtime_data import runtime_data
 
 
 class ConfigManager:
@@ -48,12 +49,12 @@ class ConfigManager:
             "split_mode": "backslash",
             "custom_split_pattern": "",
             "split_message_delay_ms": 500,
-            "session_user_info": {},
-            "last_sent_times": {},
-            "ai_last_sent_times": {},
             "use_database_fallback": True,
         },
     }
+
+    # 运行时数据字段（不在配置界面显示，由 PersistenceManager 独立管理）
+    RUNTIME_DATA_KEYS = ["session_user_info", "last_sent_times", "ai_last_sent_times"]
 
     def __init__(self, config: dict, persistence_manager=None):
         """初始化配置管理器
@@ -83,9 +84,35 @@ class ConfigManager:
         except TypeError as e:
             logger.error(f"配置数据类型错误: {e}")
 
+    def _clean_runtime_data_from_config(self):
+        """从配置中清理运行时数据字段
+
+        这些字段不应该显示在 AstrBot 配置界面中，
+        它们通过 PersistenceManager 独立存储在 persistent_data.json 中。
+        """
+        proactive_config = self.config.get("proactive_reply", {})
+        cleaned = False
+
+        for key in self.RUNTIME_DATA_KEYS:
+            if key in proactive_config:
+                del proactive_config[key]
+                cleaned = True
+                logger.debug(f"已从配置中移除运行时数据字段: {key}")
+
+        if cleaned:
+            try:
+                self.config.save_config()
+                logger.info("✅ 已清理配置中的运行时数据字段")
+            except Exception as e:
+                logger.warning(f"保存清理后的配置失败: {e}")
+
     def ensure_config_structure(self):
         """确保配置文件结构完整"""
-        # 先尝试加载持久化数据
+        # 清理不应该在配置界面显示的运行时数据字段
+        # 这些数据通过 PersistenceManager 独立存储，不需要在 AstrBot 配置中
+        self._clean_runtime_data_from_config()
+
+        # 加载持久化数据到 RuntimeDataStore
         if self.persistence_manager:
             self.persistence_manager.load_persistent_data()
 
@@ -99,15 +126,7 @@ class ConfigManager:
                 # 检查子配置项
                 for key, default_value in section_config.items():
                     if key not in self.config[section]:
-                        # 对于数据记录类型的配置项，只在真正缺失时添加空字典
-                        if key in [
-                            "session_user_info",
-                            "last_sent_times",
-                            "ai_last_sent_times",
-                        ]:
-                            self.config[section][key] = {}
-                        else:
-                            self.config[section][key] = default_value
+                        self.config[section][key] = default_value
                         config_updated = True
 
         # 数据迁移
@@ -122,22 +141,14 @@ class ConfigManager:
                 logger.error(f"保存配置文件失败: {e}")
 
     def migrate_time_records(self):
-        """迁移时间记录数据到新的配置项"""
+        """迁移时间记录数据到运行时数据存储"""
         try:
-            proactive_config = self.config.get("proactive_reply", {})
-
-            # 迁移 ai_last_sent_times
-            ai_last_sent_times = proactive_config.get("ai_last_sent_times", {})
-            last_sent_times = proactive_config.get("last_sent_times", {})
-
-            if not ai_last_sent_times and last_sent_times:
-                self.config["proactive_reply"]["ai_last_sent_times"] = (
-                    last_sent_times.copy()
-                )
-                if self.save_config_safely():
-                    logger.info(f"成功迁移 {len(last_sent_times)} 条时间记录")
-                else:
-                    logger.warning("保存迁移数据失败")
+            # 如果 ai_last_sent_times 为空但 last_sent_times 有数据，进行迁移
+            if not runtime_data.ai_last_sent_times and runtime_data.last_sent_times:
+                runtime_data.ai_last_sent_times = runtime_data.last_sent_times.copy()
+                if self.persistence_manager:
+                    self.persistence_manager.save_persistent_data()
+                    logger.info(f"成功迁移 {len(runtime_data.last_sent_times)} 条时间记录")
 
         except (KeyError, ValueError, AttributeError) as e:
             logger.error(f"迁移时间记录失败: {e}")

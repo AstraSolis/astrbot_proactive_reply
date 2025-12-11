@@ -10,6 +10,7 @@ import os
 import shutil
 from astrbot.api import logger
 from ..utils.validators import validate_persistent_data
+from .runtime_data import runtime_data
 
 
 class PersistenceManager:
@@ -82,19 +83,8 @@ class PersistenceManager:
                             logger.error("持久化文件格式错误：根对象不是字典")
                             continue
 
-                        # 将持久化数据合并到配置中
-                        if "proactive_reply" not in self.config:
-                            self.config["proactive_reply"] = {}
-
-                        for key in [
-                            "session_user_info",
-                            "ai_last_sent_times",
-                            "last_sent_times",
-                        ]:
-                            if key in persistent_data:
-                                self.config["proactive_reply"][key] = persistent_data[
-                                    key
-                                ]
+                        # 将持久化数据加载到运行时数据存储中（不是 config 对象）
+                        runtime_data.load_from_dict(persistent_data)
 
                         logger.info("✅ 从新的持久化文件加载数据成功")
                         return
@@ -162,16 +152,8 @@ class PersistenceManager:
                         with open(new_file, "w", encoding="utf-8") as f:
                             json.dump(old_data, f, ensure_ascii=False, indent=2)
 
-                        if "proactive_reply" not in self.config:
-                            self.config["proactive_reply"] = {}
-
-                        for key in [
-                            "session_user_info",
-                            "ai_last_sent_times",
-                            "last_sent_times",
-                        ]:
-                            if key in old_data:
-                                self.config["proactive_reply"][key] = old_data[key]
+                        # 加载到运行时数据存储中
+                        runtime_data.load_from_dict(old_data)
 
                         logger.info(
                             f"✅ 成功迁移旧的持久化数据: {old_file} -> {new_file}"
@@ -198,14 +180,10 @@ class PersistenceManager:
             plugin_data_dir = self.get_plugin_data_dir()
             persistent_file = os.path.join(plugin_data_dir, "persistent_data.json")
 
-            proactive_config = self.config.get("proactive_reply", {})
-            persistent_data = {
-                "session_user_info": proactive_config.get("session_user_info", {}),
-                "ai_last_sent_times": proactive_config.get("ai_last_sent_times", {}),
-                "last_sent_times": proactive_config.get("last_sent_times", {}),
-                "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "data_version": "2.0",
-            }
+            # 从运行时数据存储中获取数据
+            persistent_data = runtime_data.to_dict()
+            persistent_data["last_update"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            persistent_data["data_version"] = "2.0"
 
             if not validate_persistent_data(persistent_data):
                 logger.error("持久化数据验证失败")

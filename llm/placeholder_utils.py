@@ -7,6 +7,7 @@
 import datetime
 from astrbot.api import logger
 from ..utils.formatters import ensure_string_encoding, safe_string_replace
+from ..core.runtime_data import runtime_data
 
 
 def replace_placeholders(
@@ -28,12 +29,8 @@ def replace_placeholders(
         prompt = ensure_string_encoding(prompt)
         session = ensure_string_encoding(session)
 
-        proactive_config = config.get("proactive_reply", {})
-        session_user_info = proactive_config.get("session_user_info", {})
-        ai_last_sent_times = proactive_config.get("ai_last_sent_times", {})
-
-        user_info = session_user_info.get(session, {})
-        last_sent_time = ai_last_sent_times.get(session, "从未发送过")
+        user_info = runtime_data.session_user_info.get(session, {})
+        last_sent_time = runtime_data.ai_last_sent_times.get(session, "从未发送过")
 
         # 构建占位符字典，确保所有值都是正确编码的字符串
         user_last_time = ensure_string_encoding(

@@ -155,27 +155,6 @@
                 "default": 500,
                 "hint": "分割后的消息之间的发送延迟，单位：毫秒。建议设置为300-1000ms，模拟自然的消息发送节奏"
             },
-            "session_user_info": {
-                "description": "会话用户信息记录（内部数据）",
-                "type": "object",
-                "default": {},
-                "invisible": true,
-                "items": {}
-            },
-            "last_sent_times": {
-                "description": "AI主动发送时间记录（内部数据）",
-                "type": "object",
-                "default": {},
-                "invisible": true,
-                "items": {}
-            },
-            "ai_last_sent_times": {
-                "description": "AI发送消息时间记录（内部数据）",
-                "type": "object",
-                "default": {},
-                "invisible": true,
-                "items": {}
-            },
             "use_database_fallback": {
                 "description": "数据库回退方案状态（信息展示）",
                 "type": "bool",

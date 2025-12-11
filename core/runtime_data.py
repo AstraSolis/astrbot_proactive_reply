@@ -1,0 +1,72 @@
+"""
+运行时数据存储
+
+存储不应该出现在配置界面中的运行时数据，如用户信息、发送时间记录等。
+这些数据通过 PersistenceManager 持久化到独立的 JSON 文件中。
+"""
+
+from astrbot.api import logger
+
+
+class RuntimeDataStore:
+    """运行时数据存储类
+
+    单例模式，存储运行时数据，避免将这些数据放入 config 对象中
+    （config 对象的内容会显示在 AstrBot 配置界面上）
+    """
+
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
+    def __init__(self):
+        if self._initialized:
+            return
+        self._initialized = True
+
+        # 运行时数据
+        self.session_user_info: dict = {}
+        self.ai_last_sent_times: dict = {}
+        self.last_sent_times: dict = {}
+
+        logger.debug("RuntimeDataStore 初始化完成")
+
+    def load_from_dict(self, data: dict):
+        """从字典加载数据
+
+        Args:
+            data: 包含运行时数据的字典
+        """
+        if "session_user_info" in data:
+            self.session_user_info = data["session_user_info"]
+        if "ai_last_sent_times" in data:
+            self.ai_last_sent_times = data["ai_last_sent_times"]
+        if "last_sent_times" in data:
+            self.last_sent_times = data["last_sent_times"]
+
+    def to_dict(self) -> dict:
+        """导出为字典
+
+        Returns:
+            包含所有运行时数据的字典
+        """
+        return {
+            "session_user_info": self.session_user_info,
+            "ai_last_sent_times": self.ai_last_sent_times,
+            "last_sent_times": self.last_sent_times,
+        }
+
+    def clear_all(self):
+        """清除所有运行时数据"""
+        self.session_user_info = {}
+        self.ai_last_sent_times = {}
+        self.last_sent_times = {}
+        logger.info("已清除所有运行时数据")
+
+
+# 全局单例实例
+runtime_data = RuntimeDataStore()

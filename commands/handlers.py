@@ -8,6 +8,7 @@ import asyncio
 import datetime
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
+from ..core.runtime_data import runtime_data
 
 
 class CommandHandlers:
@@ -46,13 +47,11 @@ class CommandHandlers:
             sessions = parse_sessions_list(sessions_data)
             session_count = len(sessions)
 
-            # 获取用户信息记录数量
-            session_user_info = proactive_config.get("session_user_info", {})
-            user_info_count = len(session_user_info)
+            # 获取用户信息记录数量（从运行时数据存储）
+            user_info_count = len(runtime_data.session_user_info)
 
             # 获取发送时间记录数量
-            ai_last_sent_times = proactive_config.get("ai_last_sent_times", {})
-            ai_sent_times_count = len(ai_last_sent_times)
+            ai_sent_times_count = len(runtime_data.ai_last_sent_times)
 
             # 检查LLM状态
             provider = self.context.get_using_provider()
@@ -392,9 +391,7 @@ class CommandHandlers:
             yield event.plain_result(text)
 
         elif show_type == "users":
-            user_info = self.config.get("proactive_reply", {}).get(
-                "session_user_info", {}
-            )
+            user_info = runtime_data.session_user_info
             text = f"👥 已记录用户信息 (共{len(user_info)}个):\n\n"
             for session, info in list(user_info.items())[:10]:
                 text += f"• {info.get('username', '未知')} ({info.get('platform', '未知')})\n"
@@ -465,14 +462,11 @@ class CommandHandlers:
     async def _manage_clear(self, event: AstrMessageEvent):
         """清除记录"""
         try:
-            if "proactive_reply" not in self.config:
-                self.config["proactive_reply"] = {}
+            # 清除运行时数据存储
+            runtime_data.clear_all()
 
-            self.config["proactive_reply"]["session_user_info"] = {}
-            self.config["proactive_reply"]["last_sent_times"] = {}
-            self.config["proactive_reply"]["ai_last_sent_times"] = {}
-
-            self.plugin.config_manager.save_config_safely()
+            # 保存清空后的持久化数据
+            self.plugin.persistence_manager.save_persistent_data()
             yield event.plain_result("✅ 已清除所有用户信息和发送时间记录")
         except Exception as e:
             yield event.plain_result(f"❌ 清除失败: {e}")
@@ -553,9 +547,7 @@ class CommandHandlers:
     async def _debug_times(self, event: AstrMessageEvent):
         """调试时间记录"""
         try:
-            ai_times = self.config.get("proactive_reply", {}).get(
-                "ai_last_sent_times", {}
-            )
+            ai_times = runtime_data.ai_last_sent_times
             text = f"🔧 AI发送时间记录 (共{len(ai_times)}条):\n\n"
             for session, time in list(ai_times.items())[:10]:
                 text += f"• {session[:30]}...: {time}\n"
@@ -643,10 +635,9 @@ class CommandHandlers:
             config_text += "\n" + "=" * 50 + "\n"
             config_text += "📊 数据统计\n"
             config_text += "=" * 50 + "\n"
-            sessions = proactive_config.get('sessions', [])
             config_text += f"配置的会话数: {len(sessions)}\n"
-            config_text += f"记录的用户信息: {len(proactive_config.get('session_user_info', {}))} 个\n"
-            config_text += f"AI发送时间记录: {len(proactive_config.get('ai_last_sent_times', {}))} 条\n"
+            config_text += f"记录的用户信息: {len(runtime_data.session_user_info)} 个\n"
+            config_text += f"AI发送时间记录: {len(runtime_data.ai_last_sent_times)} 条\n"
             
             # 6. 提示词配置
             config_text += "\n" + "=" * 50 + "\n"

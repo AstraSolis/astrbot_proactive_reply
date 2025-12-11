@@ -7,6 +7,7 @@
 import datetime
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
+from .runtime_data import runtime_data
 
 
 class UserInfoManager:
@@ -117,13 +118,7 @@ class UserInfoManager:
                 logger.warning("会话ID为空，跳过用户信息记录")
                 return
 
-            # 确保配置结构存在
-            if "proactive_reply" not in self.config:
-                self.config["proactive_reply"] = {}
-            if "session_user_info" not in self.config["proactive_reply"]:
-                self.config["proactive_reply"]["session_user_info"] = {}
-
-            # 记录用户信息
+            # 记录用户信息到运行时数据存储
             user_info = {
                 "username": username or "未知用户",
                 "user_id": user_id or "未知",
@@ -132,13 +127,12 @@ class UserInfoManager:
                 "last_active_time": current_time,
             }
 
-            self.config["proactive_reply"]["session_user_info"][session_id] = user_info
+            runtime_data.session_user_info[session_id] = user_info
 
-            # 保存配置
-            config_saved = self.config_manager.save_config_safely()
+            # 保存持久化数据
             persistent_saved = self.persistence_manager.save_persistent_data()
 
-            if not (config_saved or persistent_saved):
+            if not persistent_saved:
                 logger.error("❌ 用户信息保存失败")
 
         except (KeyError, ValueError, AttributeError) as e:
@@ -158,22 +152,13 @@ class UserInfoManager:
                 logger.warning("会话ID为空，跳过AI消息时间记录")
                 return
 
-            # 确保配置结构存在
-            if "proactive_reply" not in self.config:
-                self.config["proactive_reply"] = {}
-            if "ai_last_sent_times" not in self.config["proactive_reply"]:
-                self.config["proactive_reply"]["ai_last_sent_times"] = {}
+            # 记录AI发送消息时间到运行时数据存储
+            runtime_data.ai_last_sent_times[session_id] = current_time
 
-            # 记录AI发送消息时间
-            self.config["proactive_reply"]["ai_last_sent_times"][session_id] = (
-                current_time
-            )
-
-            # 保存配置
-            config_saved = self.config_manager.save_config_safely()
+            # 保存持久化数据
             persistent_saved = self.persistence_manager.save_persistent_data()
 
-            if not (config_saved or persistent_saved):
+            if not persistent_saved:
                 logger.warning("⚠️ AI消息时间记录保存失败")
 
         except (KeyError, ValueError, AttributeError) as e:
@@ -192,23 +177,14 @@ class UserInfoManager:
                 logger.warning("会话ID为空，跳过发送时间记录")
                 return
 
-            # 确保配置结构存在
-            if "proactive_reply" not in self.config:
-                self.config["proactive_reply"] = {}
-            if "last_sent_times" not in self.config["proactive_reply"]:
-                self.config["proactive_reply"]["last_sent_times"] = {}
-            if "ai_last_sent_times" not in self.config["proactive_reply"]:
-                self.config["proactive_reply"]["ai_last_sent_times"] = {}
+            # 记录发送时间到运行时数据存储（同时更新两个记录）
+            runtime_data.last_sent_times[session] = current_time
+            runtime_data.ai_last_sent_times[session] = current_time
 
-            # 记录发送时间（同时更新两个记录）
-            self.config["proactive_reply"]["last_sent_times"][session] = current_time
-            self.config["proactive_reply"]["ai_last_sent_times"][session] = current_time
-
-            # 保存配置
-            config_saved = self.config_manager.save_config_safely()
+            # 保存持久化数据
             persistent_saved = self.persistence_manager.save_persistent_data()
 
-            if not (config_saved or persistent_saved):
+            if not persistent_saved:
                 logger.error("❌ 发送时间保存失败")
 
         except (KeyError, ValueError, AttributeError) as e:
@@ -224,12 +200,8 @@ class UserInfoManager:
             用户上下文字符串
         """
         try:
-            proactive_config = self.config.get("proactive_reply", {})
-            session_user_info = proactive_config.get("session_user_info", {})
-            ai_last_sent_times = proactive_config.get("ai_last_sent_times", {})
-
-            user_info = session_user_info.get(session, {})
-            last_sent_time = ai_last_sent_times.get(session, "从未发送过")
+            user_info = runtime_data.session_user_info.get(session, {})
+            last_sent_time = runtime_data.ai_last_sent_times.get(session, "从未发送过")
 
             context_parts = []
 
@@ -278,9 +250,7 @@ class UserInfoManager:
             时间字符串，格式为 %Y-%m-%d %H:%M:%S，如果没有记录则返回空字符串
         """
         try:
-            proactive_config = self.config.get("proactive_reply", {})
-            ai_last_sent_times = proactive_config.get("ai_last_sent_times", {})
-            return ai_last_sent_times.get(session, "")
+            return runtime_data.ai_last_sent_times.get(session, "")
         except Exception as e:
             logger.error(f"获取AI最后消息时间失败: {e}")
             return ""
