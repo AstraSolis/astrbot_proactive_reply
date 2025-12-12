@@ -1,4 +1,16 @@
 {
+    "support_author": {
+        "description": "⭐ 支持作者",
+        "type": "object",
+        "items": {
+            "github_link": {
+                "description": "GitHub 仓库地址",
+                "type": "string",
+                "default": "https://github.com/AstraSolis/astrbot_proactive_reply",
+                "hint": "如果这个插件对你有帮助，欢迎访问链接给个 Star ⭐ ,您的支持是我持续更新的动力！"
+            }
+        }
+    },
     "user_info": {
         "description": "聊天附带用户信息设置",
         "type": "object",
