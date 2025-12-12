@@ -632,6 +632,11 @@ class CommandHandlers:
                 config_text += f"  - 分割延迟: {proactive_config.get('split_message_delay_ms', 500)} 毫秒\n"
             
             # 5. 会话和记录统计
+            # 获取会话列表
+            from ..utils.parsers import parse_sessions_list
+            sessions_data = proactive_config.get("sessions", [])
+            sessions = parse_sessions_list(sessions_data)
+            
             config_text += "\n" + "=" * 50 + "\n"
             config_text += "📊 数据统计\n"
             config_text += "=" * 50 + "\n"
