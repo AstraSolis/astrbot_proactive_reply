@@ -69,8 +69,8 @@ class ConfigManager:
     def verify_config_loading(self):
         """验证配置文件加载状态"""
         try:
-            proactive_config = self.config.get("proactive_reply", {})
-            session_user_info = proactive_config.get("session_user_info", {})
+            # 从 RuntimeDataStore 获取用户信息（重构后数据存储在单例中）
+            session_user_info = runtime_data.session_user_info
 
             if session_user_info:
                 logger.info(f"✅ 已加载 {len(session_user_info)} 个用户信息记录")

@@ -42,7 +42,6 @@ class ProactiveReplyPlugin(Star):
         self._initialize_managers()
 
         logger.info("ProactiveReplyPlugin 插件已初始化")
-        self._verify_config_loading()
 
         # 异步初始化
         self._initialization_task = asyncio.create_task(self.initialize())
@@ -87,8 +86,11 @@ class ProactiveReplyPlugin(Star):
 
     async def initialize(self):
         """插件初始化方法"""
-        # 确保配置结构完整
+        # 确保配置结构完整（包括加载持久化数据）
         self.config_manager.ensure_config_structure()
+
+        # 验证配置加载状态（必须在 ensure_config_structure 之后）
+        self._verify_config_loading()
 
         # 启动定时任务
         await self.task_manager.start_proactive_task()
