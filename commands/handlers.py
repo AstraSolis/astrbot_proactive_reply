@@ -215,7 +215,7 @@ class CommandHandlers:
             yield event.plain_result(f"❌ 测试失败: {e}")
 
     async def _test_prompt(self, event: AstrMessageEvent):
-        """测试提示词构建 - 显示完整的组合系统提示词（不调用LLM生成）"""
+        """测试提示词构建 - 显示完整的组合系统提示词"""
         yield event.plain_result("⏳ 正在构建提示词...")
         try:
             import random
@@ -251,11 +251,11 @@ class CommandHandlers:
                 session_id
             )
             
-            # 4. 获取历史记录（如果启用）
+            # 4. 获取历史记录（如果启用）- 与 message_generator.py 保持一致
             history_enabled = proactive_config.get("include_history_enabled", False)
             history_count = proactive_config.get("history_message_count", 10)
             history_info = ""
-            history_context = ""
+            history_preview = ""
             contexts = []
             
             if history_enabled:
@@ -265,13 +265,13 @@ class CommandHandlers:
                         session_id, history_count
                     )
                     if contexts:
-                        history_context = "\n".join(
+                        history_preview = "\n".join(
                             [
-                                f"{ctx['role']}: {ctx['content'][:50]}..."
-                                for ctx in contexts[-3:]
+                                f"  {ctx['role']}: {ctx['content'][:50]}..."
+                                for ctx in contexts[-5:]
                             ]
                         )
-                        history_info = f"✅ 已启用 (最近{len(contexts)}条记录)"
+                        history_info = f"✅ 已启用 (获取到{len(contexts)}条记录)"
                     else:
                         history_info = "✅ 已启用 (暂无历史记录)"
                 except Exception as e:
@@ -279,13 +279,19 @@ class CommandHandlers:
             else:
                 history_info = "❌ 未启用"
             
-            # 5. 构建完整的系统提示词（模拟实际生成过程）
-            combined_system_prompt = f"{base_system_prompt}\n\n--- 主动对话指令 ---\n{final_prompt}"
-            if history_enabled and history_context:
-                combined_system_prompt += f"\n\n--- 对话历史 ---\n{history_context}"
+            # 5. 构建历史记录引导提示词 - 与 message_generator.py 保持一致
+            history_guidance = ""
+            if history_enabled and contexts:
+                history_guidance = "\n\n--- 上下文说明 ---\n你可以参考上述对话历史来生成更自然和连贯的回复。"
             
-            # 6. 构建详细的输出信息
-            result_text = f"""🧪 系统提示词构建测试
+            # 6. 使用 prompt_builder.build_combined_system_prompt 构建组合系统提示词
+            # 这与实际 LLM 调用完全一致
+            combined_system_prompt = self.plugin.prompt_builder.build_combined_system_prompt(
+                base_system_prompt, final_prompt, history_guidance
+            )
+            
+            # 7. 构建详细的输出信息
+            result_text = f"""🧪 系统提示词构建测试（与实际LLM调用一致）
 
 📝 原始提示词：
 {selected_prompt}
@@ -296,20 +302,28 @@ class CommandHandlers:
 🤖 基础人格提示词：
 {base_system_prompt[:200] + "..." if len(base_system_prompt) > 200 else base_system_prompt}
 
-📚 历史记录状态：{history_info}
-{f"最近历史记录预览：{chr(10)}{history_context}" if history_context else ""}
+📚 历史记录配置：
+  - 状态: {history_info}
+  - 配置条数: {history_count} 条
+  - 传递方式: contexts 参数（非系统提示词内嵌）
+{f"  - 历史预览:{chr(10)}{history_preview}" if history_preview else ""}
+
+📜 历史引导语：
+{history_guidance if history_guidance else "(无 - 未启用或无历史记录)"}
 
 🎭 最终组合系统提示词：
-{combined_system_prompt[:400] + "..." if len(combined_system_prompt) > 400 else combined_system_prompt}
+{combined_system_prompt[:500] + "..." if len(combined_system_prompt) > 500 else combined_system_prompt}
 
 📊 统计信息:
 - 可用提示词数量: {len(prompt_list)}
 - 人格提示词长度: {len(base_system_prompt)} 字符
 - 主动对话提示词长度: {len(final_prompt)} 字符
-- 历史记录长度: {len(history_context)} 字符
+- 历史记录条数: {len(contexts)} 条
 - 最终系统提示词长度: {len(combined_system_prompt)} 字符
 
-💡 这就是发送给LLM的完整系统提示词和历史上下文！"""
+💡 说明:
+- 系统提示词包含: 人格 + 时间指导 + 主动对话指令 + 历史引导
+- 历史记录通过 contexts 参数传递给 LLM，而非嵌入系统提示词"""
             
             yield event.plain_result(result_text)
             
@@ -341,14 +355,46 @@ class CommandHandlers:
             yield event.plain_result(f"❌ 测试失败: {e}")
 
     async def _test_history(self, event: AstrMessageEvent):
-        """测试对话历史"""
+        """测试对话历史 - 显示详细的历史记录内容"""
         try:
             session_id = event.unified_msg_origin
+            proactive_config = self.config.get("proactive_reply", {})
+            
+            # 从配置读取历史记录条数
+            history_enabled = proactive_config.get("include_history_enabled", False)
+            history_count = proactive_config.get("history_message_count", 10)
+            history_count = max(1, min(50, history_count))  # 限制范围 1-50
+            
             history = await self.plugin.conversation_manager.get_conversation_history(
-                session_id, 5
+                session_id, history_count
             )
-            yield event.plain_result(f"✅ 历史记录: {len(history)} 条")
+            
+            # 构建详细的输出信息
+            result_text = f"""🧪 对话历史记录测试
+
+📊 配置信息:
+  - 历史记录功能: {"✅ 已启用" if history_enabled else "❌ 未启用"}
+  - 配置的历史条数: {history_count} 条
+  - 实际获取条数: {len(history)} 条
+
+📚 历史记录内容:"""
+            
+            if history:
+                for i, ctx in enumerate(history, 1):
+                    role = ctx.get('role', '未知')
+                    content = ctx.get('content', '')
+                    # 截断过长的内容
+                    if len(content) > 100:
+                        content = content[:100] + "..."
+                    result_text += f"\n  {i}. [{role}]: {content}"
+            else:
+                result_text += "\n  (暂无历史记录)"
+            
+            result_text += "\n\n💡 提示: 历史记录用于主动消息生成时提供对话上下文"
+            
+            yield event.plain_result(result_text)
         except Exception as e:
+            logger.error(f"测试对话历史失败: {e}")
             yield event.plain_result(f"❌ 测试失败: {e}")
 
     async def _test_save_conversation(self, event: AstrMessageEvent):
