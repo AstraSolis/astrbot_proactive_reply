@@ -65,7 +65,7 @@ class CommandHandlers:
 
 📍 当前会话：
   - 会话ID：{current_session[:50]}{"..." if len(current_session) > 50 else ""}
-  - 发送状态：{"✅ 已在发送列表中" if is_current_in_list else "❌ 未在发送列表中"}
+  - 发送状态：{"✅ 已在主动对话列表中" if is_current_in_list else "❌ 未在主动对话列表中"}
   - 操作提示：{"使用 /proactive remove_session 移除" if is_current_in_list else "使用 /proactive add_session 添加"}
 
 🔧 用户信息附加功能：✅ 已启用
@@ -89,13 +89,13 @@ class CommandHandlers:
     # ==================== 会话管理命令 ====================
 
     async def add_session(self, event: AstrMessageEvent):
-        """添加当前会话到定时列表"""
+        """添加当前会话到主动对话列表"""
         try:
             session_id = event.unified_msg_origin
             sessions = self.config.get("proactive_reply", {}).get("sessions", [])
 
             if session_id in sessions:
-                yield event.plain_result("当前会话已在定时发送列表中")
+                yield event.plain_result("当前会话已在主动对话列表中")
             else:
                 sessions.append(session_id)
                 if "proactive_reply" not in self.config:
@@ -103,14 +103,14 @@ class CommandHandlers:
                 self.config["proactive_reply"]["sessions"] = sessions
                 self.plugin.config_manager.save_config_safely()
                 yield event.plain_result(
-                    f"✅ 已添加会话到定时发送列表\n会话ID: {session_id}"
+                    f"✅ 已添加会话到主动对话列表\n会话ID: {session_id}"
                 )
         except Exception as e:
             logger.error(f"添加会话失败: {e}")
             yield event.plain_result(f"添加会话失败: {e}")
 
     async def remove_session(self, event: AstrMessageEvent):
-        """从定时列表移除当前会话"""
+        """从主动对话列表移除当前会话"""
         try:
             session_id = event.unified_msg_origin
             sessions = self.config.get("proactive_reply", {}).get("sessions", [])
@@ -119,9 +119,9 @@ class CommandHandlers:
                 sessions.remove(session_id)
                 self.config["proactive_reply"]["sessions"] = sessions
                 self.plugin.config_manager.save_config_safely()
-                yield event.plain_result("✅ 已从定时发送列表移除当前会话")
+                yield event.plain_result("✅ 已从主动对话列表移除当前会话")
             else:
-                yield event.plain_result("当前会话不在定时发送列表中")
+                yield event.plain_result("当前会话不在主动对话列表中")
         except Exception as e:
             logger.error(f"移除会话失败: {e}")
             yield event.plain_result(f"移除会话失败: {e}")

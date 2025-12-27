@@ -162,8 +162,8 @@
 /proactive help            # 显示帮助信息
 /proactive status          # 查看插件状态和当前会话信息
 /proactive config          # 显示完整的插件配置信息
-/proactive add_session     # 将当前会话添加到定时发送列表
-/proactive remove_session  # 将当前会话从定时发送列表移除
+/proactive add_session     # 将当前会话添加到主动对话列表
+/proactive remove_session  # 将当前会话从主动对话列表移除
 /proactive restart         # 重启定时任务（配置更改后必须使用）
 ```
 
@@ -217,7 +217,7 @@
      - **随机间隔模式**：设置最小和最大间隔时间，每次随机选择
    - 设置活跃时间段（如 9:00-22:00）
    - 使用 `/proactive status` 查看当前会话状态
-   - 使用 `/proactive add_session` 添加当前会话到发送列表
+   - 使用 `/proactive add_session` 添加当前会话到主动对话列表
 
 3. **测试功能**：
    - 使用 `/proactive manage debug_info` 查看AI收到的用户信息
@@ -353,7 +353,7 @@
    ```
    /proactive status
    ```
-   会显示当前会话是否在发送列表中
+   会显示当前会话是否在主动对话列表中
 
 2. **添加当前会话**：
    ```
@@ -448,7 +448,7 @@ A: 插件使用双重持久化机制保存用户信息：
 A: 请检查：
 1. 是否启用了主动发送功能
 2. 当前时间是否在活跃时间段内
-3. 是否已添加当前会话到发送列表
+3. 是否已添加当前会话到主动对话列表
 4. LLM服务是否正常工作
 5. 使用 `/proactive status` 查看定时任务状态
 

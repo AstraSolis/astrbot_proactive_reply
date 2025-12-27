@@ -148,7 +148,7 @@ class ProactiveReplyPlugin(Star):
 
     @proactive_group.command("add_session")
     async def add_session(self, event: AstrMessageEvent, _ignore=None):
-        """将当前会话添加到定时发送列表
+        """将当前会话添加到主动对话列表
 
         将执行此命令的会话添加到主动发送目标列表中
         """
@@ -157,7 +157,7 @@ class ProactiveReplyPlugin(Star):
 
     @proactive_group.command("remove_session")
     async def remove_session(self, event: AstrMessageEvent, _ignore=None):
-        """将当前会话从定时发送列表中移除
+        """将当前会话从主动对话列表中移除
 
         从主动发送目标列表中移除当前会话
         """
