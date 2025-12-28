@@ -290,7 +290,13 @@ class CommandHandlers:
                 base_system_prompt, final_prompt, history_guidance
             )
             
-            # 7. 构建详细的输出信息
+            # 7. 获取时间增强提示词配置状态
+            time_awareness_config = self.config.get("time_awareness", {})
+            time_guidance_enabled = time_awareness_config.get("time_guidance_enabled", True)
+            time_guidance_prompt = time_awareness_config.get("time_guidance_prompt", "")
+            time_guidance_info = f"✅ 已启用" if time_guidance_enabled else "❌ 未启用"
+            
+            # 8. 构建详细的输出信息
             result_text = f"""🧪 系统提示词构建测试（与实际LLM调用一致）
 
 📝 原始提示词：
@@ -302,6 +308,10 @@ class CommandHandlers:
 🤖 基础人格提示词：
 {base_system_prompt[:200] + "..." if len(base_system_prompt) > 200 else base_system_prompt}
 
+⏰ 时间感知增强提示词：
+  - 状态: {time_guidance_info}
+  - 内容预览: {time_guidance_prompt[:150] + "..." if len(time_guidance_prompt) > 150 else (time_guidance_prompt if time_guidance_prompt else "(使用默认值)")}
+
 📚 历史记录配置：
   - 状态: {history_info}
   - 配置条数: {history_count} 条
@@ -311,8 +321,12 @@ class CommandHandlers:
 📜 历史引导语：
 {history_guidance if history_guidance else "(无 - 未启用或无历史记录)"}
 
-🎭 最终组合系统提示词：
-{combined_system_prompt[:500] + "..." if len(combined_system_prompt) > 500 else combined_system_prompt}
+🎭 最终组合系统提示词结构：
+  [人格提示词 {len(base_system_prompt)}字符]
+  {f"[时间增强提示词 ~350字符]" if time_guidance_enabled else "[时间增强提示词 已禁用]"}
+  [--- 主动对话指令 ---]
+  [{final_prompt}]
+  [历史引导语]
 
 📊 统计信息:
 - 可用提示词数量: {len(prompt_list)}

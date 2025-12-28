@@ -132,24 +132,32 @@ class PromptBuilder:
             self.config.get("proactive_reply", {}).get("proactive_default_persona", "")
         )
 
-        # 添加时间信息使用指南
-        time_guidance = """
-
---- 时间信息使用指南 ---
-1. 系统提示中的时间占位符(如{current_time}、{user_last_message_time}等)已被替换为准确的实际时间
-2. 生成消息时,如果不需要提及时间,就不要提及
-3. 如果确实需要提及时间,请使用模糊、相对的表述(如"最近"、"刚才"、"之前"、"一会儿"等),而不是具体的时间点
-4. 不要尝试计算、推测或编造时间,因为这可能与实际时间不符
-5. 不要说出类似"现在是XX点"这样的具体时间,除非系统提示中明确包含了当前时间信息
-"""
+        # 从配置中读取时间感知增强提示词设置
+        time_awareness_config = self.config.get("time_awareness", {})
+        time_guidance_enabled = time_awareness_config.get("time_guidance_enabled", True)
+        
+        time_guidance = ""
+        if time_guidance_enabled:
+            # 从配置中读取自定义提示词，如果没有则使用默认值
+            default_time_guidance = """--- 核心规则（必须严格遵守）---
+1. 你必须始终保持人设角色，根据提供的时间信息自然地回应
+2. 系统提示中的时间占位符（如{current_time}、{user_last_message_time}等）已被替换为准确的实际时间，这是你唯一可信的时间来源
+3. 绝对禁止推测、计算或编造任何时间信息，违反此规则将导致严重后果
+4. 模糊化表达：默认使用自然口语（如"刚才"、"大半夜的"、"好久不见"）替代数字报时。仅在用户明确询问时间时提供精确数值
+5. 状态映射：必须依据时间调整人设的生理状态（如深夜困倦、饭点饥饿）及环境描写（光线强弱）
+6. 间隔感知：根据当前与上一次对话的时间差调整语气：短间隔视为连续对话，长间隔（>24h）需表现出久别的情绪"""
+            
+            custom_prompt = time_awareness_config.get("time_guidance_prompt", "")
+            time_guidance_content = custom_prompt if custom_prompt else default_time_guidance
+            time_guidance = f"\n\n{time_guidance_content}\n"
 
         if base_system_prompt:
             # 有AstrBot人格：使用AstrBot人格 + 时间指导 + 主动对话提示词 + 历史记录引导
-            combined_system_prompt = f"{base_system_prompt}\n\n{time_guidance}\n\n--- 主动对话指令 ---\n{final_prompt}{history_guidance}"
+            combined_system_prompt = f"{base_system_prompt}{time_guidance}\n\n--- 主动对话指令 ---\n{final_prompt}{history_guidance}"
         else:
             # 没有AstrBot人格：使用插件默认人格 + 时间指导 + 主动对话提示词 + 历史记录引导
             if default_persona:
-                combined_system_prompt = f"{default_persona}\n\n{time_guidance}\n\n--- 主动对话指令 ---\n{final_prompt}{history_guidance}"
+                combined_system_prompt = f"{default_persona}{time_guidance}\n\n--- 主动对话指令 ---\n{final_prompt}{history_guidance}"
             else:
                 combined_system_prompt = (
                     f"{time_guidance}\n\n{final_prompt}{history_guidance}"

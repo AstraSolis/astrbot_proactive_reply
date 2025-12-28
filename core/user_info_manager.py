@@ -84,11 +84,33 @@ class UserInfoManager:
             logger.warning(f"用户信息模板格式错误: {e}，使用默认模板")
             user_info = f"当前对话信息：\n用户：{username}\n时间：{current_time}\n平台：{platform_name}（{message_type}）\n\n"
 
-        # 追加用户信息到系统提示
+        # 获取时间感知增强提示词配置
+        time_awareness_config = self.config.get("time_awareness", {})
+        time_guidance_enabled = time_awareness_config.get("time_guidance_enabled", True)
+        
+        time_guidance = ""
+        if time_guidance_enabled:
+            # 从配置中读取自定义提示词，如果没有则使用默认值
+            default_time_guidance = """--- 核心规则（必须严格遵守）---
+1. 你必须始终保持人设角色，根据提供的时间信息自然地回应
+2. 系统提示中的时间占位符（如{current_time}、{user_last_message_time}等）已被替换为准确的实际时间，这是你唯一可信的时间来源
+3. 绝对禁止推测、计算或编造任何时间信息，违反此规则将导致严重后果
+4. 模糊化表达：默认使用自然口语（如"刚才"、"大半夜的"、"好久不见"）替代数字报时。仅在用户明确询问时间时提供精确数值
+5. 状态映射：必须依据时间调整人设的生理状态（如深夜困倦、饭点饥饿）及环境描写（光线强弱）
+6. 间隔感知：根据当前与上一次对话的时间差调整语气：短间隔视为连续对话，长间隔（>24h）需表现出久别的情绪"""
+            
+            custom_prompt = time_awareness_config.get("time_guidance_prompt", "")
+            time_guidance = custom_prompt if custom_prompt else default_time_guidance
+
+        # 追加用户信息和时间增强提示词到系统提示
+        additional_prompt = user_info
+        if time_guidance:
+            additional_prompt = f"{time_guidance}\n\n{user_info}"
+        
         if req.system_prompt:
-            req.system_prompt = req.system_prompt.rstrip() + f"\n\n{user_info}"
+            req.system_prompt = req.system_prompt.rstrip() + f"\n\n{additional_prompt}"
         else:
-            req.system_prompt = user_info
+            req.system_prompt = additional_prompt
 
         # 记录用户信息
         self.record_user_info(event, username, user_id, platform_name, message_type)
