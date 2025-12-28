@@ -25,7 +25,7 @@
                 "description": "用户信息模板",
                 "type": "text",
                 "default": "[对话信息] 用户：{username}，时间：{time}",
-                "hint": "用户信息会追加到现有系统提示的末尾，不会覆盖人格设置。可使用占位符：{username}（用户名）、{user_id}（用户ID）、{time}（时间）、{platform}（平台名）、{chat_type}（聊天类型）。建议保持简洁，避免与人格设置冲突"
+                "hint": "用户信息会追加到现有系统提示的末尾，不会覆盖人格设置。可使用占位符：{username}（用户名）、{user_id}（用户ID）、{time}（消息时间）、{current_time}（当前时间）、{platform}（平台名）、{chat_type}（聊天类型）、{user_last_message_time}（用户上次发消息时间）、{user_last_message_time_ago}（相对时间，如5分钟前）、{ai_last_sent_time}（AI上次发送时间）。建议保持简洁，避免与人格设置冲突"
             }
         }
     },

@@ -62,7 +62,7 @@
 ### 用户信息附加设置
 - **时间格式**：时间显示格式（Python datetime 格式）
 - **信息模板**：用户信息的显示模板，支持占位符。会追加到现有系统提示末尾，不会覆盖人格设置
-  - 支持的占位符：`{username}`, `{user_id}`, `{time}`, `{platform}`, `{chat_type}`
+  - 支持的占位符：`{username}`, `{user_id}`, `{time}`, `{current_time}`, `{platform}`, `{chat_type}`, `{user_last_message_time}`, `{user_last_message_time_ago}`, `{ai_last_sent_time}`
 
 ### 智能主动对话设置
 - **启用功能**：是否启用智能主动对话功能
@@ -292,9 +292,13 @@
 **用户信息模板支持的占位符**：
 - `{username}` - 用户名
 - `{user_id}` - 用户ID
-- `{time}` - 当前时间
+- `{time}` - 消息时间
+- `{current_time}` - 当前时间
 - `{platform}` - 平台名
 - `{chat_type}` - 聊天类型（群聊/私聊）
+- `{user_last_message_time}` - 用户上次发消息时间
+- `{user_last_message_time_ago}` - 相对时间（如"5分钟前"）
+- `{ai_last_sent_time}` - AI上次发送时间
 
 ### 时间模式配置示例
 

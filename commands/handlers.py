@@ -352,9 +352,13 @@ class CommandHandlers:
         try:
             session_id = event.unified_msg_origin
             test_prompt = """测试占位符:
-- 当前时间:{current_time}
-- AI上次发送:{ai_last_sent_time}
-- 用户昵称:{username}"""
+- 用户昵称: {username}
+- 平台: {platform}
+- 聊天类型: {chat_type}
+- 当前时间: {current_time}
+- 用户上次发消息时间: {user_last_message_time}
+- 用户上次发消息相对时间: {user_last_message_time_ago}
+- AI上次发送时间: {ai_last_sent_time}"""
 
             from ..llm.placeholder_utils import replace_placeholders
 
@@ -367,6 +371,7 @@ class CommandHandlers:
             yield event.plain_result(f"✅ 占位符替换测试:\n{result}")
         except Exception as e:
             yield event.plain_result(f"❌ 测试失败: {e}")
+
 
     async def _test_history(self, event: AstrMessageEvent):
         """测试对话历史 - 显示详细的历史记录内容"""
@@ -665,7 +670,9 @@ class CommandHandlers:
             config_text += "=" * 50 + "\n"
             config_text += f"时间格式: {user_config.get('time_format', '%Y-%m-%d %H:%M:%S')}\n"
             template = user_config.get('template', '当前对话信息：\\n用户：{username}\\n时间：{time}\\n平台：{platform}（{chat_type}）\\n\\n')
-            config_text += f"模板: {template[:100]}{'...' if len(template) > 100 else ''}\n\n"
+            config_text += f"模板: {template[:100]}{'...' if len(template) > 100 else ''}\n"
+            config_text += "支持占位符: {username}, {user_id}, {time}, {current_time}, {platform}, {chat_type}, {user_last_message_time}, {user_last_message_time_ago}, {ai_last_sent_time}\n\n"
+
             
             # 2. 主动回复功能配置
             config_text += "=" * 50 + "\n"

@@ -5,9 +5,11 @@
 """
 
 import datetime
+import re
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 from .runtime_data import runtime_data
+from ..llm.placeholder_utils import format_time_ago
 
 
 class UserInfoManager:
@@ -73,13 +75,34 @@ class UserInfoManager:
             "当前对话信息：\n用户：{username}\n时间：{time}\n平台：{platform}（{chat_type}）\n\n",
         )
         try:
-            user_info = template.format(
-                username=username,
-                user_id=user_id,
-                time=current_time,
-                platform=platform_name,
-                chat_type=message_type,
-            )
+            # 获取会话ID用于获取历史数据
+            session_id = event.unified_msg_origin
+            
+            # 获取用户上次发消息时间
+            stored_user_info = runtime_data.session_user_info.get(session_id, {})
+            user_last_message_time = stored_user_info.get("last_active_time", "未知")
+            
+            # 获取AI上次发送时间
+            ai_last_sent_time = runtime_data.ai_last_sent_times.get(session_id, "从未发送过")
+            
+            # 计算相对时间
+            user_last_message_time_ago = format_time_ago(user_last_message_time)
+            
+            # 构建占位符字典（与主动对话统一）
+            placeholders = {
+                "username": username,
+                "user_id": user_id,
+                "time": current_time,
+                "platform": platform_name,
+                "chat_type": message_type,
+                "current_time": current_time,
+                "user_last_message_time": user_last_message_time,
+                "user_last_message_time_ago": user_last_message_time_ago,
+                "ai_last_sent_time": ai_last_sent_time,
+            }
+            
+            # 使用安全的替换方式处理模板
+            user_info = self._safe_format_template(template, placeholders)
         except Exception as e:
             logger.warning(f"用户信息模板格式错误: {e}，使用默认模板")
             user_info = f"当前对话信息：\n用户：{username}\n时间：{current_time}\n平台：{platform_name}（{message_type}）\n\n"
@@ -298,4 +321,23 @@ class UserInfoManager:
         except Exception as e:
             logger.error(f"计算距离AI最后消息的分钟数失败: {e}")
             return -1
+
+    def _safe_format_template(self, template: str, placeholders: dict) -> str:
+        """安全地替换模板中的占位符
+
+        使用正则表达式替换，避免 str.format() 的特殊字符问题
+
+        Args:
+            template: 模板字符串
+            placeholders: 占位符字典
+
+        Returns:
+            替换后的字符串
+        """
+        result = template
+        for key, value in placeholders.items():
+            # 使用正则表达式替换 {key} 格式的占位符
+            pattern = r"\{" + re.escape(key) + r"\}"
+            result = re.sub(pattern, str(value), result)
+        return result
 
