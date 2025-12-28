@@ -38,6 +38,9 @@ class ProactiveTaskManager:
         新逻辑：每分钟检查各会话，只对距离AI最后消息超过配置间隔的会话发送主动消息
         """
         logger.info("定时主动发送消息循环已启动（基于AI最后消息时间计时）")
+        
+        # 追踪睡眠状态，用于检测"刚从睡眠中醒来"
+        was_sleeping = False
 
         while True:
             try:
@@ -54,9 +57,25 @@ class ProactiveTaskManager:
                     continue
 
                 # 检查是否在睡眠时间段内
-                if self.is_sleep_time():
+                is_sleeping = self.is_sleep_time()
+                
+                if is_sleeping:
+                    was_sleeping = True
                     await asyncio.sleep(60)
                     continue
+                
+                # 检测是否刚从睡眠中醒来
+                if was_sleeping:
+                    was_sleeping = False
+                    # 检查是否启用了"睡眠结束时发送消息"功能
+                    send_on_wake = self.config.get("time_awareness", {}).get("send_on_wake_enabled", False)
+                    if send_on_wake:
+                        logger.info("睡眠时间结束，立即检查是否需要发送主动消息")
+                        # 继续执行下面的发送逻辑
+                    else:
+                        logger.info("睡眠时间结束，未启用睡眠结束时发送功能，等待正常计时")
+                        await asyncio.sleep(60)
+                        continue  # 跳过本次发送，等待下次循环正常计时
 
                 # 获取目标会话列表
                 sessions = self.get_target_sessions()

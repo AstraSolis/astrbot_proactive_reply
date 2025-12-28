@@ -33,9 +33,11 @@ class CommandHandlers:
         time_awareness_config = self.config.get("time_awareness", {})
         sleep_mode_enabled = time_awareness_config.get("sleep_mode_enabled", False)
         sleep_hours = time_awareness_config.get("sleep_hours", "22:00-8:00")
+        send_on_wake = time_awareness_config.get("send_on_wake_enabled", False)
         
         if sleep_mode_enabled:
-            return f"✅ 已启用 ({sleep_hours})"
+            wake_status = "醒来发送" if send_on_wake else "直接跳过"
+            return f"✅ 已启用 ({sleep_hours}, {wake_status})"
         else:
             return "❌ 未启用"
 
