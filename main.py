@@ -134,12 +134,7 @@ class ProactiveReplyPlugin(Star):
     async def status(self, event: AstrMessageEvent, _ignore=None):
         """查看插件状态
 
-        显示插件的详细运行状态，包括：
-        - 当前会话信息
-        - 用户信息附加功能状态
-        - 智能主动发送功能配置
-        - LLM提供商状态
-        - 定时任务配置信息
+        显示插件的详细运行状态，包括：当前会话信息、用户信息附加功能状态、智能主动发送功能配置、LLM提供商状态、定时任务配置信息
         """
         async for result in self.command_handlers.status(event):
             yield result
@@ -171,12 +166,12 @@ class ProactiveReplyPlugin(Star):
         """测试功能 - 支持多种测试类型
 
         参数:
-        - basic: 基础测试发送 (默认)
-        - llm: 测试LLM请求
-        - generation: 测试LLM生成主动消息
-        - prompt: 测试系统提示词构建
-        - placeholders: 测试占位符替换
-        - history: 测试对话历史记录
+        - basic: 基础测试发送 (默认) │
+        - llm: 测试LLM请求 │
+        - generation: 测试LLM生成主动消息 │
+        - prompt: 测试系统提示词构建 │
+        - placeholders: 测试占位符替换 │
+        - history: 测试对话历史记录 │
         - save: 测试对话保存功能
 
         使用方法: /proactive test [类型]
@@ -194,7 +189,7 @@ class ProactiveReplyPlugin(Star):
         """显示信息 - 支持多种显示类型
 
         参数:
-        - prompt: 显示当前配置下会输入给LLM的组合话本（默认）
+        - prompt: 显示当前配置下会输入给LLM的组合话本（默认） │
         - users: 显示已记录的用户信息
 
         使用方法: /proactive show [类型]
@@ -221,13 +216,13 @@ class ProactiveReplyPlugin(Star):
         """管理功能 - 支持多种管理操作
 
         参数:
-        - clear: 清除记录的用户信息和发送时间
-        - task_status: 检查定时任务状态
-        - force_stop: 强制停止所有定时任务
-        - force_start: 强制启动定时任务
-        - save_config: 强制保存配置文件
-        - debug_info: 调试用户信息（故障排查用）
-        - debug_send: 调试发送功能（故障排查用）
+        - clear: 清除记录的用户信息和发送时间 │
+        - task_status: 检查定时任务状态 │
+        - force_stop: 强制停止所有定时任务 │
+        - force_start: 强制启动定时任务 │
+        - save_config: 强制保存配置文件 │
+        - debug_info: 调试用户信息（故障排查用） │
+        - debug_send: 调试发送功能（故障排查用） │
         - debug_times: 调试时间记录（故障排查用）
 
         使用方法: /proactive manage [操作]
