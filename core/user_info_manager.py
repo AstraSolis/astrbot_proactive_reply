@@ -130,6 +130,11 @@ class UserInfoManager:
         if time_guidance:
             additional_prompt = f"{time_guidance}\n\n{user_info}"
         
+        # 检查是否处于睡眠时间，如果是则附加睡眠提示
+        sleep_prompt = self._get_sleep_prompt_if_active()
+        if sleep_prompt:
+            additional_prompt = f"{sleep_prompt}\n\n{additional_prompt}"
+        
         if req.system_prompt:
             req.system_prompt = req.system_prompt.rstrip() + f"\n\n{additional_prompt}"
         else:
@@ -341,3 +346,11 @@ class UserInfoManager:
             result = re.sub(pattern, str(value), result)
         return result
 
+    def _get_sleep_prompt_if_active(self) -> str:
+        """检查是否处于睡眠时间，如果是则返回配置的睡眠提示
+        
+        Returns:
+            睡眠提示字符串，如果不在睡眠时间则返回空字符串
+        """
+        from ..utils.time_utils import get_sleep_prompt_if_active
+        return get_sleep_prompt_if_active(self.config)

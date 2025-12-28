@@ -5,7 +5,6 @@
 """
 
 import asyncio
-import datetime
 import random
 from astrbot.api import logger
 from ..utils.parsers import parse_sessions_list
@@ -54,8 +53,8 @@ class ProactiveTaskManager:
                         await asyncio.sleep(1)
                     continue
 
-                # 检查是否在活跃时间段内
-                if not self.is_active_time():
+                # 检查是否在睡眠时间段内
+                if self.is_sleep_time():
                     await asyncio.sleep(60)
                     continue
 
@@ -292,26 +291,17 @@ class ProactiveTaskManager:
 
         return True
 
-    def is_active_time(self) -> bool:
-        """检查当前是否在活跃时间段内"""
-        active_hours = self.config.get("proactive_reply", {}).get(
-            "active_hours", "9:00-22:00"
-        )
-
-        try:
-            start_time, end_time = active_hours.split("-")
-            start_hour, start_min = map(int, start_time.split(":"))
-            end_hour, end_min = map(int, end_time.split(":"))
-
-            now = datetime.datetime.now()
-            current_time = now.hour * 60 + now.minute
-            start_minutes = start_hour * 60 + start_min
-            end_minutes = end_hour * 60 + end_min
-
-            return start_minutes <= current_time <= end_minutes
-        except Exception as e:
-            logger.warning(f"活跃时间解析错误: {e}，默认为活跃状态")
-            return True
+    def is_sleep_time(self) -> bool:
+        """检查当前是否在睡眠时间段内
+        
+        从 time_awareness 配置组读取睡眠时间设置，支持跨午夜时间段
+        
+        Returns:
+            True 如果当前处于睡眠时间段（不应发送主动消息）
+            False 如果当前不在睡眠时间段（可以发送主动消息）
+        """
+        from ..utils.time_utils import is_sleep_time as check_sleep_time
+        return check_sleep_time(self.config)
 
     async def stop_proactive_task(self):
         """停止定时主动发送任务"""

@@ -39,7 +39,6 @@ class ConfigManager:
             "include_history_enabled": False,
             "history_message_count": 10,
             "sessions": [],
-            "active_hours": "9:00-22:00",
             "random_delay_enabled": False,
             "min_random_minutes": 0,
             "max_random_minutes": 30,

@@ -24,6 +24,21 @@ class CommandHandlers:
         self.config = plugin.config
         self.context = plugin.context
 
+    def _get_sleep_time_status(self) -> str:
+        """获取睡眠时间的状态描述
+        
+        Returns:
+            睡眠时间状态字符串
+        """
+        time_awareness_config = self.config.get("time_awareness", {})
+        sleep_mode_enabled = time_awareness_config.get("sleep_mode_enabled", False)
+        sleep_hours = time_awareness_config.get("sleep_hours", "22:00-8:00")
+        
+        if sleep_mode_enabled:
+            return f"✅ 已启用 ({sleep_hours})"
+        else:
+            return "❌ 未启用"
+
     # ==================== 状态命令 ====================
 
     async def status(self, event: AstrMessageEvent):
@@ -34,7 +49,7 @@ class CommandHandlers:
         - 用户信息附加功能配置
         - 智能主动发送功能详细配置
         - LLM提供商可用性
-        - 定时模式、发送间隔、活跃时间等
+        - 定时模式、发送间隔、睡眠时间等
         - 已记录的会话数和发送记录数
         """
         try:
@@ -76,7 +91,7 @@ class CommandHandlers:
   - LLM提供商：{"✅ 可用" if llm_available else "❌ 不可用"}
   - 时间模式：{proactive_config.get("timing_mode", "fixed_interval")}
   - 发送间隔：{proactive_config.get("interval_minutes", 60)} 分钟
-  - 活跃时间：{proactive_config.get("active_hours", "9:00-22:00")}
+  - 睡眠时间：{self._get_sleep_time_status()}
   - 配置会话数：{session_count}
   - AI发送记录数：{ai_sent_times_count}
 
@@ -294,7 +309,7 @@ class CommandHandlers:
             time_awareness_config = self.config.get("time_awareness", {})
             time_guidance_enabled = time_awareness_config.get("time_guidance_enabled", True)
             time_guidance_prompt = time_awareness_config.get("time_guidance_prompt", "")
-            time_guidance_info = f"✅ 已启用" if time_guidance_enabled else "❌ 未启用"
+            time_guidance_info = "✅ 已启用" if time_guidance_enabled else "❌ 未启用"
             
             # 8. 构建详细的输出信息
             result_text = f"""🧪 系统提示词构建测试（与实际LLM调用一致）
@@ -323,7 +338,7 @@ class CommandHandlers:
 
 🎭 最终组合系统提示词结构：
   [人格提示词 {len(base_system_prompt)}字符]
-  {f"[时间增强提示词 ~350字符]" if time_guidance_enabled else "[时间增强提示词 已禁用]"}
+  {"[时间增强提示词 ~350字符]" if time_guidance_enabled else "[时间增强提示词 已禁用]"}
   [--- 主动对话指令 ---]
   [{final_prompt}]
   [历史引导语]
@@ -681,7 +696,7 @@ class CommandHandlers:
             config_text += f"功能状态: {'✅ 已启用' if proactive_config.get('enabled', False) else '❌ 已禁用'}\n"
             config_text += f"定时模式: {proactive_config.get('timing_mode', 'fixed_interval')}\n"
             config_text += f"发送间隔: {proactive_config.get('interval_minutes', 600)} 分钟\n"
-            config_text += f"活跃时间: {proactive_config.get('active_hours', '9:00-22:00')}\n"
+            config_text += f"睡眠时间: {self._get_sleep_time_status()}\n"
             config_text += f"随机延迟: {'✅ 已启用' if proactive_config.get('random_delay_enabled', False) else '❌ 未启用'}\n"
             
             if proactive_config.get('random_delay_enabled', False):
