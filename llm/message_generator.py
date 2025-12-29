@@ -107,7 +107,7 @@ class MessageGenerator:
 
             # 调用LLM生成主动消息
             llm_response = await provider.text_chat(
-                prompt="请生成一条主动问候消息。",
+                prompt="[请根据上述指令生成回复]",
                 session_id=None,
                 contexts=contexts,
                 image_urls=[],
