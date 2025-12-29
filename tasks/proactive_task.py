@@ -1,20 +1,23 @@
 """
 定时任务管理器
 
-负责定时主动发送消息的任务管理
+负责定时主动发送消息的任务管理（混合计时器模式）
 """
 
 import asyncio
 import random
+from datetime import datetime, timedelta
+from typing import Optional
 from astrbot.api import logger
 from ..utils.parsers import parse_sessions_list
+from ..core.runtime_data import runtime_data
 
 
 class ProactiveTaskManager:
-    """定时任务管理器类"""
+    """定时任务管理器类（混合计时器模式）"""
 
     def __init__(
-        self, config: dict, context, message_generator, user_info_manager, is_terminating_flag_getter
+        self, config: dict, context, message_generator, user_info_manager, is_terminating_flag_getter, persistence_manager=None
     ):
         """初始化任务管理器
 
@@ -24,22 +27,193 @@ class ProactiveTaskManager:
             message_generator: 消息生成器
             user_info_manager: 用户信息管理器
             is_terminating_flag_getter: 获取终止标志的函数
+            persistence_manager: 持久化管理器（可选）
         """
         self.config = config
         self.context = context
         self.message_generator = message_generator
         self.user_info_manager = user_info_manager
         self.is_terminating_flag_getter = is_terminating_flag_getter
+        self.persistence_manager = persistence_manager
         self.proactive_task = None
 
-    async def proactive_message_loop(self):
-        """定时主动发送消息的循环
+    # ==================== 计时器管理方法 ====================
 
-        新逻辑：每分钟检查各会话，只对距离AI最后消息超过配置间隔的会话发送主动消息
+    def get_session_next_fire_time(self, session: str) -> Optional[datetime]:
+        """获取会话的下次发送时间
+
+        Args:
+            session: 会话ID
+
+        Returns:
+            下次发送时间，如果不存在则返回 None
         """
-        logger.info("定时主动发送消息循环已启动（基于AI最后消息时间计时）")
+        time_str = runtime_data.session_next_fire_times.get(session)
+        if not time_str:
+            return None
+        try:
+            return datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            logger.warning(f"会话 {session} 的下次发送时间格式错误: {time_str}")
+            return None
+
+    def set_session_next_fire_time(self, session: str, fire_time: datetime):
+        """设置会话的下次发送时间
+
+        Args:
+            session: 会话ID
+            fire_time: 下次发送时间
+        """
+        runtime_data.session_next_fire_times[session] = fire_time.strftime("%Y-%m-%d %H:%M:%S")
+        # 触发持久化
+        if self.persistence_manager:
+            self.persistence_manager.save_persistent_data()
+
+    def calculate_next_fire_time(self, session: str) -> datetime:
+        """计算会话的下次发送时间
+
+        Args:
+            session: 会话ID
+
+        Returns:
+            下次发送时间
+        """
+        interval_minutes = self.get_session_target_interval(session)
+        return datetime.now() + timedelta(minutes=interval_minutes)
+
+    def refresh_session_timer(self, session: str):
+        """刷新会话计时器（AI 发消息后调用）
+
+        重新计算下次发送时间
+
+        Args:
+            session: 会话ID
+        """
+        # 只刷新在目标列表中的会话
+        if session not in self.get_target_sessions():
+            return
         
-        # 追踪睡眠状态，用于检测"刚从睡眠中醒来"
+        next_fire = self.calculate_next_fire_time(session)
+        self.set_session_next_fire_time(session, next_fire)
+        logger.debug(f"会话 {session} 计时器已刷新，下次发送：{next_fire.strftime('%H:%M:%S')}")
+
+    def ensure_all_sessions_scheduled(self):
+        """确保所有目标会话都有下次发送时间"""
+        for session in self.get_target_sessions():
+            if not self.get_session_next_fire_time(session):
+                next_fire = self.calculate_next_fire_time(session)
+                self.set_session_next_fire_time(session, next_fire)
+                logger.info(f"会话 {session} 初始化计时器，下次发送：{next_fire.strftime('%Y-%m-%d %H:%M:%S')}")
+
+    def clear_session_timer(self, session: str):
+        """清除会话的计时器
+
+        Args:
+            session: 会话ID
+        """
+        if session in runtime_data.session_next_fire_times:
+            del runtime_data.session_next_fire_times[session]
+        if session in runtime_data.session_sleep_remaining:
+            del runtime_data.session_sleep_remaining[session]
+
+    # ==================== 智能睡眠计算 ====================
+
+    def calculate_smart_sleep(self) -> int:
+        """计算到下一个事件的睡眠秒数
+
+        Returns:
+            睡眠秒数，范围 [1, 300]
+        """
+        sessions = self.get_target_sessions()
+        if not sessions:
+            return 60  # 无会话时默认 60 秒检查
+
+        now = datetime.now()
+        next_fires = []
+        for session in sessions:
+            fire_time = self.get_session_next_fire_time(session)
+            if fire_time:
+                next_fires.append(fire_time)
+
+        if not next_fires:
+            return 60
+
+        earliest = min(next_fires)
+        seconds_to_next = (earliest - now).total_seconds()
+        
+        # 如果已经过期，返回 1 秒立即处理
+        if seconds_to_next <= 0:
+            return 1
+        
+        # 限制在 1~300 秒之间
+        return max(1, min(300, int(seconds_to_next)))
+
+    # ==================== 睡眠状态处理 ====================
+
+    def handle_enter_sleep(self):
+        """进入睡眠时保存各会话的剩余时间"""
+        now = datetime.now()
+        for session in self.get_target_sessions():
+            fire_time = self.get_session_next_fire_time(session)
+            if fire_time and fire_time > now:
+                remaining_seconds = (fire_time - now).total_seconds()
+                runtime_data.session_sleep_remaining[session] = remaining_seconds
+                logger.debug(f"会话 {session} 进入睡眠，剩余 {remaining_seconds:.0f} 秒")
+        
+        # 持久化保存
+        if self.persistence_manager:
+            self.persistence_manager.save_persistent_data()
+
+    def handle_exit_sleep(self):
+        """退出睡眠时处理计时器
+        
+        三种模式：
+        1. send_on_wake_enabled=False → 跳过，重新计算下次发送时间
+        2. send_on_wake_enabled=True + wake_send_mode=immediate → 保持原计时器，过期立即发送
+        3. send_on_wake_enabled=True + wake_send_mode=delayed → 恢复剩余计时，延后发送
+        """
+        time_awareness = self.config.get("time_awareness", {})
+        send_on_wake = time_awareness.get("send_on_wake_enabled", False)
+        wake_mode = time_awareness.get("wake_send_mode", "immediate")
+        now = datetime.now()
+
+        for session in self.get_target_sessions():
+            if not send_on_wake:
+                # 模式1：跳过睡眠期间的主动消息，重新计算
+                new_fire = self.calculate_next_fire_time(session)
+                self.set_session_next_fire_time(session, new_fire)
+                logger.debug(f"会话 {session} 睡眠结束，跳过模式，重新计时：{new_fire.strftime('%H:%M:%S')}")
+            elif wake_mode == "immediate":
+                # 模式2：保持原计时器，让主循环检测到过期后立即发送
+                logger.debug(f"会话 {session} 睡眠结束，立即发送模式，保持原计时器")
+            else:
+                # 模式3：恢复剩余计时，延后发送
+                remaining = runtime_data.session_sleep_remaining.get(session)
+                if remaining is not None and remaining > 0:
+                    new_fire = now + timedelta(seconds=remaining)
+                    self.set_session_next_fire_time(session, new_fire)
+                    logger.debug(f"会话 {session} 睡眠结束，延后模式，恢复计时：{new_fire.strftime('%H:%M:%S')}")
+                else:
+                    # 没有记录剩余时间，重新计算
+                    new_fire = self.calculate_next_fire_time(session)
+                    self.set_session_next_fire_time(session, new_fire)
+                    logger.debug(f"会话 {session} 睡眠结束，延后模式，重新计时：{new_fire.strftime('%H:%M:%S')}")
+
+        # 清理 sleep_remaining
+        runtime_data.session_sleep_remaining.clear()
+        if self.persistence_manager:
+            self.persistence_manager.save_persistent_data()
+
+    # ==================== 主循环 ====================
+
+    async def proactive_message_loop(self):
+        """定时主动发送消息的循环（混合计时器模式）
+
+        核心逻辑：预计算下次发送时间 + 智能睡眠
+        """
+        logger.info("定时主动发送消息循环已启动（混合计时器模式）")
+
+        # 追踪睡眠状态
         was_sleeping = False
 
         while True:
@@ -50,63 +224,41 @@ class ProactiveTaskManager:
 
                 # 检查功能是否启用
                 if not self.is_proactive_enabled():
-                    for i in range(60):
-                        if self.is_terminating_flag_getter():
-                            return
-                        await asyncio.sleep(1)
+                    await asyncio.sleep(60)
                     continue
 
-                # 检查是否在睡眠时间段内
+                # 睡眠状态检测与处理
                 is_sleeping = self.is_sleep_time()
-                
-                if is_sleeping:
+
+                if is_sleeping and not was_sleeping:
+                    # 刚进入睡眠
+                    logger.info("进入睡眠时间段，暂停主动消息发送")
+                    self.handle_enter_sleep()
                     was_sleeping = True
+
+                if is_sleeping:
                     await asyncio.sleep(60)
                     continue
-                
-                # 检测是否刚从睡眠中醒来
-                if was_sleeping:
+
+                if was_sleeping and not is_sleeping:
+                    # 刚退出睡眠
+                    logger.info("睡眠时间结束，恢复主动消息发送")
+                    self.handle_exit_sleep()
                     was_sleeping = False
-                    # 检查是否启用了"睡眠结束时发送消息"功能
-                    send_on_wake = self.config.get("time_awareness", {}).get("send_on_wake_enabled", False)
-                    if send_on_wake:
-                        logger.info("睡眠时间结束，立即检查是否需要发送主动消息")
-                        # 继续执行下面的发送逻辑
-                    else:
-                        logger.info("睡眠时间结束，未启用睡眠结束时发送功能，等待正常计时")
-                        await asyncio.sleep(60)
-                        continue  # 跳过本次发送，等待下次循环正常计时
 
-                # 获取目标会话列表
-                sessions = self.get_target_sessions()
-                if not sessions:
-                    await asyncio.sleep(60)
-                    continue
+                # 确保所有会话都有计时器
+                self.ensure_all_sessions_scheduled()
 
-                # 检查每个会话，只向满足条件的会话发送消息
-                sent_count = 0
-                for session in sessions:
-                    if self.should_terminate():
-                        break
+                # 智能睡眠
+                sleep_seconds = self.calculate_smart_sleep()
+                logger.debug(f"智能睡眠 {sleep_seconds} 秒")
+                
+                should_continue = await self.interruptible_sleep(sleep_seconds)
+                if not should_continue:
+                    continue  # 被中断，重新检查状态
 
-                    should_send, reason = self.should_send_to_session(session)
-                    if should_send:
-                        try:
-                            logger.info(f"向会话 {session} 发送主动消息（原因：{reason}）")
-                            await self.message_generator.send_proactive_message(session)
-                            # 发送成功后清除目标间隔，下次检查时会生成新的随机值
-                            self._clear_session_interval(session)
-                            sent_count += 1
-                        except Exception as e:
-                            logger.error(f"向会话 {session} 发送主动消息失败: {e}")
-                    else:
-                        logger.debug(f"会话 {session} 暂不发送主动消息（原因：{reason}）")
-
-                if sent_count > 0:
-                    logger.info(f"本轮检查完成，发送了 {sent_count}/{len(sessions)} 条主动消息")
-
-                # 每分钟检查一次
-                await self.wait_with_status_check(60)
+                # 处理到期的会话
+                await self.process_due_sessions()
 
             except asyncio.CancelledError:
                 logger.info("定时主动发送消息循环已取消")
@@ -114,6 +266,59 @@ class ProactiveTaskManager:
             except Exception as e:
                 logger.error(f"定时主动发送消息循环发生错误: {e}")
                 await asyncio.sleep(60)
+
+    async def interruptible_sleep(self, total_seconds: int) -> bool:
+        """可中断的睡眠
+
+        每 10 秒检查状态，允许提前退出
+
+        Args:
+            total_seconds: 总睡眠秒数
+
+        Returns:
+            True 如果正常完成睡眠，False 如果被中断
+        """
+        remaining = total_seconds
+        while remaining > 0:
+            if self.should_terminate() or not self.is_proactive_enabled():
+                return False
+            # 检查是否进入睡眠时间
+            if self.is_sleep_time():
+                return False
+            
+            chunk = min(10, remaining)
+            await asyncio.sleep(chunk)
+            remaining -= chunk
+        
+        return True
+
+    async def process_due_sessions(self):
+        """处理所有到期的会话"""
+        now = datetime.now()
+        sent_count = 0
+        sessions = self.get_target_sessions()
+
+        for session in sessions:
+            if self.should_terminate():
+                break
+
+            fire_time = self.get_session_next_fire_time(session)
+            if fire_time and fire_time <= now:
+                try:
+                    logger.info(f"向会话 {session} 发送主动消息（计时器到期）")
+                    await self.message_generator.send_proactive_message(session)
+                    # 发送后重新计算下次时间
+                    next_fire = self.calculate_next_fire_time(session)
+                    self.set_session_next_fire_time(session, next_fire)
+                    logger.info(f"会话 {session} 下次发送时间：{next_fire.strftime('%Y-%m-%d %H:%M:%S')}")
+                    sent_count += 1
+                except Exception as e:
+                    logger.error(f"向会话 {session} 发送主动消息失败: {e}")
+
+        if sent_count > 0:
+            logger.info(f"本轮发送了 {sent_count}/{len(sessions)} 条主动消息")
+
+    # ==================== 状态检查方法 ====================
 
     def should_terminate(self) -> bool:
         """检查是否应该终止任务"""
@@ -136,6 +341,13 @@ class ProactiveTaskManager:
         sessions_data = self.config.get("proactive_reply", {}).get("sessions", [])
         return parse_sessions_list(sessions_data)
 
+    def is_sleep_time(self) -> bool:
+        """检查当前是否在睡眠时间段内"""
+        from ..utils.time_utils import is_sleep_time as check_sleep_time
+        return check_sleep_time(self.config)
+
+    # ==================== 间隔计算方法 ====================
+
     def get_base_interval(self) -> int:
         """获取基础间隔时间（分钟），不包含随机因素
 
@@ -153,8 +365,6 @@ class ProactiveTaskManager:
     def get_session_target_interval(self, session: str) -> int:
         """获取指定会话的目标间隔时间
 
-        如果会话没有记录目标间隔，则生成一个新的随机间隔
-
         Args:
             session: 会话ID
 
@@ -167,160 +377,77 @@ class ProactiveTaskManager:
         # 固定间隔模式
         if timing_mode != "random_interval":
             interval = proactive_config.get("interval_minutes", 600)
-            # 如果启用随机延迟，为该会话生成并记录随机延迟
+            # 如果启用随机延迟，添加随机值
             if proactive_config.get("random_delay_enabled", False):
-                session_intervals = proactive_config.get("session_target_intervals", {})
-                if session in session_intervals:
-                    return session_intervals[session]
-                else:
-                    # 生成新的随机延迟
-                    min_delay = proactive_config.get("min_random_minutes", 0)
-                    max_delay = proactive_config.get("max_random_minutes", 30)
-                    interval += random.randint(min_delay, max_delay)
-                    self._save_session_interval(session, interval)
-            return interval
-
-        # 随机间隔模式：检查是否有记录的目标间隔
-        session_intervals = proactive_config.get("session_target_intervals", {})
-        if session in session_intervals:
-            return session_intervals[session]
-
-        # 没有记录，生成新的随机间隔
-        random_min = proactive_config.get("random_min_minutes", 600)
-        random_max = proactive_config.get("random_max_minutes", 1200)
-        interval = random.randint(random_min, random_max)
-        self._save_session_interval(session, interval)
-        return interval
-
-    def _save_session_interval(self, session: str, interval: int):
-        """保存会话的目标间隔
-
-        Args:
-            session: 会话ID
-            interval: 目标间隔（分钟）
-        """
-        if "proactive_reply" not in self.config:
-            self.config["proactive_reply"] = {}
-        if "session_target_intervals" not in self.config["proactive_reply"]:
-            self.config["proactive_reply"]["session_target_intervals"] = {}
-
-        self.config["proactive_reply"]["session_target_intervals"][session] = interval
-        logger.debug(f"会话 {session} 的目标间隔已设置为 {interval} 分钟")
-
-    def _clear_session_interval(self, session: str):
-        """清除会话的目标间隔（发送后调用，以便下次生成新的随机值）
-
-        Args:
-            session: 会话ID
-        """
-        proactive_config = self.config.get("proactive_reply", {})
-        session_intervals = proactive_config.get("session_target_intervals", {})
-        if session in session_intervals:
-            del session_intervals[session]
-            logger.debug(f"已清除会话 {session} 的目标间隔")
-
-    def should_send_to_session(self, session: str) -> tuple:
-        """检查是否应该向指定会话发送主动消息
-
-        基于AI最后一条消息的时间来判断
-
-        Args:
-            session: 会话ID
-
-        Returns:
-            (应该发送, 原因说明)
-        """
-        # 获取该会话的目标间隔
-        interval_minutes = self.get_session_target_interval(session)
-        minutes_since_last = self.user_info_manager.get_minutes_since_ai_last_message(session)
-
-        if minutes_since_last == -1:
-            # 从未发送过消息，应该发送
-            return True, "首次向该会话发送主动消息"
-
-        if minutes_since_last >= interval_minutes:
-            # 距离上次消息已超过配置间隔
-            return True, f"距离AI上次消息已过 {minutes_since_last} 分钟，超过目标间隔 {interval_minutes} 分钟"
-
-        # 未到发送时间
-        remaining = interval_minutes - minutes_since_last
-        return False, f"距离下次发送还需 {remaining} 分钟（目标间隔 {interval_minutes} 分钟）"
-
-    async def send_messages_to_sessions(self, sessions: list) -> int:
-        """向所有会话发送消息，返回成功发送的数量"""
-        logger.info(f"开始向 {len(sessions)} 个会话发送主动消息")
-        sent_count = 0
-
-        for session in sessions:
-            try:
-                await self.message_generator.send_proactive_message(session)
-                sent_count += 1
-            except Exception as e:
-                logger.error(f"向会话 {session} 发送主动消息失败: {e}")
-
-        return sent_count
-
-    def calculate_wait_interval(self) -> int:
-        """计算下一次执行的等待时间（分钟）"""
-        proactive_config = self.config.get("proactive_reply", {})
-        timing_mode = proactive_config.get("timing_mode", "fixed_interval")
-
-        if timing_mode == "random_interval":
-            random_min = proactive_config.get("random_min_minutes", 600)
-            random_max = proactive_config.get("random_max_minutes", 1200)
-            total_interval = random.randint(random_min, random_max)
-            logger.info(f"随机间隔模式：下次发送将在 {total_interval} 分钟后")
-        else:
-            base_interval = proactive_config.get("interval_minutes", 600)
-            total_interval = base_interval
-
-            random_delay_enabled = proactive_config.get("random_delay_enabled", False)
-            if random_delay_enabled:
                 min_delay = proactive_config.get("min_random_minutes", 0)
                 max_delay = proactive_config.get("max_random_minutes", 30)
-                random_delay = random.randint(min_delay, max_delay)
-                total_interval += random_delay
-                logger.info(
-                    f"固定间隔模式：基础间隔 {base_interval} 分钟 + 随机延迟 {random_delay} 分钟 = {total_interval} 分钟"
-                )
-            else:
-                logger.info(f"固定间隔模式：下次发送将在 {total_interval} 分钟后")
+                interval += random.randint(min_delay, max_delay)
+            return interval
 
-        return total_interval
+        # 随机间隔模式
+        random_min = proactive_config.get("random_min_minutes", 600)
+        random_max = proactive_config.get("random_max_minutes", 1200)
+        return random.randint(random_min, random_max)
 
-    async def wait_with_status_check(self, total_interval: int) -> bool:
-        """分段等待并检查状态变化，返回是否应该继续循环"""
-        remaining_time = total_interval
-        check_interval = 60
+    # ==================== 状态信息方法 ====================
 
-        while remaining_time > 0:
-            if self.is_terminating_flag_getter():
-                return False
+    def get_next_fire_info(self, session: str) -> str:
+        """获取会话下次发送时间的展示信息
 
-            if self.proactive_task and self.proactive_task.cancelled():
-                return False
+        Args:
+            session: 会话ID
 
-            current_config = self.config.get("proactive_reply", {})
-            if not current_config.get("enabled", False):
-                return False
-
-            wait_time = min(check_interval, remaining_time)
-            await asyncio.sleep(wait_time)
-            remaining_time -= wait_time
-
-        return True
-
-    def is_sleep_time(self) -> bool:
-        """检查当前是否在睡眠时间段内
-        
-        从 time_awareness 配置组读取睡眠时间设置，支持跨午夜时间段
-        
         Returns:
-            True 如果当前处于睡眠时间段（不应发送主动消息）
-            False 如果当前不在睡眠时间段（可以发送主动消息）
+            展示信息字符串
         """
-        from ..utils.time_utils import is_sleep_time as check_sleep_time
-        return check_sleep_time(self.config)
+        fire_time = self.get_session_next_fire_time(session)
+        
+        # 如果没有计划时间，尝试基于 AI 最后消息时间估算
+        if not fire_time:
+            minutes_since_last = self.user_info_manager.get_minutes_since_ai_last_message(session)
+            if minutes_since_last == -1:
+                return "等待初始化"
+            
+            interval = self.get_session_target_interval(session)
+            remaining_minutes = interval - minutes_since_last
+            
+            if remaining_minutes <= 0:
+                return "即将发送"
+            
+            if remaining_minutes < 60:
+                return f"约{remaining_minutes}分钟后"
+            else:
+                hours = remaining_minutes // 60
+                minutes = remaining_minutes % 60
+                return f"约{hours}小时{minutes}分钟后"
+        
+        now = datetime.now()
+        if fire_time <= now:
+            return "即将发送"
+        
+        delta = fire_time - now
+        total_minutes = int(delta.total_seconds() / 60)
+        
+        if total_minutes < 60:
+            return f"{total_minutes}分钟后 ({fire_time.strftime('%H:%M')})"
+        else:
+            hours = total_minutes // 60
+            minutes = total_minutes % 60
+            return f"{hours}小时{minutes}分钟后 ({fire_time.strftime('%H:%M')})"
+
+    def get_all_sessions_status(self) -> list:
+        """获取所有会话的状态信息
+
+        Returns:
+            [(session, next_fire_info), ...]
+        """
+        result = []
+        for session in self.get_target_sessions():
+            info = self.get_next_fire_info(session)
+            result.append((session, info))
+        return result
+
+    # ==================== 任务控制方法 ====================
 
     async def stop_proactive_task(self):
         """停止定时主动发送任务"""

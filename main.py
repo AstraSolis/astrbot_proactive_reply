@@ -75,6 +75,7 @@ class ProactiveReplyPlugin(Star):
             self.message_generator,
             self.user_info_manager,
             lambda: self._is_terminating,
+            self.persistence_manager,
         )
 
         # 命令处理器
@@ -119,7 +120,13 @@ class ProactiveReplyPlugin(Star):
         if original_message.strip().startswith("/"):
             logger.debug(f"跳过命令消息的时间记录: {original_message[:20]}...")
             return
+        
         await self.user_info_manager.record_ai_message_time(event)
+        
+        # 刷新该会话的主动消息计时器
+        session = event.unified_msg_origin
+        if session:
+            self.task_manager.refresh_session_timer(session)
 
     # ==================== 命令组定义 ====================
 

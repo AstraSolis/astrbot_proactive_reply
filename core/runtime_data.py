@@ -32,6 +32,9 @@ class RuntimeDataStore:
         self.session_user_info: dict = {}
         self.ai_last_sent_times: dict = {}
         self.last_sent_times: dict = {}
+        # 计时器相关
+        self.session_next_fire_times: dict = {}  # session -> "2025-12-29 22:00:00"
+        self.session_sleep_remaining: dict = {}  # session -> 3600.0 (秒)
 
         logger.debug("RuntimeDataStore 初始化完成")
 
@@ -47,6 +50,10 @@ class RuntimeDataStore:
             self.ai_last_sent_times = data["ai_last_sent_times"]
         if "last_sent_times" in data:
             self.last_sent_times = data["last_sent_times"]
+        if "session_next_fire_times" in data:
+            self.session_next_fire_times = data["session_next_fire_times"]
+        if "session_sleep_remaining" in data:
+            self.session_sleep_remaining = data["session_sleep_remaining"]
 
     def to_dict(self) -> dict:
         """导出为字典
@@ -58,6 +65,8 @@ class RuntimeDataStore:
             "session_user_info": self.session_user_info,
             "ai_last_sent_times": self.ai_last_sent_times,
             "last_sent_times": self.last_sent_times,
+            "session_next_fire_times": self.session_next_fire_times,
+            "session_sleep_remaining": self.session_sleep_remaining,
         }
 
     def clear_all(self):
@@ -65,6 +74,8 @@ class RuntimeDataStore:
         self.session_user_info = {}
         self.ai_last_sent_times = {}
         self.last_sent_times = {}
+        self.session_next_fire_times = {}
+        self.session_sleep_remaining = {}
         logger.info("已清除所有运行时数据")
 
 

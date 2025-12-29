@@ -67,7 +67,17 @@
                 "description": "睡眠结束时发送消息",
                 "type": "bool",
                 "default": false,
-                "hint": "启用后，当睡眠时间结束时会立即检查并向满足条件的会话发送主动消息。关闭则直接跳过睡眠期间的所有主动消息"
+                "hint": "启用后，当睡眠时间结束时会向满足条件的会话发送主动消息。关闭则跳过睡眠期间累积的所有主动消息"
+            },
+            "wake_send_mode": {
+                "description": "睡眠结束发送模式",
+                "type": "string",
+                "default": "immediate",
+                "options": [
+                    "immediate",
+                    "delayed"
+                ],
+                "hint": "仅在启用'睡眠结束时发送消息'时生效。immediate=立即发送（计时器过期则马上发送），delayed=延后发送（恢复睡眠前的剩余计时）"
             }
         }
     },

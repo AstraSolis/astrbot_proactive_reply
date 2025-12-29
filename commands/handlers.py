@@ -34,10 +34,14 @@ class CommandHandlers:
         sleep_mode_enabled = time_awareness_config.get("sleep_mode_enabled", False)
         sleep_hours = time_awareness_config.get("sleep_hours", "22:00-8:00")
         send_on_wake = time_awareness_config.get("send_on_wake_enabled", False)
+        wake_mode = time_awareness_config.get("wake_send_mode", "immediate")
         
         if sleep_mode_enabled:
-            wake_status = "醒来发送" if send_on_wake else "直接跳过"
-            return f"✅ 已启用 ({sleep_hours}, {wake_status})"
+            if send_on_wake:
+                mode_text = "立即发送" if wake_mode == "immediate" else "延后发送"
+                return f"✅ 已启用 ({sleep_hours}, 醒来{mode_text})"
+            else:
+                return f"✅ 已启用 ({sleep_hours}, 跳过)"
         else:
             return "❌ 未启用"
 
@@ -78,6 +82,18 @@ class CommandHandlers:
             current_session = event.unified_msg_origin
             is_current_in_list = current_session in sessions
 
+            # 获取各会话的下次发送时间信息
+            next_fire_info = ""
+            if proactive_config.get("enabled", False) and session_count > 0:
+                sessions_status = self.plugin.task_manager.get_all_sessions_status()
+                if sessions_status:
+                    next_fire_info = "\n\n⏱️ 各会话下次发送时间："
+                    for sess, info in sessions_status[:5]:  # 最多显示5个
+                        sess_display = sess[:30] + "..." if len(sess) > 30 else sess
+                        next_fire_info += f"\n  - {sess_display}: {info}"
+                    if len(sessions_status) > 5:
+                        next_fire_info += f"\n  ... 还有 {len(sessions_status) - 5} 个会话"
+
             status_text = f"""📊 主动回复插件状态
 
 📍 当前会话：
@@ -95,7 +111,7 @@ class CommandHandlers:
   - 发送间隔：{proactive_config.get("interval_minutes", 60)} 分钟
   - 睡眠时间：{self._get_sleep_time_status()}
   - 配置会话数：{session_count}
-  - AI发送记录数：{ai_sent_times_count}
+  - AI发送记录数：{ai_sent_times_count}{next_fire_info}
 
 💡 使用 /proactive help 查看更多指令"""
             yield event.plain_result(status_text)
