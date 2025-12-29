@@ -7,7 +7,7 @@
 <h1 align="center">AstrBot 主动回复插件(心念)</h1>
 
 <p align="center">
-  一个支持聊天附带用户信息和定时主动发送消息的 AstrBot 插件。<br />
+  一个支持聊天增强、时间感知和智能主动对话的 AstrBot 插件。<br />
 </p>
 
 ## 功能特性
