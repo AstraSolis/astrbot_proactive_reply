@@ -80,12 +80,78 @@ class ConversationManager:
             logger.error(f"获取会话 {session} 的历史记录失败: {e}")
             return []
 
-    async def add_message_to_conversation_history(self, session: str, message: str):
+    async def add_message_to_conversation_history(
+        self, session: str, message: str, user_prompt: str = None
+    ):
         """将AI主动发送的消息添加到对话历史记录中
+
+        为解决主动消息历史未附带到 LLM 请求的问题，需要添加 user/assistant 消息对
+        才能让框架正确加载历史记录到后续 LLM 请求中
+
+        优先使用官方 add_message_pair API，如不可用则使用手动方案
 
         Args:
             session: 会话ID
-            message: 消息内容
+            message: AI消息内容
+            user_prompt: 对应的用户提示词（可选，默认使用占位符）
+        """
+        # 如果没有提供 user_prompt，使用默认的占位符提示
+        if user_prompt is None:
+            user_prompt = "[系统触发主动对话]"
+
+        try:
+            # 优先使用官方 add_message_pair API
+            # API 签名: add_message_pair(cid, user_message, assistant_message)
+            # 其中 cid 是 Conversation ID，不是 unified_msg_origin
+            if hasattr(self.context.conversation_manager, "add_message_pair"):
+                try:
+                    # 先获取当前对话 ID
+                    curr_cid = await self.context.conversation_manager.get_curr_conversation_id(
+                        session
+                    )
+
+                    if not curr_cid:
+                        # 如果没有对话，创建一个新的
+                        curr_cid = (
+                            await self.context.conversation_manager.new_conversation(
+                                session
+                            )
+                        )
+
+                    if curr_cid:
+                        # 使用正确的参数名 cid（Conversation ID）
+                        await self.context.conversation_manager.add_message_pair(
+                            cid=curr_cid,
+                            user_message={"role": "user", "content": user_prompt},
+                            assistant_message={
+                                "role": "assistant",
+                                "content": message,
+                            },
+                        )
+                        logger.info("✅ 使用官方 add_message_pair API 保存消息对成功")
+                        return
+                    else:
+                        logger.warning("⚠️ 无法获取或创建对话 ID，使用备用方案")
+                except Exception as e:
+                    logger.warning(
+                        f"⚠️ 官方 add_message_pair API 调用失败: {e}，使用备用方案"
+                    )
+
+            # 备用方案：手动添加消息对到历史记录
+            await self._fallback_add_message_pair(session, message, user_prompt)
+
+        except Exception as e:
+            logger.error(f"将消息添加到对话历史时发生错误: {e}")
+
+    async def _fallback_add_message_pair(
+        self, session: str, message: str, user_prompt: str
+    ):
+        """备用方案：手动添加 user/assistant 消息对到历史记录
+
+        Args:
+            session: 会话ID
+            message: AI消息内容
+            user_prompt: 对应的用户提示词
         """
         try:
             # 获取当前会话的对话ID
@@ -120,8 +186,10 @@ class ConversationManager:
                 logger.warning(f"解析对话历史失败: {e}，使用空历史")
                 history = []
 
-            # 添加AI的主动消息到历史记录
+            # 添加 user/assistant 消息对到历史记录
+            user_message = {"role": "user", "content": user_prompt}
             ai_message = {"role": "assistant", "content": message}
+            history.append(user_message)
             history.append(ai_message)
 
             # 更新对话历史
@@ -145,9 +213,11 @@ class ConversationManager:
                     logger.info("✅ 使用数据库回退方案保存成功")
                 else:
                     logger.warning("⚠️ 数据库回退方案也失败，已保存到备份文件")
+            else:
+                logger.info("✅ 使用备用 update_conversation 方案保存消息对成功")
 
         except Exception as e:
-            logger.error(f"将消息添加到对话历史时发生错误: {e}")
+            logger.error(f"备用方案添加消息到对话历史时发生错误: {e}")
 
     async def save_conversation_safely(
         self, conversation, curr_cid: str, session: str = None
