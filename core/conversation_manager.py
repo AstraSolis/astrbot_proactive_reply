@@ -59,16 +59,66 @@ class ConversationManager:
                     logger.warning(f"会话 {session} 的历史记录格式不正确，不是列表格式")
                     return []
 
+                # 调试：记录原始历史记录数量
+                logger.debug(f"会话 {session} 获取到 {len(history)} 条原始历史记录")
+
                 # 限制历史记录数量
                 if max_count > 0 and len(history) > max_count:
                     history = history[-max_count:]
 
-                # 验证历史记录格式
+                # 验证和转换历史记录格式
                 valid_history = []
-                for item in history:
-                    if isinstance(item, dict) and "role" in item and "content" in item:
-                        if isinstance(item["content"], str):
-                            valid_history.append(item)
+                skipped_count = 0
+                for idx, item in enumerate(history):
+                    if not isinstance(item, dict) or "role" not in item:
+                        skipped_count += 1
+                        continue
+
+                    role = item.get("role")
+                    content = item.get("content")
+
+                    # 处理 content 字段的不同格式
+                    if content is None:
+                        skipped_count += 1
+                        continue
+
+                    # 格式1: content 是字符串（旧格式）
+                    if isinstance(content, str):
+                        valid_history.append({"role": role, "content": content})
+                    # 格式2: content 是列表（新版本 AstrBot 格式，包含 TextPart 等）
+                    elif isinstance(content, list):
+                        text_parts = []
+                        for part in content:
+                            if isinstance(part, dict):
+                                # 支持 {"text": "..."} 格式
+                                if "text" in part:
+                                    text_parts.append(str(part["text"]))
+                                # 支持 {"type": "text", "content": "..."} 格式
+                                elif part.get("type") == "text" and "content" in part:
+                                    text_parts.append(str(part["content"]))
+                            elif isinstance(part, str):
+                                text_parts.append(part)
+                        if text_parts:
+                            combined_content = "".join(text_parts)
+                            valid_history.append(
+                                {"role": role, "content": combined_content}
+                            )
+                        else:
+                            # 列表格式但没有可提取的文本
+                            logger.debug(
+                                f"历史记录第 {idx} 条: 列表格式但无可提取文本, content={content}"
+                            )
+                            skipped_count += 1
+                    else:
+                        logger.debug(
+                            f"历史记录第 {idx} 条: 未知 content 类型 {type(content)}"
+                        )
+                        skipped_count += 1
+
+                if skipped_count > 0:
+                    logger.debug(
+                        f"会话 {session} 历史记录处理: 有效 {len(valid_history)} 条, 跳过 {skipped_count} 条"
+                    )
 
                 return valid_history
 
@@ -119,17 +169,40 @@ class ConversationManager:
                         )
 
                     if curr_cid:
-                        # 使用正确的参数名 cid（Conversation ID）
-                        await self.context.conversation_manager.add_message_pair(
-                            cid=curr_cid,
-                            user_message={"role": "user", "content": user_prompt},
-                            assistant_message={
-                                "role": "assistant",
-                                "content": message,
-                            },
-                        )
-                        logger.info("✅ 使用官方 add_message_pair API 保存消息对成功")
-                        return
+                        # 尝试使用新版本格式 (content 是列表)
+                        # 官方文档使用 UserMessageSegment/AssistantMessageSegment
+                        # 但为向后兼容，先尝试 {"role": ..., "content": [...]} 格式
+                        try:
+                            await self.context.conversation_manager.add_message_pair(
+                                cid=curr_cid,
+                                user_message={
+                                    "role": "user",
+                                    "content": [{"text": user_prompt}],
+                                },
+                                assistant_message={
+                                    "role": "assistant",
+                                    "content": [{"text": message}],
+                                },
+                            )
+                            logger.info(
+                                "✅ 使用官方 add_message_pair API (新格式) 保存消息对成功"
+                            )
+                            return
+                        except Exception as format_err:
+                            logger.debug(f"新格式失败: {format_err}，尝试旧格式")
+                            # 回退到旧格式
+                            await self.context.conversation_manager.add_message_pair(
+                                cid=curr_cid,
+                                user_message={"role": "user", "content": user_prompt},
+                                assistant_message={
+                                    "role": "assistant",
+                                    "content": message,
+                                },
+                            )
+                            logger.info(
+                                "✅ 使用官方 add_message_pair API (旧格式) 保存消息对成功"
+                            )
+                            return
                     else:
                         logger.warning("⚠️ 无法获取或创建对话 ID，使用备用方案")
                 except Exception as e:

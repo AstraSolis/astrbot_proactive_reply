@@ -94,6 +94,16 @@ class MessageGenerator:
                 contexts = await self.conversation_manager.get_conversation_history(
                     session, history_count
                 )
+                # 记录历史记录获取结果（使用 info 级别确保可见）
+                logger.info(f"📚 主动消息生成: 获取到 {len(contexts)} 条历史记录")
+                if contexts:
+                    last_msg = contexts[-1]
+                    content_preview = last_msg.get("content", "")[:80]
+                    logger.info(
+                        f"📝 最后一条历史: [{last_msg.get('role')}] {content_preview}"
+                    )
+            else:
+                logger.info("📚 主动消息生成: 历史记录功能未启用")
 
             # 构建历史记录引导提示词
             history_guidance = ""
@@ -106,6 +116,7 @@ class MessageGenerator:
             )
 
             # 调用LLM生成主动消息
+            logger.debug(f"调用LLM生成主动消息, contexts数量: {len(contexts)}")
             llm_response = await provider.text_chat(
                 prompt="[请根据上述指令生成回复]",
                 session_id=None,
