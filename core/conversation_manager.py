@@ -145,9 +145,11 @@ class ConversationManager:
             message: AI消息内容
             user_prompt: 对应的用户提示词（可选，默认使用占位符）
         """
-        # 如果没有提供 user_prompt，使用默认的占位符提示
+        # 如果没有提供 user_prompt，使用明确的系统标记格式
+        # 使用 <SYSTEM_TRIGGER> 标签让 LLM 识别为元信息，避免误解为用户实际发言
         if user_prompt is None:
-            user_prompt = "[系统触发主动对话]"
+            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            user_prompt = f"<SYSTEM_TRIGGER: 此条目为主动对话触发记录，非用户实际发言。AI 于 {current_time} 主动向用户发起了对话，下方的 assistant 消息即为 AI 主动发送的内容>"
 
         try:
             # 优先使用官方 add_message_pair API
