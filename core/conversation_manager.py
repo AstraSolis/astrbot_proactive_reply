@@ -50,11 +50,33 @@ class ConversationManager:
                 session, curr_cid
             )
 
-            if not conversation or not conversation.history:
+            if not conversation:
+                return []
+
+            # 优先读取 content 字段 (AstrBot v4+)，回退到 history 字段（旧版本兼容）
+            # AstrBot v4+ 使用 ConversationV2.content 存储 OpenAI 格式的消息列表
+            raw_history = getattr(conversation, 'content', None)
+            if raw_history is None:
+                raw_history = getattr(conversation, 'history', None)
+            
+            if not raw_history:
+                logger.debug(f"会话 {session} 没有历史记录 (content 和 history 均为空)")
                 return []
 
             try:
-                history = json.loads(conversation.history)
+                # 处理不同的存储格式
+                if isinstance(raw_history, list):
+                    # 新版本: content 字段直接是列表
+                    history = raw_history
+                    logger.debug(f"会话 {session} 使用 content 字段 (列表格式)")
+                elif isinstance(raw_history, str):
+                    # 旧版本: history 字段是 JSON 字符串
+                    history = json.loads(raw_history)
+                    logger.debug(f"会话 {session} 使用 history 字段 (JSON字符串格式)")
+                else:
+                    logger.warning(f"会话 {session} 历史记录格式未知: {type(raw_history)}")
+                    return []
+                
                 if not isinstance(history, list):
                     logger.warning(f"会话 {session} 的历史记录格式不正确，不是列表格式")
                     return []
@@ -65,6 +87,7 @@ class ConversationManager:
                 # 限制历史记录数量
                 if max_count > 0 and len(history) > max_count:
                     history = history[-max_count:]
+
 
                 # 验证和转换历史记录格式
                 valid_history = []
