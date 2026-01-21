@@ -194,10 +194,24 @@ class ConversationManager:
                         )
 
                     if curr_cid:
-                        # 尝试使用新版本格式 (content 是列表)
-                        # 官方文档使用 UserMessageSegment/AssistantMessageSegment
-                        # 但为向后兼容，先尝试 {"role": ..., "content": [...]} 格式
+                        # 优先使用字符串格式 (AstrBot v4.11.4 兼容)
+                        # AstrBot Message 模型期望 content 是字符串，列表格式会导致 Pydantic 验证失败
                         try:
+                            await self.context.conversation_manager.add_message_pair(
+                                cid=curr_cid,
+                                user_message={"role": "user", "content": user_prompt},
+                                assistant_message={
+                                    "role": "assistant",
+                                    "content": message,
+                                },
+                            )
+                            logger.info(
+                                "✅ 使用官方 add_message_pair API (字符串格式) 保存消息对成功"
+                            )
+                            return
+                        except Exception as format_err:
+                            logger.debug(f"字符串格式失败: {format_err}，尝试列表格式")
+                            # 回退到列表格式（某些版本可能需要）
                             await self.context.conversation_manager.add_message_pair(
                                 cid=curr_cid,
                                 user_message={
@@ -210,22 +224,7 @@ class ConversationManager:
                                 },
                             )
                             logger.info(
-                                "✅ 使用官方 add_message_pair API (新格式) 保存消息对成功"
-                            )
-                            return
-                        except Exception as format_err:
-                            logger.debug(f"新格式失败: {format_err}，尝试旧格式")
-                            # 回退到旧格式
-                            await self.context.conversation_manager.add_message_pair(
-                                cid=curr_cid,
-                                user_message={"role": "user", "content": user_prompt},
-                                assistant_message={
-                                    "role": "assistant",
-                                    "content": message,
-                                },
-                            )
-                            logger.info(
-                                "✅ 使用官方 add_message_pair API (旧格式) 保存消息对成功"
+                                "✅ 使用官方 add_message_pair API (列表格式) 保存消息对成功"
                             )
                             return
                     else:
@@ -469,3 +468,102 @@ class ConversationManager:
         except (AttributeError, TypeError) as e:
             logger.error(f"数据库对象错误: {e}")
             return False
+
+    async def migrate_history_format(self, session: str) -> dict:
+        """迁移历史记录格式：将列表格式的 content 转换为字符串格式
+
+        解决旧版插件保存的列表格式 [{"text": "..."}] 导致 AstrBot Pydantic 验证失败的问题
+
+        Args:
+            session: 会话ID
+
+        Returns:
+            迁移结果字典 {"success": bool, "migrated": int, "message": str}
+        """
+        try:
+            curr_cid = await self.context.conversation_manager.get_curr_conversation_id(
+                session
+            )
+
+            if not curr_cid:
+                return {"success": False, "migrated": 0, "message": "未找到当前会话"}
+
+            conversation = await self.context.conversation_manager.get_conversation(
+                session, curr_cid
+            )
+
+            if not conversation:
+                return {"success": False, "migrated": 0, "message": "无法获取会话对象"}
+
+            # 获取历史记录
+            raw_history = getattr(conversation, 'content', None)
+            if raw_history is None:
+                raw_history = getattr(conversation, 'history', None)
+
+            if not raw_history:
+                return {"success": True, "migrated": 0, "message": "历史记录为空，无需迁移"}
+
+            # 解析历史记录
+            if isinstance(raw_history, list):
+                history = raw_history
+            elif isinstance(raw_history, str):
+                try:
+                    history = json.loads(raw_history)
+                except json.JSONDecodeError:
+                    return {"success": False, "migrated": 0, "message": "历史记录 JSON 解析失败"}
+            else:
+                return {"success": False, "migrated": 0, "message": f"未知的历史记录格式: {type(raw_history)}"}
+
+            if not isinstance(history, list):
+                return {"success": False, "migrated": 0, "message": "历史记录不是列表格式"}
+
+            # 迁移：将列表格式的 content 转换为字符串格式
+            migrated_count = 0
+            for item in history:
+                if not isinstance(item, dict):
+                    continue
+
+                content = item.get("content")
+                if isinstance(content, list):
+                    # 转换列表格式为字符串
+                    text_parts = []
+                    for part in content:
+                        if isinstance(part, dict):
+                            if "text" in part:
+                                text_parts.append(str(part["text"]))
+                            elif part.get("type") == "text" and "content" in part:
+                                text_parts.append(str(part["content"]))
+                        elif isinstance(part, str):
+                            text_parts.append(part)
+
+                    if text_parts:
+                        item["content"] = "".join(text_parts)
+                        migrated_count += 1
+
+            if migrated_count == 0:
+                return {"success": True, "migrated": 0, "message": "历史记录格式正常，无需迁移"}
+
+            # 保存迁移后的历史记录
+            try:
+                if hasattr(self.context.conversation_manager, "update_conversation"):
+                    await self.context.conversation_manager.update_conversation(
+                        session, curr_cid, history
+                    )
+                    return {
+                        "success": True,
+                        "migrated": migrated_count,
+                        "message": f"成功迁移 {migrated_count} 条记录"
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "migrated": 0,
+                        "message": "框架不支持 update_conversation 方法"
+                    }
+            except Exception as e:
+                return {"success": False, "migrated": 0, "message": f"保存失败: {e}"}
+
+        except Exception as e:
+            logger.error(f"迁移历史记录格式失败: {e}")
+            return {"success": False, "migrated": 0, "message": f"迁移失败: {e}"}
+
