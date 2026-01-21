@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+## [1.3.4] - 2026-01-21
+
+### 修复
+
+- 修复主动消息保存后导致 AI 无法正常回复的问题
+  - 调整 `add_message_pair` 格式优先级：优先使用字符串格式，避免 Pydantic 验证失败
+  - 添加 `/proactive manage fix_history` 命令，可修复旧版插件保存的列表格式历史记录
+
+### 重要!!!如果你使用了v1.3.3版本,出现了`Error occurred while processing agent: 2 validation errors for Messagecontent.str`错误,请使用`/proactive manage fix_history`命令修复
+
 ## [1.3.3] - 2026-01-20
 
 ### 增强
