@@ -9,6 +9,8 @@ import re
 from astrbot.api import logger
 from astrbot.api.event import MessageChain
 from ..utils.formatters import ensure_string_encoding
+from ..core.runtime_data import runtime_data
+
 
 
 class MessageGenerator:
@@ -56,6 +58,87 @@ class MessageGenerator:
         if not provider:
             logger.warning("LLM提供商不可用，无法生成主动消息")
         return provider
+
+    def is_duplicate_message(self, session: str, message: str) -> bool:
+        """检测消息是否与上次发送的重复
+
+        Args:
+            session: 会话ID
+            message: 待检测的消息
+
+        Returns:
+            True 如果重复，False 如果不重复
+        """
+        last_message = runtime_data.session_last_proactive_message.get(session)
+        if not last_message:
+            return False
+
+        # 完全相同
+        if message == last_message:
+            logger.debug("重复检测: 消息与上次完全相同")
+            return True
+
+        # 前50个字符相同（避免仅结尾略有不同的情况）
+        check_length = 50
+        if len(message) >= check_length and len(last_message) >= check_length:
+            if message[:check_length] == last_message[:check_length]:
+                logger.debug("重复检测: 消息前50字符与上次相同")
+                return True
+
+        return False
+
+    def record_last_message(self, session: str, message: str):
+        """记录会话最后发送的主动消息
+
+        Args:
+            session: 会话ID
+            message: 发送的消息
+        """
+        runtime_data.session_last_proactive_message[session] = message
+
+    async def generate_proactive_message_with_retry(
+        self, session: str, max_retries: int = 3
+    ) -> str:
+        """生成主动消息，带重复检测和重试
+
+        Args:
+            session: 会话ID
+            max_retries: 最大重试次数
+
+        Returns:
+            生成的消息，失败返回None
+        """
+        # 检查是否启用重复检测
+        proactive_config = self.config.get("proactive_reply", {})
+        duplicate_detection_enabled = proactive_config.get(
+            "duplicate_detection_enabled", True
+        )
+
+        message = None
+        for attempt in range(max_retries + 1):
+            message = await self.generate_proactive_message(session)
+            if not message:
+                return None
+
+            # 如果未启用重复检测，直接返回
+            if not duplicate_detection_enabled:
+                return message
+
+            # 检测重复
+            if not self.is_duplicate_message(session, message):
+                return message
+
+            # 重复了，记录日志
+            if attempt < max_retries:
+                logger.warning(
+                    f"🔄 检测到重复消息，重新生成 ({attempt + 1}/{max_retries})"
+                )
+            else:
+                logger.warning(
+                    f"⚠️ 多次重试后仍为重复消息，使用当前消息"
+                )
+
+        return message
 
     async def generate_proactive_message(self, session: str) -> str:
         """使用LLM生成主动消息内容
@@ -157,8 +240,8 @@ class MessageGenerator:
         try:
             session = ensure_string_encoding(session)
 
-            # 使用LLM生成主动消息
-            message = await self.generate_proactive_message(session)
+            # 使用带重复检测的LLM生成主动消息
+            message = await self.generate_proactive_message_with_retry(session)
 
             if not message:
                 logger.warning(f"无法为会话 {session} 生成主动消息")
@@ -167,8 +250,12 @@ class MessageGenerator:
             message = ensure_string_encoding(message)
             original_message = message  # 保存原始消息用于历史记录
 
+            # 记录本次发送的消息（用于下次重复检测）
+            self.record_last_message(session, original_message)
+
             # 处理消息分割和发送
             await self._send_message_with_split(session, message, original_message)
+
 
         except Exception as e:
             logger.error(f"❌ 向会话 {session} 发送主动消息时发生错误: {e}")

@@ -144,6 +144,12 @@
                 "default": 10,
                 "hint": "当启用历史记录功能时，获取最近多少条对话记录作为上下文。建议设置为5-20条，过多可能影响性能"
             },
+            "duplicate_detection_enabled": {
+                "description": "启用重复检测",
+                "type": "bool",
+                "default": true,
+                "hint": "启用后，当生成的主动消息与上次发送的内容重复时，会自动重新生成（最多重试3次）"
+            },
             "random_delay_enabled": {
                 "description": "是否启用随机延迟发送",
                 "type": "bool",
