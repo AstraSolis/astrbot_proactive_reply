@@ -4,6 +4,66 @@
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-02-01
+
+### 新增
+
+- 添加主动消息重复检测功能
+  - 检测生成的消息是否与上次发送的内容重复
+  - 重复时自动重新生成（最多重试3次）
+  - 新增 `duplicate_detection_enabled` 配置项（默认启用）
+
+- 添加未回复计数器功能
+  - 新增 `{unreplied_count}` 占位符，追踪用户连续未回复次数
+  - Bot 发送主动消息后计数 +1，用户回复后重置为 0
+
+### 增强
+
+- 优化主动对话提示词与时间感知系统
+  - **注意**：如果使用默认配置，请手动更新配置文件中的提示词，或删除插件配置重新安装以获取最新的提示词
+  - 修改提示词：
+    - 时间感知增强提示词:
+      ```
+      <TIME_GUIDE: 核心时间规则（必须严格遵守）
+      1. 真实性：系统提供的时间信息是你唯一可信的时间来源，禁止编造或推测。
+      2. 自然回应：优先使用自然口语（如"刚才"、"大半夜"、"好久不见"）替代数字报时，仅在用户明确询问时提供精确时间。
+      3. 状态映射：依据当前时间调整人设的生理状态（如深夜困倦、饭点饥饿）。
+      4. 上下文感知：根据与用户上次对话的时间差（{user_last_message_time_ago}）调整语气（如很久没见要表现出想念，刚聊过则保持连贯）。>
+      ```
+    - 用户信息模板:
+      ```
+      [对话信息] 用户名称:{username},时间:{time},上次聊天时间:{user_last_message_time}
+      ```
+    - 睡眠时间提示:
+      ```
+      <SLEEP_MODE: 当前处于睡眠时间段，你正处于休眠状态。若用户此时发送消息，请以符合人设的自然方式回应，可表现出困倦、迷糊等状态>
+      ```
+    - 主动对话提示词:
+      ```
+      现在是{current_time}，用户（{username}）上次发消息是{user_last_message_time_ago}（{user_last_message_time}），已连续{unreplied_count}次未回复，请主动发起自然的对话
+      ```
+      ```
+      用户（{username}）在{user_last_message_time}发过消息，距今{user_last_message_time_ago}，当前时间{current_time}，连续未回复{unreplied_count}次，请友好地问候
+      ```
+      ```
+      现在是{current_time}，想到了用户（{username}），上次互动是{user_last_message_time_ago}，连续{unreplied_count}次没收到回复，请主动关心一下
+      ```
+      ```
+      用户（{username}）已经{user_last_message_time_ago}没有消息了（上次:{user_last_message_time}），当前时间{current_time}，未回复次数:{unreplied_count}，请选择一个话题聊聊
+      ```
+      ```
+      现在是{current_time}，用户（{username}）上次活跃在{user_last_message_time}（{user_last_message_time_ago}），连续{unreplied_count}次未读，请分享一些想法或问候
+      ```
+      ```
+      当前时间{current_time}，距离和用户（{username}）上次聊天已经{user_last_message_time_ago}，已发送{unreplied_count}条未回复消息，请轻松地发起对话
+      ```
+      ```
+      用户（{username}）于{user_last_message_time}最后活跃，相隔{user_last_message_time_ago}，现在是{current_time}，连续未回复{unreplied_count}次，请自然地打个招呼
+      ```
+      ```
+      用户（{username}）于{user_last_message_time}最后活跃，相隔{user_last_message_time_ago}，现在是{current_time}，连续未回复{unreplied_count}次，请自然地打个招呼
+      ```
+
 ## [1.3.4] - 2026-01-21
 
 ### 修复
