@@ -15,7 +15,7 @@ class ConfigManager:
     DEFAULT_CONFIG = {
         "user_info": {
             "time_format": "%Y-%m-%d %H:%M:%S",
-            "template": "[对话信息] 用户：{username}，时间：{time}",
+            "template": "[对话信息] 用户名称:{username},时间:{time},上次聊天时间:{user_last_message_time}",
         },
         "proactive_reply": {
             "enabled": False,
@@ -23,18 +23,14 @@ class ConfigManager:
             "interval_minutes": 600,
             "proactive_default_persona": "你是一个温暖、真诚的AI朋友。你有着丰富的情感表达能力，会根据用户的状态和心情调整自己的语气。你善于倾听，乐于分享，偶尔会有些小幽默。你记得与用户的互动历史，会在合适的时候提及之前的对话。你不会过于正式，而是像一个贴心的朋友一样，用自然、温暖的方式与用户交流。你会主动关心用户的近况，分享有趣的想法，有时也会表达自己的'感受'和'想法'，让对话更加生动有趣。",
             "proactive_prompt_list": [
-                "主动向{username}发起一段自然的对话",
-                "想到了{username}，决定主动和他们聊聊",
-                "现在是{current_time}，主动找{username}聊天",
-                "距离上次和{username}聊天已经{user_last_message_time_ago}了，主动发起对话",
-                "随机选择一个话题，主动和{username}交流",
-                "以轻松的方式主动联系{username}",
-                "主动关心{username}的近况",
-                "想要分享一些想法，主动找{username}聊天",
-                "主动询问{username}最近的生活状态",
-                "想要陪伴{username}一会儿，主动发起对话",
-                "想了解{username}的新动态，发起对话",
-                "有点想念{username}，主动发起对话",
+                "现在是{current_time}，用户（{username}）上次发消息是{user_last_message_time_ago}（{user_last_message_time}），已连续{unreplied_count}次未回复，请主动发起自然的对话",
+                "用户（{username}）在{user_last_message_time}发过消息，距今{user_last_message_time_ago}，当前时间{current_time}，连续未回复{unreplied_count}次，请友好地问候",
+                "现在是{current_time}，想到了用户（{username}），上次互动是{user_last_message_time_ago}，连续{unreplied_count}次没收到回复，请主动关心一下",
+                "用户（{username}）已经{user_last_message_time_ago}没有消息了（上次:{user_last_message_time}），当前时间{current_time}，未回复次数:{unreplied_count}，请选择一个话题聊聊",
+                "现在是{current_time}，用户（{username}）上次活跃在{user_last_message_time}（{user_last_message_time_ago}），连续{unreplied_count}次未读，请分享一些想法或问候",
+                "当前时间{current_time}，距离和用户（{username}）上次聊天已经{user_last_message_time_ago}，已发送{unreplied_count}条未回复消息，请轻松地发起对话",
+                "用户（{username}）于{user_last_message_time}最后活跃，相隔{user_last_message_time_ago}，现在是{current_time}，连续未回复{unreplied_count}次，请自然地打个招呼",
+                "现在是{current_time}，有点想念用户（{username}），上次互动是{user_last_message_time_ago}（{user_last_message_time}），已{unreplied_count}次未回复，请发送一条温暖的消息",
             ],
             "include_history_enabled": False,
             "history_message_count": 10,
@@ -147,7 +143,9 @@ class ConfigManager:
                 runtime_data.ai_last_sent_times = runtime_data.last_sent_times.copy()
                 if self.persistence_manager:
                     self.persistence_manager.save_persistent_data()
-                    logger.info(f"成功迁移 {len(runtime_data.last_sent_times)} 条时间记录")
+                    logger.info(
+                        f"成功迁移 {len(runtime_data.last_sent_times)} 条时间记录"
+                    )
 
         except (KeyError, ValueError, AttributeError) as e:
             logger.error(f"迁移时间记录失败: {e}")

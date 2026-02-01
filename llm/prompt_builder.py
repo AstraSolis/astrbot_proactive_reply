@@ -7,8 +7,8 @@
 import random
 from astrbot.api import logger
 from ..utils.formatters import ensure_string_encoding
-from ..utils.parsers import parse_prompt_list
 from .placeholder_utils import replace_placeholders
+from ..utils.parsers import parse_prompt_list
 
 
 class PromptBuilder:
@@ -146,15 +146,15 @@ class PromptBuilder:
             logger.warning(f"获取人格系统提示词失败: {e}")
 
         return base_system_prompt
-    
+
     def _get_default_persona_prompt(self, personas: list) -> str:
         """从 AstrBot 配置中动态获取当前设置的默认人格
-        
+
         解决 selected_default_persona 被缓存导致切换人格后不更新的问题
-        
+
         Args:
             personas: 人格列表
-            
+
         Returns:
             默认人格的提示词
         """
@@ -163,7 +163,7 @@ class PromptBuilder:
             # AstrBotConfig 是一个字典式对象，支持 get(), keys() 等方法
             astrbot_config = self.context.get_config()
             default_persona_name = None
-            
+
             # 尝试用字典方式获取（AstrBotConfig 支持 get 方法）
             if hasattr(astrbot_config, "get"):
                 # 从 provider_settings 获取 default_personality（正确的字段名）
@@ -173,21 +173,25 @@ class PromptBuilder:
                     default_persona_name = provider_settings.get("default_personality")
                     if default_persona_name:
                         logger.debug(f"从配置获取默认人格: '{default_persona_name}'")
-            
+
             # 如果获取到默认人格名称，从人格列表中查找
             if default_persona_name and personas:
                 for persona in personas:
                     if self._get_persona_name(persona) == default_persona_name:
-                        prompt = ensure_string_encoding(self._get_persona_prompt(persona))
+                        prompt = ensure_string_encoding(
+                            self._get_persona_prompt(persona)
+                        )
                         logger.debug(
                             f"使用默认人格 '{default_persona_name}' (prompt长度: {len(prompt)}字符)"
                         )
                         return prompt
-                
+
                 # 匹配失败
                 available = [self._get_persona_name(p) for p in personas]
-                logger.warning(f"配置的默认人格 '{default_persona_name}' 在人格列表 {available} 中未找到")
-            
+                logger.warning(
+                    f"配置的默认人格 '{default_persona_name}' 在人格列表 {available} 中未找到"
+                )
+
             # 回退到 selected_default_persona（可能被缓存）
             default_persona_obj = self.context.provider_manager.selected_default_persona
             if default_persona_obj and default_persona_obj.get("prompt"):
@@ -197,29 +201,34 @@ class PromptBuilder:
                     f"使用 AstrBot 默认人格 '{persona_name}' (prompt长度: {len(prompt)}字符) [缓存]"
                 )
                 return prompt
-            
+
             # 方法3: 如果还是没有，使用人格列表的第一个
             if personas:
                 first_persona = personas[0]
                 persona_name = self._get_persona_name(first_persona)
                 prompt = self._get_persona_prompt(first_persona)
-                
+
                 if prompt:
                     prompt = ensure_string_encoding(prompt)
                     logger.debug(
                         f"使用人格列表第一个 '{persona_name}' (prompt长度: {len(prompt)}字符)"
                     )
                     return prompt
-            
+
             logger.debug("未找到任何可用人格")
             return ""
-            
+
         except Exception as e:
             logger.warning(f"获取默认人格失败: {e}")
             return ""
 
     def build_combined_system_prompt(
-        self, base_system_prompt: str, final_prompt: str, history_guidance: str
+        self,
+        base_system_prompt: str,
+        final_prompt: str,
+        history_guidance: str,
+        session: str = None,
+        build_user_context_func=None,
     ) -> str:
         """构建组合系统提示词
 
@@ -227,6 +236,8 @@ class PromptBuilder:
             base_system_prompt: 基础人格提示词
             final_prompt: 主动对话提示词
             history_guidance: 历史记录引导
+            session: 会话ID (可选，用于替换时间感知提示词中的占位符)
+            build_user_context_func: 构建用户上下文的函数 (可选)
 
         Returns:
             组合后的系统提示词
@@ -238,20 +249,33 @@ class PromptBuilder:
         # 从配置中读取时间感知增强提示词设置
         time_awareness_config = self.config.get("time_awareness", {})
         time_guidance_enabled = time_awareness_config.get("time_guidance_enabled", True)
-        
+
         time_guidance = ""
         if time_guidance_enabled:
             # 从配置中读取自定义提示词，如果没有则使用默认值
-            default_time_guidance = """--- 核心规则（必须严格遵守）---
-1. 根据提供的时间信息自然地回应
-2. 系统提供的时间信息是你唯一可信的时间来源
-3. 绝对禁止推测、计算或编造任何时间信息，违反此规则将导致严重后果
-4. 模糊化表达：默认使用自然口语（如"刚才"、"大半夜的"、"好久不见"）替代数字报时。仅在用户明确询问时间时提供精确数值
-5. 状态映射：必须依据时间调整人设的生理状态（如深夜困倦、饭点饥饿）
-6. 间隔感知：根据当前与上一次对话的时间差调整语气"""
-            
+            default_time_guidance = """<TIME_GUIDE: 核心时间规则（必须严格遵守）
+1. 真实性：系统提供的时间信息是你唯一可信的时间来源，禁止编造或推测。
+2. 自然回应：优先使用自然口语（如"刚才"、"大半夜"、"好久不见"）替代数字报时，仅在用户明确询问时提供精确时间。
+3. 状态映射：依据当前时间调整人设的生理状态（如深夜困倦、饭点饥饿）。
+4. 上下文感知：根据与用户上次对话的时间差（{user_last_message_time_ago}）调整语气（如很久没见要表现出想念，刚聊过则保持连贯）。>"""
+
             custom_prompt = time_awareness_config.get("time_guidance_prompt", "")
-            time_guidance_content = custom_prompt if custom_prompt else default_time_guidance
+            time_guidance_content = (
+                custom_prompt if custom_prompt else default_time_guidance
+            )
+
+            # 如果提供了 session，替换占位符
+            if session and build_user_context_func:
+                try:
+                    time_guidance_content = replace_placeholders(
+                        time_guidance_content,
+                        session,
+                        self.config,
+                        build_user_context_func,
+                    )
+                except Exception as e:
+                    logger.warning(f"时间感知提示词占位符替换失败: {e}")
+
             time_guidance = f"\n\n{time_guidance_content}\n"
 
         if base_system_prompt:
@@ -270,7 +294,7 @@ class PromptBuilder:
 
     def get_base_system_prompt(self) -> str:
         """获取基础系统提示词（人格提示词）
-        
+
         与 get_persona_system_prompt 使用相同的动态获取逻辑，
         确保显示的人格信息与实际使用的一致。
 
@@ -284,10 +308,10 @@ class PromptBuilder:
                 if hasattr(self.context, "provider_manager")
                 else []
             ) or []
-            
+
             # 使用与 get_persona_system_prompt 相同的动态获取逻辑
             base_system_prompt = self._get_default_persona_prompt(personas)
-            
+
             # 如果还是没有获取到，使用插件默认人格
             if not base_system_prompt:
                 proactive_config = self.config.get("proactive_reply", {})

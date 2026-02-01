@@ -116,16 +116,20 @@ class UserInfoManager:
         time_guidance = ""
         if time_guidance_enabled:
             # 从配置中读取自定义提示词，如果没有则使用默认值
-            default_time_guidance = """--- 核心规则（必须严格遵守）---
-1. 根据提供的时间信息自然地回应
-2. 系统提供的时间信息是你唯一可信的时间来源
-3. 绝对禁止推测、计算或编造任何时间信息，违反此规则将导致严重后果
-4. 模糊化表达：默认使用自然口语（如"刚才"、"大半夜的"、"好久不见"）替代数字报时。仅在用户明确询问时间时提供精确数值
-5. 状态映射：必须依据时间调整人设的生理状态（如深夜困倦、饭点饥饿）
-6. 间隔感知：根据当前与上一次对话的时间差调整语气"""
+            default_time_guidance = """<TIME_GUIDE: 核心时间规则（必须严格遵守）
+1. 真实性：系统提供的时间信息是你唯一可信的时间来源，禁止编造或推测。
+2. 自然回应：优先使用自然口语（如"刚才"、"大半夜"、"好久不见"）替代数字报时，仅在用户明确询问时提供精确时间。
+3. 状态映射：依据当前时间调整人设的生理状态（如深夜困倦、饭点饥饿）。
+4. 上下文感知：根据与用户上次对话的时间差（{user_last_message_time_ago}）调整语气（如很久没见要表现出想念，刚聊过则保持连贯）。>"""
 
             custom_prompt = time_awareness_config.get("time_guidance_prompt", "")
             time_guidance = custom_prompt if custom_prompt else default_time_guidance
+
+            # 使用现有占位符替换 time_guidance 中的变量
+            try:
+                time_guidance = self._safe_format_template(time_guidance, placeholders)
+            except Exception as e:
+                logger.warning(f"时间感知提示词占位符替换失败: {e}")
 
         # 追加用户信息和时间增强提示词到系统提示
         additional_prompt = user_info

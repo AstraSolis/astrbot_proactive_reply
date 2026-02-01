@@ -192,7 +192,11 @@ class MessageGenerator:
 
             # 构建组合系统提示词
             combined_system_prompt = self.prompt_builder.build_combined_system_prompt(
-                base_system_prompt, final_prompt, history_guidance
+                base_system_prompt,
+                final_prompt,
+                history_guidance,
+                session,
+                self.user_info_manager.build_user_context_for_proactive,
             )
 
             # 调用LLM生成主动消息

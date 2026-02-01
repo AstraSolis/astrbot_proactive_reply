@@ -17,7 +17,13 @@ class ProactiveTaskManager:
     """定时任务管理器类（混合计时器模式）"""
 
     def __init__(
-        self, config: dict, context, message_generator, user_info_manager, is_terminating_flag_getter, persistence_manager=None
+        self,
+        config: dict,
+        context,
+        message_generator,
+        user_info_manager,
+        is_terminating_flag_getter,
+        persistence_manager=None,
     ):
         """初始化任务管理器
 
@@ -64,7 +70,9 @@ class ProactiveTaskManager:
             session: 会话ID
             fire_time: 下次发送时间
         """
-        runtime_data.session_next_fire_times[session] = fire_time.strftime("%Y-%m-%d %H:%M:%S")
+        runtime_data.session_next_fire_times[session] = fire_time.strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
         # 触发持久化
         if self.persistence_manager:
             self.persistence_manager.save_persistent_data()
@@ -92,10 +100,12 @@ class ProactiveTaskManager:
         # 只刷新在目标列表中的会话
         if session not in self.get_target_sessions():
             return
-        
+
         next_fire = self.calculate_next_fire_time(session)
         self.set_session_next_fire_time(session, next_fire)
-        logger.debug(f"会话 {session} 计时器已刷新，下次发送：{next_fire.strftime('%H:%M:%S')}")
+        logger.debug(
+            f"会话 {session} 计时器已刷新，下次发送：{next_fire.strftime('%H:%M:%S')}"
+        )
 
     def ensure_all_sessions_scheduled(self):
         """确保所有目标会话都有下次发送时间"""
@@ -103,7 +113,9 @@ class ProactiveTaskManager:
             if not self.get_session_next_fire_time(session):
                 next_fire = self.calculate_next_fire_time(session)
                 self.set_session_next_fire_time(session, next_fire)
-                logger.info(f"会话 {session} 初始化计时器，下次发送：{next_fire.strftime('%Y-%m-%d %H:%M:%S')}")
+                logger.info(
+                    f"会话 {session} 初始化计时器，下次发送：{next_fire.strftime('%Y-%m-%d %H:%M:%S')}"
+                )
 
     def clear_session_timer(self, session: str):
         """清除会话的计时器
@@ -140,11 +152,11 @@ class ProactiveTaskManager:
 
         earliest = min(next_fires)
         seconds_to_next = (earliest - now).total_seconds()
-        
+
         # 如果已经过期，返回 1 秒立即处理
         if seconds_to_next <= 0:
             return 1
-        
+
         # 限制在 1~300 秒之间
         return max(1, min(300, int(seconds_to_next)))
 
@@ -158,15 +170,17 @@ class ProactiveTaskManager:
             if fire_time and fire_time > now:
                 remaining_seconds = (fire_time - now).total_seconds()
                 runtime_data.session_sleep_remaining[session] = remaining_seconds
-                logger.debug(f"会话 {session} 进入睡眠，剩余 {remaining_seconds:.0f} 秒")
-        
+                logger.debug(
+                    f"会话 {session} 进入睡眠，剩余 {remaining_seconds:.0f} 秒"
+                )
+
         # 持久化保存
         if self.persistence_manager:
             self.persistence_manager.save_persistent_data()
 
     def handle_exit_sleep(self):
         """退出睡眠时处理计时器
-        
+
         三种模式：
         1. send_on_wake_enabled=False → 跳过，重新计算下次发送时间
         2. send_on_wake_enabled=True + wake_send_mode=immediate → 保持原计时器，过期立即发送
@@ -182,7 +196,9 @@ class ProactiveTaskManager:
                 # 模式1：跳过睡眠期间的主动消息，重新计算
                 new_fire = self.calculate_next_fire_time(session)
                 self.set_session_next_fire_time(session, new_fire)
-                logger.debug(f"会话 {session} 睡眠结束，跳过模式，重新计时：{new_fire.strftime('%H:%M:%S')}")
+                logger.debug(
+                    f"会话 {session} 睡眠结束，跳过模式，重新计时：{new_fire.strftime('%H:%M:%S')}"
+                )
             elif wake_mode == "immediate":
                 # 模式2：保持原计时器，让主循环检测到过期后立即发送
                 logger.debug(f"会话 {session} 睡眠结束，立即发送模式，保持原计时器")
@@ -192,12 +208,16 @@ class ProactiveTaskManager:
                 if remaining is not None and remaining > 0:
                     new_fire = now + timedelta(seconds=remaining)
                     self.set_session_next_fire_time(session, new_fire)
-                    logger.debug(f"会话 {session} 睡眠结束，延后模式，恢复计时：{new_fire.strftime('%H:%M:%S')}")
+                    logger.debug(
+                        f"会话 {session} 睡眠结束，延后模式，恢复计时：{new_fire.strftime('%H:%M:%S')}"
+                    )
                 else:
                     # 没有记录剩余时间，重新计算
                     new_fire = self.calculate_next_fire_time(session)
                     self.set_session_next_fire_time(session, new_fire)
-                    logger.debug(f"会话 {session} 睡眠结束，延后模式，重新计时：{new_fire.strftime('%H:%M:%S')}")
+                    logger.debug(
+                        f"会话 {session} 睡眠结束，延后模式，重新计时：{new_fire.strftime('%H:%M:%S')}"
+                    )
 
         # 清理 sleep_remaining
         runtime_data.session_sleep_remaining.clear()
@@ -252,7 +272,7 @@ class ProactiveTaskManager:
                 # 智能睡眠
                 sleep_seconds = self.calculate_smart_sleep()
                 logger.debug(f"智能睡眠 {sleep_seconds} 秒")
-                
+
                 should_continue = await self.interruptible_sleep(sleep_seconds)
                 if not should_continue:
                     continue  # 被中断，重新检查状态
@@ -285,11 +305,11 @@ class ProactiveTaskManager:
             # 检查是否进入睡眠时间
             if self.is_sleep_time():
                 return False
-            
+
             chunk = min(10, remaining)
             await asyncio.sleep(chunk)
             remaining -= chunk
-        
+
         return True
 
     async def process_due_sessions(self):
@@ -310,7 +330,9 @@ class ProactiveTaskManager:
                     # 发送后重新计算下次时间
                     next_fire = self.calculate_next_fire_time(session)
                     self.set_session_next_fire_time(session, next_fire)
-                    logger.info(f"会话 {session} 下次发送时间：{next_fire.strftime('%Y-%m-%d %H:%M:%S')}")
+                    logger.info(
+                        f"会话 {session} 下次发送时间：{next_fire.strftime('%Y-%m-%d %H:%M:%S')}"
+                    )
                     sent_count += 1
                 except Exception as e:
                     logger.error(f"向会话 {session} 发送主动消息失败: {e}")
@@ -344,6 +366,7 @@ class ProactiveTaskManager:
     def is_sleep_time(self) -> bool:
         """检查当前是否在睡眠时间段内"""
         from ..utils.time_utils import is_sleep_time as check_sleep_time
+
         return check_sleep_time(self.config)
 
     # ==================== 间隔计算方法 ====================
@@ -401,33 +424,35 @@ class ProactiveTaskManager:
             展示信息字符串
         """
         fire_time = self.get_session_next_fire_time(session)
-        
+
         # 如果没有计划时间，尝试基于 AI 最后消息时间估算
         if not fire_time:
-            minutes_since_last = self.user_info_manager.get_minutes_since_ai_last_message(session)
+            minutes_since_last = (
+                self.user_info_manager.get_minutes_since_ai_last_message(session)
+            )
             if minutes_since_last == -1:
                 return "等待初始化"
-            
+
             interval = self.get_session_target_interval(session)
             remaining_minutes = interval - minutes_since_last
-            
+
             if remaining_minutes <= 0:
                 return "即将发送"
-            
+
             if remaining_minutes < 60:
                 return f"约{remaining_minutes}分钟后"
             else:
                 hours = remaining_minutes // 60
                 minutes = remaining_minutes % 60
                 return f"约{hours}小时{minutes}分钟后"
-        
+
         now = datetime.now()
         if fire_time <= now:
             return "即将发送"
-        
+
         delta = fire_time - now
         total_minutes = int(delta.total_seconds() / 60)
-        
+
         if total_minutes < 60:
             return f"{total_minutes}分钟后 ({fire_time.strftime('%H:%M')})"
         else:

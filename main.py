@@ -120,9 +120,9 @@ class ProactiveReplyPlugin(Star):
         if original_message.strip().startswith("/"):
             logger.debug(f"跳过命令消息的时间记录: {original_message[:20]}...")
             return
-        
+
         await self.user_info_manager.record_ai_message_time(event)
-        
+
         # 刷新该会话的主动消息计时器
         session = event.unified_msg_origin
         if session:
@@ -169,7 +169,9 @@ class ProactiveReplyPlugin(Star):
     # ==================== 测试命令 ====================
 
     @proactive_group.command("test")
-    async def test_proactive(self, event: AstrMessageEvent, test_type: str = "", _ignore=None):
+    async def test_proactive(
+        self, event: AstrMessageEvent, test_type: str = "", _ignore=None
+    ):
         """测试功能 - 支持多种测试类型
 
         参数:
@@ -192,7 +194,9 @@ class ProactiveReplyPlugin(Star):
     # ==================== 显示命令 ====================
 
     @proactive_group.command("show")
-    async def show_info(self, event: AstrMessageEvent, show_type: str = "", _ignore=None):
+    async def show_info(
+        self, event: AstrMessageEvent, show_type: str = "", _ignore=None
+    ):
         """显示信息 - 支持多种显示类型
 
         参数:
@@ -219,7 +223,9 @@ class ProactiveReplyPlugin(Star):
     # ==================== 管理命令 ====================
 
     @proactive_group.command("manage")
-    async def manage_functions(self, event: AstrMessageEvent, action: str = "", _ignore=None):
+    async def manage_functions(
+        self, event: AstrMessageEvent, action: str = "", _ignore=None
+    ):
         """管理功能 - 支持多种管理操作
 
         参数:

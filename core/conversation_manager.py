@@ -11,6 +11,7 @@ import os
 import sqlite3
 from astrbot.api import logger
 from ..utils.validators import verify_database_schema
+from .runtime_data import runtime_data
 
 
 class ConversationManager:
@@ -55,10 +56,10 @@ class ConversationManager:
 
             # 优先读取 content 字段 (AstrBot v4+)，回退到 history 字段（旧版本兼容）
             # AstrBot v4+ 使用 ConversationV2.content 存储 OpenAI 格式的消息列表
-            raw_history = getattr(conversation, 'content', None)
+            raw_history = getattr(conversation, "content", None)
             if raw_history is None:
-                raw_history = getattr(conversation, 'history', None)
-            
+                raw_history = getattr(conversation, "history", None)
+
             if not raw_history:
                 logger.debug(f"会话 {session} 没有历史记录 (content 和 history 均为空)")
                 return []
@@ -74,9 +75,11 @@ class ConversationManager:
                     history = json.loads(raw_history)
                     logger.debug(f"会话 {session} 使用 history 字段 (JSON字符串格式)")
                 else:
-                    logger.warning(f"会话 {session} 历史记录格式未知: {type(raw_history)}")
+                    logger.warning(
+                        f"会话 {session} 历史记录格式未知: {type(raw_history)}"
+                    )
                     return []
-                
+
                 if not isinstance(history, list):
                     logger.warning(f"会话 {session} 的历史记录格式不正确，不是列表格式")
                     return []
@@ -87,7 +90,6 @@ class ConversationManager:
                 # 限制历史记录数量
                 if max_count > 0 and len(history) > max_count:
                     history = history[-max_count:]
-
 
                 # 验证和转换历史记录格式
                 valid_history = []
@@ -172,7 +174,8 @@ class ConversationManager:
         # 使用 <SYSTEM_TRIGGER> 标签让 LLM 识别为元信息，避免误解为用户实际发言
         if user_prompt is None:
             current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            user_prompt = f"<SYSTEM_TRIGGER: 此条目为主动对话触发记录，非用户实际发言。AI 于 {current_time} 主动向用户发起了对话，下方的 assistant 消息即为 AI 主动发送的内容>"
+            unreplied_count = runtime_data.session_unreplied_count.get(session, 0)
+            user_prompt = f"<SYSTEM_TRIGGER: 此条目为主动对话触发记录，非用户实际发言。AI 于 {current_time} 主动向用户发起了对话（当前连续未回复次数：{unreplied_count}），下方的 assistant 消息即为 AI 主动发送的内容>"
 
         try:
             # 优先使用官方 add_message_pair API
@@ -496,12 +499,16 @@ class ConversationManager:
                 return {"success": False, "migrated": 0, "message": "无法获取会话对象"}
 
             # 获取历史记录
-            raw_history = getattr(conversation, 'content', None)
+            raw_history = getattr(conversation, "content", None)
             if raw_history is None:
-                raw_history = getattr(conversation, 'history', None)
+                raw_history = getattr(conversation, "history", None)
 
             if not raw_history:
-                return {"success": True, "migrated": 0, "message": "历史记录为空，无需迁移"}
+                return {
+                    "success": True,
+                    "migrated": 0,
+                    "message": "历史记录为空，无需迁移",
+                }
 
             # 解析历史记录
             if isinstance(raw_history, list):
@@ -510,12 +517,24 @@ class ConversationManager:
                 try:
                     history = json.loads(raw_history)
                 except json.JSONDecodeError:
-                    return {"success": False, "migrated": 0, "message": "历史记录 JSON 解析失败"}
+                    return {
+                        "success": False,
+                        "migrated": 0,
+                        "message": "历史记录 JSON 解析失败",
+                    }
             else:
-                return {"success": False, "migrated": 0, "message": f"未知的历史记录格式: {type(raw_history)}"}
+                return {
+                    "success": False,
+                    "migrated": 0,
+                    "message": f"未知的历史记录格式: {type(raw_history)}",
+                }
 
             if not isinstance(history, list):
-                return {"success": False, "migrated": 0, "message": "历史记录不是列表格式"}
+                return {
+                    "success": False,
+                    "migrated": 0,
+                    "message": "历史记录不是列表格式",
+                }
 
             # 迁移：将列表格式的 content 转换为字符串格式
             migrated_count = 0
@@ -541,7 +560,11 @@ class ConversationManager:
                         migrated_count += 1
 
             if migrated_count == 0:
-                return {"success": True, "migrated": 0, "message": "历史记录格式正常，无需迁移"}
+                return {
+                    "success": True,
+                    "migrated": 0,
+                    "message": "历史记录格式正常，无需迁移",
+                }
 
             # 保存迁移后的历史记录
             try:
@@ -552,13 +575,13 @@ class ConversationManager:
                     return {
                         "success": True,
                         "migrated": migrated_count,
-                        "message": f"成功迁移 {migrated_count} 条记录"
+                        "message": f"成功迁移 {migrated_count} 条记录",
                     }
                 else:
                     return {
                         "success": False,
                         "migrated": 0,
-                        "message": "框架不支持 update_conversation 方法"
+                        "message": "框架不支持 update_conversation 方法",
                     }
             except Exception as e:
                 return {"success": False, "migrated": 0, "message": f"保存失败: {e}"}
@@ -566,4 +589,3 @@ class ConversationManager:
         except Exception as e:
             logger.error(f"迁移历史记录格式失败: {e}")
             return {"success": False, "migrated": 0, "message": f"迁移失败: {e}"}
-

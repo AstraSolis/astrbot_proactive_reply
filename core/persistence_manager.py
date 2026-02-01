@@ -182,7 +182,9 @@ class PersistenceManager:
 
             # 从运行时数据存储中获取数据
             persistent_data = runtime_data.to_dict()
-            persistent_data["last_update"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            persistent_data["last_update"] = datetime.datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
             persistent_data["data_version"] = "2.0"
 
             if not validate_persistent_data(persistent_data):

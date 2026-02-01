@@ -24,7 +24,7 @@
             "template": {
                 "description": "用户信息模板",
                 "type": "text",
-                "default": "[对话信息] 用户：{username}，时间：{time}",
+                "default": "[对话信息] 用户名称:{username},时间:{time},上次聊天时间:{user_last_message_time}",
                 "hint": "用户信息会追加到现有系统提示的末尾，不会覆盖人格设置。可使用占位符：{username}（用户名）、{user_id}（用户ID）、{time}（消息时间）、{current_time}（当前时间）、{platform}（平台名）、{chat_type}（聊天类型）、{user_last_message_time}（用户上次发消息时间）、{user_last_message_time_ago}（相对时间，如5分钟前）、{ai_last_sent_time}（AI上次发送时间）。建议保持简洁，避免与人格设置冲突"
             }
         }
@@ -42,7 +42,7 @@
             "time_guidance_prompt": {
                 "description": "时间感知增强提示词",
                 "type": "text",
-                "default": "--- 核心规则（必须严格遵守）---\n1. 根据提供的时间信息自然地回应\n2. 系统提供的时间信息是你唯一可信的时间来源\n3. 绝对禁止推测、计算或编造任何时间信息，违反此规则将导致严重后果\n4. 模糊化表达：默认使用自然口语（如\"刚才\"、\"大半夜的\"、\"好久不见\"）替代数字报时。仅在用户明确询问时间时提供精确数值\n5. 状态映射：必须依据时间调整人设的生理状态（如深夜困倦、饭点饥饿）\n6. 间隔感知：根据当前与上一次对话的时间差调整语气",
+                "default": "<TIME_GUIDE: 核心时间规则（必须严格遵守）\n1. 真实性：系统提供的时间信息是你唯一可信的时间来源，禁止编造或推测。\n2. 自然回应：优先使用自然口语（如\"刚才\"、\"大半夜\"、\"好久不见\"）替代数字报时，仅在用户明确询问时提供精确时间。\n3. 状态映射：依据当前时间调整人设的生理状态（如深夜困倦、饭点饥饿）。\n4. 上下文感知：根据与用户上次对话的时间差（{user_last_message_time_ago}）调整语气（如很久没见要表现出想念，刚聊过则保持连贯）。>",
                 "hint": "自定义时间信息使用指南的内容。这段提示词会帮助AI正确处理时间相关的表述，避免输出具体时间点。支持使用\\n换行"
             },
             "sleep_mode_enabled": {
@@ -60,7 +60,7 @@
             "sleep_prompt": {
                 "description": "睡眠时间提示内容",
                 "type": "text",
-                "default": "【系统提示】当前处于睡眠时间段，请以符合人设的方式自然回应。",
+                "default": "<SLEEP_MODE: 当前处于睡眠时间段，你正处于休眠状态。若用户此时发送消息，请以符合人设的自然方式回应，可表现出困倦、迷糊等状态>",
                 "hint": "在睡眠时间段内，此提示会附加到系统提示词中，让AI感知当前处于睡眠时间"
             },
             "send_on_wake_enabled": {
@@ -118,17 +118,14 @@
                 "description": "主动对话提示词列表",
                 "type": "list",
                 "default": [
-                    "请向用户（{username}）主动发起对话",
-                    "请向用户（{username}）发送一条问候消息",
-                    "现在是{current_time}，请主动和用户（{username}）聊天",
-                    "距离上次聊天已经{user_last_message_time_ago}了，请主动联系用户（{username}）",
-                    "请选择一个话题，和用户（{username}）交流",
-                    "请主动向用户（{username}）打招呼",
-                    "请主动关心用户（{username}）的近况",
-                    "请分享一些想法，和用户（{username}）聊天",
-                    "请主动询问用户（{username}）最近怎么样",
-                    "请主动陪用户（{username}）聊天",
-                    "请向用户（{username}）表达想念"
+                    "现在是{current_time}，用户（{username}）上次发消息是{user_last_message_time_ago}（{user_last_message_time}），已连续{unreplied_count}次未回复，请主动发起自然的对话",
+                    "用户（{username}）在{user_last_message_time}发过消息，距今{user_last_message_time_ago}，当前时间{current_time}，连续未回复{unreplied_count}次，请友好地问候",
+                    "现在是{current_time}，想到了用户（{username}），上次互动是{user_last_message_time_ago}，连续{unreplied_count}次没收到回复，请主动关心一下",
+                    "用户（{username}）已经{user_last_message_time_ago}没有消息了（上次:{user_last_message_time}），当前时间{current_time}，未回复次数:{unreplied_count}，请选择一个话题聊聊",
+                    "现在是{current_time}，用户（{username}）上次活跃在{user_last_message_time}（{user_last_message_time_ago}），连续{unreplied_count}次未读，请分享一些想法或问候",
+                    "当前时间{current_time}，距离和用户（{username}）上次聊天已经{user_last_message_time_ago}，已发送{unreplied_count}条未回复消息，请轻松地发起对话",
+                    "用户（{username}）于{user_last_message_time}最后活跃，相隔{user_last_message_time_ago}，现在是{current_time}，连续未回复{unreplied_count}次，请自然地打个招呼",
+                    "现在是{current_time}，有点想念用户（{username}），上次互动是{user_last_message_time_ago}（{user_last_message_time}），已{unreplied_count}次未回复，请发送一条温暖的消息"
                 ],
                 "hint": "主动对话的提示词列表，每个提示词可以单独添加、编辑和删除。系统会随机选择一个提示词来指导AI生成主动消息。支持占位符：{user_context}（用户基本信息，包括昵称、平台、聊天类型、最后活跃时间等）、{user_last_message_time}（用户上次发消息时间）、{user_last_message_time_ago}（用户上次发消息相对时间，如5分钟前）、{username}（用户昵称）、{platform}（平台名称）、{chat_type}（聊天类型）、{ai_last_sent_time}（AI上次发送时间）、{current_time}（当前时间）、{unreplied_count}（用户连续未回复次数）。注意：{user_context}是用户基本信息，与下方的'历史记录功能'不冲突，历史记录功能提供的是对话内容历史"
             },
