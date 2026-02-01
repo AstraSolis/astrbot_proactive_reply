@@ -130,7 +130,7 @@
                     "请主动陪用户（{username}）聊天",
                     "请向用户（{username}）表达想念"
                 ],
-                "hint": "主动对话的提示词列表，每个提示词可以单独添加、编辑和删除。系统会随机选择一个提示词来指导AI生成主动消息。支持占位符：{user_context}（用户基本信息，包括昵称、平台、聊天类型、最后活跃时间等）、{user_last_message_time}（用户上次发消息时间）、{user_last_message_time_ago}（用户上次发消息相对时间，如5分钟前）、{username}（用户昵称）、{platform}（平台名称）、{chat_type}（聊天类型）、{ai_last_sent_time}（AI上次发送时间）、{current_time}（当前时间）。注意：{user_context}是用户基本信息，与下方的'历史记录功能'不冲突，历史记录功能提供的是对话内容历史"
+                "hint": "主动对话的提示词列表，每个提示词可以单独添加、编辑和删除。系统会随机选择一个提示词来指导AI生成主动消息。支持占位符：{user_context}（用户基本信息，包括昵称、平台、聊天类型、最后活跃时间等）、{user_last_message_time}（用户上次发消息时间）、{user_last_message_time_ago}（用户上次发消息相对时间，如5分钟前）、{username}（用户昵称）、{platform}（平台名称）、{chat_type}（聊天类型）、{ai_last_sent_time}（AI上次发送时间）、{current_time}（当前时间）、{unreplied_count}（用户连续未回复次数）。注意：{user_context}是用户基本信息，与下方的'历史记录功能'不冲突，历史记录功能提供的是对话内容历史"
             },
             "include_history_enabled": {
                 "description": "是否附带历史记录",

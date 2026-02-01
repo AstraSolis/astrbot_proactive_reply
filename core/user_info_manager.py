@@ -77,17 +77,19 @@ class UserInfoManager:
         try:
             # 获取会话ID用于获取历史数据
             session_id = event.unified_msg_origin
-            
+
             # 获取用户上次发消息时间
             stored_user_info = runtime_data.session_user_info.get(session_id, {})
             user_last_message_time = stored_user_info.get("last_active_time", "未知")
-            
+
             # 获取AI上次发送时间
-            ai_last_sent_time = runtime_data.ai_last_sent_times.get(session_id, "从未发送过")
-            
+            ai_last_sent_time = runtime_data.ai_last_sent_times.get(
+                session_id, "从未发送过"
+            )
+
             # 计算相对时间
             user_last_message_time_ago = format_time_ago(user_last_message_time)
-            
+
             # 构建占位符字典（与主动对话统一）
             placeholders = {
                 "username": username,
@@ -100,7 +102,7 @@ class UserInfoManager:
                 "user_last_message_time_ago": user_last_message_time_ago,
                 "ai_last_sent_time": ai_last_sent_time,
             }
-            
+
             # 使用安全的替换方式处理模板
             user_info = self._safe_format_template(template, placeholders)
         except Exception as e:
@@ -110,7 +112,7 @@ class UserInfoManager:
         # 获取时间感知增强提示词配置
         time_awareness_config = self.config.get("time_awareness", {})
         time_guidance_enabled = time_awareness_config.get("time_guidance_enabled", True)
-        
+
         time_guidance = ""
         if time_guidance_enabled:
             # 从配置中读取自定义提示词，如果没有则使用默认值
@@ -121,7 +123,7 @@ class UserInfoManager:
 4. 模糊化表达：默认使用自然口语（如"刚才"、"大半夜的"、"好久不见"）替代数字报时。仅在用户明确询问时间时提供精确数值
 5. 状态映射：必须依据时间调整人设的生理状态（如深夜困倦、饭点饥饿）
 6. 间隔感知：根据当前与上一次对话的时间差调整语气"""
-            
+
             custom_prompt = time_awareness_config.get("time_guidance_prompt", "")
             time_guidance = custom_prompt if custom_prompt else default_time_guidance
 
@@ -129,12 +131,12 @@ class UserInfoManager:
         additional_prompt = user_info
         if time_guidance:
             additional_prompt = f"{time_guidance}\n\n{user_info}"
-        
+
         # 检查是否处于睡眠时间，如果是则附加睡眠提示
         sleep_prompt = self._get_sleep_prompt_if_active()
         if sleep_prompt:
             additional_prompt = f"{sleep_prompt}\n\n{additional_prompt}"
-        
+
         if req.system_prompt:
             req.system_prompt = req.system_prompt.rstrip() + f"\n\n{additional_prompt}"
         else:
@@ -178,6 +180,9 @@ class UserInfoManager:
             }
 
             runtime_data.session_user_info[session_id] = user_info
+
+            # 用户回复后重置未回复计数
+            runtime_data.session_unreplied_count[session_id] = 0
 
             # 保存持久化数据
             persistent_saved = self.persistence_manager.save_persistent_data()
@@ -230,6 +235,10 @@ class UserInfoManager:
             # 记录发送时间到运行时数据存储（同时更新两个记录）
             runtime_data.last_sent_times[session] = current_time
             runtime_data.ai_last_sent_times[session] = current_time
+
+            # 发送主动消息后，增加未回复计数
+            current_count = runtime_data.session_unreplied_count.get(session, 0)
+            runtime_data.session_unreplied_count[session] = current_count + 1
 
             # 保存持久化数据
             persistent_saved = self.persistence_manager.save_persistent_data()
@@ -348,9 +357,10 @@ class UserInfoManager:
 
     def _get_sleep_prompt_if_active(self) -> str:
         """检查是否处于睡眠时间，如果是则返回配置的睡眠提示
-        
+
         Returns:
             睡眠提示字符串，如果不在睡眠时间则返回空字符串
         """
         from ..utils.time_utils import get_sleep_prompt_if_active
+
         return get_sleep_prompt_if_active(self.config)

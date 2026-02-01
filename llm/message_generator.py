@@ -12,7 +12,6 @@ from ..utils.formatters import ensure_string_encoding
 from ..core.runtime_data import runtime_data
 
 
-
 class MessageGenerator:
     """消息生成器类"""
 
@@ -134,9 +133,7 @@ class MessageGenerator:
                     f"🔄 检测到重复消息，重新生成 ({attempt + 1}/{max_retries})"
                 )
             else:
-                logger.warning(
-                    f"⚠️ 多次重试后仍为重复消息，使用当前消息"
-                )
+                logger.warning("⚠️ 多次重试后仍为重复消息，使用当前消息")
 
         return message
 
@@ -255,7 +252,6 @@ class MessageGenerator:
 
             # 处理消息分割和发送
             await self._send_message_with_split(session, message, original_message)
-
 
         except Exception as e:
             logger.error(f"❌ 向会话 {session} 发送主动消息时发生错误: {e}")

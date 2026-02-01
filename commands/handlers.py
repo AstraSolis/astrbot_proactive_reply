@@ -391,7 +391,8 @@ class CommandHandlers:
 - 当前时间: {current_time}
 - 用户上次发消息时间: {user_last_message_time}
 - 用户上次发消息相对时间: {user_last_message_time_ago}
-- AI上次发送时间: {ai_last_sent_time}"""
+- AI上次发送时间: {ai_last_sent_time}
+- 用户连续未回复次数: {unreplied_count}"""
 
             from ..llm.placeholder_utils import replace_placeholders
 
