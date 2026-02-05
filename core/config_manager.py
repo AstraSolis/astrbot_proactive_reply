@@ -34,6 +34,8 @@ class ConfigManager:
             ],
             "include_history_enabled": False,
             "history_message_count": 10,
+            "history_save_mode": "default",
+            "custom_history_prompt": "<PROACTIVE_TRIGGER: 时间:{current_time}，用户:{username}>",
             "sessions": [],
             "random_delay_enabled": False,
             "min_random_minutes": 0,

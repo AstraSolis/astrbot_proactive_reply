@@ -97,7 +97,7 @@ class MessageGenerator:
 
     async def generate_proactive_message_with_retry(
         self, session: str, max_retries: int = 3
-    ) -> str:
+    ) -> tuple:
         """生成主动消息，带重复检测和重试
 
         Args:
@@ -105,7 +105,7 @@ class MessageGenerator:
             max_retries: 最大重试次数
 
         Returns:
-            生成的消息，失败返回None
+            元组 (生成的消息, 使用的主动对话提示词)，失败返回 (None, None)
         """
         # 检查是否启用重复检测
         proactive_config = self.config.get("proactive_reply", {})
@@ -114,18 +114,19 @@ class MessageGenerator:
         )
 
         message = None
+        final_prompt = None
         for attempt in range(max_retries + 1):
-            message = await self.generate_proactive_message(session)
+            message, final_prompt = await self.generate_proactive_message(session)
             if not message:
-                return None
+                return None, None
 
             # 如果未启用重复检测，直接返回
             if not duplicate_detection_enabled:
-                return message
+                return message, final_prompt
 
             # 检测重复
             if not self.is_duplicate_message(session, message):
-                return message
+                return message, final_prompt
 
             # 重复了，记录日志
             if attempt < max_retries:
@@ -135,29 +136,29 @@ class MessageGenerator:
             else:
                 logger.warning("⚠️ 多次重试后仍为重复消息，使用当前消息")
 
-        return message
+        return message, final_prompt
 
-    async def generate_proactive_message(self, session: str) -> str:
+    async def generate_proactive_message(self, session: str) -> tuple:
         """使用LLM生成主动消息内容
 
         Args:
             session: 会话ID
 
         Returns:
-            生成的消息，失败返回None
+            元组 (生成的消息, 使用的主动对话提示词)，失败返回 (None, None)
         """
         try:
             # 检查LLM是否可用
             provider = self.get_llm_provider()
             if not provider:
-                return None
+                return None, None
 
             # 获取并处理主动对话提示词
             final_prompt = self.prompt_builder.get_proactive_prompt(
                 session, self.user_info_manager.build_user_context_for_proactive
             )
             if not final_prompt:
-                return None
+                return None, None
 
             # 获取人格系统提示词
             base_system_prompt = await self.prompt_builder.get_persona_system_prompt(
@@ -217,20 +218,20 @@ class MessageGenerator:
                         generated_message.strip()
                     )
                     logger.info("LLM生成主动消息成功")
-                    return generated_message
+                    return generated_message, final_prompt
                 else:
                     logger.warning("LLM返回了空消息")
-                    return None
+                    return None, None
             else:
                 logger.warning(f"LLM响应异常: {llm_response}")
-                return None
+                return None, None
 
         except Exception as e:
             logger.error(f"使用LLM生成主动消息失败: {e}")
             import traceback
 
             logger.error(f"详细错误信息: {traceback.format_exc()}")
-            return None
+            return None, None
 
     async def send_proactive_message(self, session: str):
         """向指定会话发送主动消息
@@ -242,7 +243,10 @@ class MessageGenerator:
             session = ensure_string_encoding(session)
 
             # 使用带重复检测的LLM生成主动消息
-            message = await self.generate_proactive_message_with_retry(session)
+            (
+                message,
+                proactive_prompt_used,
+            ) = await self.generate_proactive_message_with_retry(session)
 
             if not message:
                 logger.warning(f"无法为会话 {session} 生成主动消息")
@@ -255,7 +259,9 @@ class MessageGenerator:
             self.record_last_message(session, original_message)
 
             # 处理消息分割和发送
-            await self._send_message_with_split(session, message, original_message)
+            await self._send_message_with_split(
+                session, message, original_message, proactive_prompt_used
+            )
 
         except Exception as e:
             logger.error(f"❌ 向会话 {session} 发送主动消息时发生错误: {e}")
@@ -264,7 +270,11 @@ class MessageGenerator:
             logger.error(f"详细错误信息: {traceback.format_exc()}")
 
     async def _send_message_with_split(
-        self, session: str, message: str, original_message: str
+        self,
+        session: str,
+        message: str,
+        original_message: str,
+        proactive_prompt_used: str = None,
     ):
         """处理消息分割和发送
 
@@ -272,6 +282,7 @@ class MessageGenerator:
             session: 会话ID
             message: 待发送的消息
             original_message: 原始消息（用于历史记录）
+            proactive_prompt_used: 本次使用的主动对话提示词
         """
         try:
             proactive_config = self.config.get("proactive_reply", {})
@@ -280,9 +291,11 @@ class MessageGenerator:
             )
 
             if split_enabled:
-                await self._send_split_message(session, message, original_message)
+                await self._send_split_message(
+                    session, message, original_message, proactive_prompt_used
+                )
             else:
-                await self._send_single_message(session, message)
+                await self._send_single_message(session, message, proactive_prompt_used)
 
         except Exception as e:
             logger.error(f"❌ 发送消息时发生错误: {e}")
@@ -291,7 +304,11 @@ class MessageGenerator:
             logger.error(f"发送错误详情: {traceback.format_exc()}")
 
     async def _send_split_message(
-        self, session: str, message: str, original_message: str
+        self,
+        session: str,
+        message: str,
+        original_message: str,
+        proactive_prompt_used: str = None,
     ):
         """发送分割后的消息
 
@@ -299,6 +316,7 @@ class MessageGenerator:
             session: 会话ID
             message: 待分割和发送的消息
             original_message: 原始消息
+            proactive_prompt_used: 本次使用的主动对话提示词
         """
         proactive_config = self.config.get("proactive_reply", {})
         split_mode = proactive_config.get("split_mode", "backslash")
@@ -360,7 +378,10 @@ class MessageGenerator:
                 if sent_count > 0:
                     self.user_info_manager.record_sent_time(session)
                     await self.conversation_manager.add_message_to_conversation_history(
-                        session, original_message
+                        session,
+                        original_message,
+                        proactive_prompt_used=proactive_prompt_used,
+                        build_user_context_func=self.user_info_manager.build_user_context_for_proactive,
                     )
                     logger.info(
                         f"✅ 成功发送主动消息({sent_count}/{len(message_parts)} 条)"
@@ -369,21 +390,24 @@ class MessageGenerator:
                     logger.warning("⚠️ 所有消息片段都发送失败")
             else:
                 # 没有被分割
-                await self._send_single_message(session, message)
+                await self._send_single_message(session, message, proactive_prompt_used)
 
         except re.error as e:
             logger.error(
                 f"❌ 正则表达式错误: {e}, 模式: {split_mode}, 表达式: {split_pattern}"
             )
             logger.error("将使用原始消息,不进行分割")
-            await self._send_single_message(session, message)
+            await self._send_single_message(session, message, proactive_prompt_used)
 
-    async def _send_single_message(self, session: str, message: str):
+    async def _send_single_message(
+        self, session: str, message: str, proactive_prompt_used: str = None
+    ):
         """发送单条消息
 
         Args:
             session: 会话ID
             message: 消息内容
+            proactive_prompt_used: 本次使用的主动对话提示词
         """
         message_chain = MessageChain().message(message)
         success = await self.context.send_message(session, message_chain)
@@ -391,7 +415,10 @@ class MessageGenerator:
         if success:
             self.user_info_manager.record_sent_time(session)
             await self.conversation_manager.add_message_to_conversation_history(
-                session, message
+                session,
+                message,
+                proactive_prompt_used=proactive_prompt_used,
+                build_user_context_func=self.user_info_manager.build_user_context_for_proactive,
             )
             logger.info("✅ 成功发送主动消息")
         else:

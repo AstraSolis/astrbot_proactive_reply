@@ -12,6 +12,7 @@ import sqlite3
 from astrbot.api import logger
 from ..utils.validators import verify_database_schema
 from .runtime_data import runtime_data
+from ..llm.placeholder_utils import replace_placeholders
 
 
 class ConversationManager:
@@ -28,6 +29,59 @@ class ConversationManager:
         self.config = config
         self.context = context
         self.persistence_manager = persistence_manager
+
+    def _build_history_user_prompt(
+        self,
+        session: str,
+        proactive_prompt_used: str = None,
+        build_user_context_func=None,
+    ) -> str:
+        """根据配置构建历史记录的用户端提示词
+
+        Args:
+            session: 会话ID
+            proactive_prompt_used: 本次使用的主动对话提示词（已替换占位符）
+            build_user_context_func: 构建用户上下文的函数
+
+        Returns:
+            根据配置生成的用户提示词
+        """
+        proactive_config = self.config.get("proactive_reply", {})
+        history_save_mode = proactive_config.get("history_save_mode", "default")
+
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        unreplied_count = runtime_data.session_unreplied_count.get(session, 0)
+
+        if history_save_mode == "proactive_prompt":
+            # 使用本次触发的主动对话提示词
+            if proactive_prompt_used:
+                return proactive_prompt_used
+            else:
+                # 回退到默认模式
+                logger.warning(
+                    "历史记录模式为 proactive_prompt 但未提供提示词，使用默认模式"
+                )
+                return f"<SYSTEM_TRIGGER: 此条目为主动对话触发记录，非用户实际发言。AI 于 {current_time} 主动向用户发起了对话（当前连续未回复次数：{unreplied_count}），下方的 assistant 消息即为 AI 主动发送的内容>"
+
+        elif history_save_mode == "custom":
+            # 使用自定义提示词模板，支持占位符替换
+            custom_template = proactive_config.get(
+                "custom_history_prompt",
+                "<PROACTIVE_TRIGGER: 时间:{current_time}，用户:{username}>",
+            )
+            if build_user_context_func:
+                return replace_placeholders(
+                    custom_template, session, self.config, build_user_context_func
+                )
+            else:
+                # 简单替换基础占位符
+                return custom_template.replace("{current_time}", current_time).replace(
+                    "{unreplied_count}", str(unreplied_count)
+                )
+
+        else:
+            # 默认模式：使用系统触发标记
+            return f"<SYSTEM_TRIGGER: 此条目为主动对话触发记录，非用户实际发言。AI 于 {current_time} 主动向用户发起了对话（当前连续未回复次数：{unreplied_count}），下方的 assistant 消息即为 AI 主动发送的内容>"
 
     async def get_conversation_history(self, session: str, max_count: int = 10) -> list:
         """安全地获取会话的对话历史记录
@@ -156,7 +210,12 @@ class ConversationManager:
             return []
 
     async def add_message_to_conversation_history(
-        self, session: str, message: str, user_prompt: str = None
+        self,
+        session: str,
+        message: str,
+        user_prompt: str = None,
+        proactive_prompt_used: str = None,
+        build_user_context_func=None,
     ):
         """将AI主动发送的消息添加到对话历史记录中
 
@@ -168,14 +227,15 @@ class ConversationManager:
         Args:
             session: 会话ID
             message: AI消息内容
-            user_prompt: 对应的用户提示词（可选，默认使用占位符）
+            user_prompt: 对应的用户提示词（可选，根据配置生成）
+            proactive_prompt_used: 本次触发使用的主动对话提示词（已替换占位符）
+            build_user_context_func: 构建用户上下文的函数（用于自定义模式占位符替换）
         """
-        # 如果没有提供 user_prompt，使用明确的系统标记格式
-        # 使用 <SYSTEM_TRIGGER> 标签让 LLM 识别为元信息，避免误解为用户实际发言
+        # 根据配置选择历史记录保存内容
         if user_prompt is None:
-            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            unreplied_count = runtime_data.session_unreplied_count.get(session, 0)
-            user_prompt = f"<SYSTEM_TRIGGER: 此条目为主动对话触发记录，非用户实际发言。AI 于 {current_time} 主动向用户发起了对话（当前连续未回复次数：{unreplied_count}），下方的 assistant 消息即为 AI 主动发送的内容>"
+            user_prompt = self._build_history_user_prompt(
+                session, proactive_prompt_used, build_user_context_func
+            )
 
         try:
             # 优先使用官方 add_message_pair API

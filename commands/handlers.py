@@ -239,7 +239,7 @@ class CommandHandlers:
         yield event.plain_result("⏳ 正在测试LLM生成功能...")
         try:
             session_id = event.unified_msg_origin
-            message = await self.plugin.message_generator.generate_proactive_message(
+            message, _ = await self.plugin.message_generator.generate_proactive_message(
                 session_id
             )
             if message:
@@ -652,7 +652,7 @@ class CommandHandlers:
         """调试发送功能"""
         try:
             session_id = event.unified_msg_origin
-            message = await self.plugin.message_generator.generate_proactive_message(
+            message, _ = await self.plugin.message_generator.generate_proactive_message(
                 session_id
             )
             if message:

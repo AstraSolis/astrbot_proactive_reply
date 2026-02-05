@@ -141,6 +141,23 @@
                 "default": 10,
                 "hint": "当启用历史记录功能时，获取最近多少条对话记录作为上下文。建议设置为5-20条，过多可能影响性能"
             },
+            "history_save_mode": {
+                "description": "历史记录保存模式",
+                "type": "string",
+                "default": "default",
+                "options": [
+                    "default",
+                    "proactive_prompt",
+                    "custom"
+                ],
+                "hint": "选择保存到对话历史的用户端内容：default=默认系统触发标记，proactive_prompt=当次使用的主动对话提示词（替换占位符后），custom=自定义内容（支持占位符）"
+            },
+            "custom_history_prompt": {
+                "description": "自定义历史记录提示词",
+                "type": "text",
+                "default": "<PROACTIVE_TRIGGER: 时间:{current_time}，用户:{username}>",
+                "hint": "仅当历史记录保存模式为custom时生效。支持占位符：{username}、{current_time}、{user_last_message_time}、{user_last_message_time_ago}、{unreplied_count}等"
+            },
             "duplicate_detection_enabled": {
                 "description": "启用重复检测",
                 "type": "bool",
