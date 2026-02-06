@@ -407,6 +407,7 @@ class CommandHandlers:
 - 平台: {platform}
 - 聊天类型: {chat_type}
 - 当前时间: {current_time}
+- 星期: {weekday}
 - 用户上次发消息时间: {user_last_message_time}
 - 用户上次发消息相对时间: {user_last_message_time_ago}
 - AI上次发送时间: {ai_last_sent_time}

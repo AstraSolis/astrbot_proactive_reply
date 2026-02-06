@@ -48,6 +48,9 @@ def replace_placeholders(
             "{chat_type}": ensure_string_encoding(user_info.get("chat_type", "未知")),
             "{ai_last_sent_time}": ensure_string_encoding(last_sent_time),
             "{current_time}": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "{weekday}": ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"][
+                datetime.datetime.now().weekday()
+            ],
             "{unreplied_count}": str(
                 runtime_data.session_unreplied_count.get(session, 0)
             ),
