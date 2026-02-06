@@ -154,6 +154,8 @@ class CommandHandlers:
                 sessions.remove(session_id)
                 self.config["proactive_reply"]["sessions"] = sessions
                 self.plugin.config_manager.save_config_safely()
+                # 清除该会话的计时器
+                self.plugin.task_manager.clear_session_timer(session_id)
                 yield event.plain_result("✅ 已从主动对话列表移除当前会话")
             else:
                 yield event.plain_result("当前会话不在主动对话列表中")

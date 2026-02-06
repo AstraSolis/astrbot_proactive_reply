@@ -42,6 +42,8 @@ class ProactiveTaskManager:
         self.is_terminating_flag_getter = is_terminating_flag_getter
         self.persistence_manager = persistence_manager
         self.proactive_task = None
+        # 配置签名追踪，用于自动检测配置变化
+        self._last_timing_config_signature: Optional[str] = None
 
     # ==================== 计时器管理方法 ====================
 
@@ -123,10 +125,76 @@ class ProactiveTaskManager:
         Args:
             session: 会话ID
         """
+        changed = False
         if session in runtime_data.session_next_fire_times:
             del runtime_data.session_next_fire_times[session]
+            changed = True
         if session in runtime_data.session_sleep_remaining:
             del runtime_data.session_sleep_remaining[session]
+            changed = True
+        # 触发持久化
+        if changed and self.persistence_manager:
+            self.persistence_manager.save_persistent_data()
+
+    def clear_all_session_timers(self):
+        """清除所有会话的计时器
+
+        用于重启任务时强制使用新配置重新计算所有计时器
+        """
+        runtime_data.session_next_fire_times.clear()
+        runtime_data.session_sleep_remaining.clear()
+        logger.info("已清除所有会话的计时器")
+        # 触发持久化
+        if self.persistence_manager:
+            self.persistence_manager.save_persistent_data()
+
+    def _get_timing_config_signature(self) -> str:
+        """生成当前计时相关配置的签名
+
+        用于检测配置是否发生变化
+
+        Returns:
+            配置签名字符串
+        """
+        proactive_config = self.config.get("proactive_reply", {})
+        # 提取所有影响计时的配置项
+        timing_mode = proactive_config.get("timing_mode", "fixed_interval")
+        interval_minutes = proactive_config.get("interval_minutes", 600)
+        random_min = proactive_config.get("random_min_minutes", 600)
+        random_max = proactive_config.get("random_max_minutes", 1200)
+        random_delay_enabled = proactive_config.get("random_delay_enabled", False)
+        min_random = proactive_config.get("min_random_minutes", 0)
+        max_random = proactive_config.get("max_random_minutes", 30)
+
+        return f"{timing_mode}|{interval_minutes}|{random_min}|{random_max}|{random_delay_enabled}|{min_random}|{max_random}"
+
+    def _check_and_handle_config_change(self):
+        """检测配置变化并自动清理计时器
+
+        在主循环中调用，自动检测计时配置是否变化，
+        变化时清除所有计时器以使用新配置重新计算。
+        配置签名通过 runtime_data 持久化，支持跨插件重载的检测。
+        """
+        current_signature = self._get_timing_config_signature()
+        last_signature = runtime_data.timing_config_signature
+
+        # 首次运行（无持久化签名）时记录签名，不清理
+        if not last_signature:
+            runtime_data.timing_config_signature = current_signature
+            self._last_timing_config_signature = current_signature
+            if self.persistence_manager:
+                self.persistence_manager.save_persistent_data()
+            return
+
+        # 签名变化时清理计时器
+        if current_signature != last_signature:
+            logger.info(
+                f"检测到计时配置变化，自动清除所有计时器 "
+                f"(旧: {last_signature}, 新: {current_signature})"
+            )
+            self.clear_all_session_timers()
+            runtime_data.timing_config_signature = current_signature
+            self._last_timing_config_signature = current_signature
 
     # ==================== 智能睡眠计算 ====================
 
@@ -265,6 +333,9 @@ class ProactiveTaskManager:
                     logger.info("睡眠时间结束，恢复主动消息发送")
                     self.handle_exit_sleep()
                     was_sleeping = False
+
+                # 检测配置变化，变化时自动清理计时器
+                self._check_and_handle_config_change()
 
                 # 确保所有会话都有计时器
                 self.ensure_all_sessions_scheduled()
@@ -518,8 +589,16 @@ class ProactiveTaskManager:
             logger.info("定时主动发送功能未启用")
 
     async def restart_proactive_task(self):
-        """重启定时主动发送任务"""
+        """重启定时主动发送任务
+
+        重启时会清除所有会话的计时器，确保新配置的间隔时间立即生效
+        """
         await self.stop_proactive_task()
+        # 清除所有会话的计时器，强制使用新配置重新计算
+        self.clear_all_session_timers()
+        # 重置配置签名，避免后续误判为配置变化
+        runtime_data.timing_config_signature = ""
+        self._last_timing_config_signature = None
         await self.start_proactive_task()
 
     async def force_stop_all_tasks(self):

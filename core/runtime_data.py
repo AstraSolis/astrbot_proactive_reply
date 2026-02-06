@@ -35,6 +35,7 @@ class RuntimeDataStore:
         # 计时器相关
         self.session_next_fire_times: dict = {}  # session -> "2025-12-29 22:00:00"
         self.session_sleep_remaining: dict = {}  # session -> 3600.0 (秒)
+        self.timing_config_signature: str = ""  # 配置签名，用于检测配置变化
         # 重复检测相关
         self.session_last_proactive_message: dict = {}  # session -> message
         # 未回复计数
@@ -58,6 +59,8 @@ class RuntimeDataStore:
             self.session_next_fire_times = data["session_next_fire_times"]
         if "session_sleep_remaining" in data:
             self.session_sleep_remaining = data["session_sleep_remaining"]
+        if "timing_config_signature" in data:
+            self.timing_config_signature = data["timing_config_signature"]
         if "session_last_proactive_message" in data:
             self.session_last_proactive_message = data["session_last_proactive_message"]
         if "session_unreplied_count" in data:
@@ -75,6 +78,7 @@ class RuntimeDataStore:
             "last_sent_times": self.last_sent_times,
             "session_next_fire_times": self.session_next_fire_times,
             "session_sleep_remaining": self.session_sleep_remaining,
+            "timing_config_signature": self.timing_config_signature,
             "session_last_proactive_message": self.session_last_proactive_message,
             "session_unreplied_count": self.session_unreplied_count,
         }
@@ -86,6 +90,7 @@ class RuntimeDataStore:
         self.last_sent_times = {}
         self.session_next_fire_times = {}
         self.session_sleep_remaining = {}
+        self.timing_config_signature = ""
         self.session_last_proactive_message = {}
         self.session_unreplied_count = {}
         logger.info("已清除所有运行时数据")
