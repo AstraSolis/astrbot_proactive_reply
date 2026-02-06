@@ -2,8 +2,12 @@
 配置管理器
 
 负责插件配置的初始化、验证和迁移
+
+注意：默认配置从 _conf_schema.json 动态读取，确保单一数据源
 """
 
+import json
+import os
 from astrbot.api import logger
 from .runtime_data import runtime_data
 
@@ -11,47 +15,76 @@ from .runtime_data import runtime_data
 class ConfigManager:
     """配置管理器类"""
 
-    # 默认配置
-    DEFAULT_CONFIG = {
-        "user_info": {
-            "time_format": "%Y-%m-%d %H:%M:%S",
-            "template": "[对话信息] 用户名称:{username},时间:{time},上次聊天时间:{user_last_message_time}",
-        },
-        "proactive_reply": {
-            "enabled": False,
-            "timing_mode": "fixed_interval",
-            "interval_minutes": 600,
-            "proactive_default_persona": "你是一个温暖、真诚的AI朋友。你有着丰富的情感表达能力，会根据用户的状态和心情调整自己的语气。你善于倾听，乐于分享，偶尔会有些小幽默。你记得与用户的互动历史，会在合适的时候提及之前的对话。你不会过于正式，而是像一个贴心的朋友一样，用自然、温暖的方式与用户交流。你会主动关心用户的近况，分享有趣的想法，有时也会表达自己的'感受'和'想法'，让对话更加生动有趣。",
-            "proactive_prompt_list": [
-                "现在是{current_time}，用户（{username}）上次发消息是{user_last_message_time_ago}（{user_last_message_time}），已连续{unreplied_count}次未回复，请主动发起自然的对话",
-                "用户（{username}）在{user_last_message_time}发过消息，距今{user_last_message_time_ago}，当前时间{current_time}，连续未回复{unreplied_count}次，请友好地问候",
-                "现在是{current_time}，想到了用户（{username}），上次互动是{user_last_message_time_ago}，连续{unreplied_count}次没收到回复，请主动关心一下",
-                "用户（{username}）已经{user_last_message_time_ago}没有消息了（上次:{user_last_message_time}），当前时间{current_time}，未回复次数:{unreplied_count}，请选择一个话题聊聊",
-                "现在是{current_time}，用户（{username}）上次活跃在{user_last_message_time}（{user_last_message_time_ago}），连续{unreplied_count}次未读，请分享一些想法或问候",
-                "当前时间{current_time}，距离和用户（{username}）上次聊天已经{user_last_message_time_ago}，已发送{unreplied_count}条未回复消息，请轻松地发起对话",
-                "用户（{username}）于{user_last_message_time}最后活跃，相隔{user_last_message_time_ago}，现在是{current_time}，连续未回复{unreplied_count}次，请自然地打个招呼",
-                "现在是{current_time}，有点想念用户（{username}），上次互动是{user_last_message_time_ago}（{user_last_message_time}），已{unreplied_count}次未回复，请发送一条温暖的消息",
-            ],
-            "include_history_enabled": False,
-            "history_message_count": 10,
-            "history_save_mode": "default",
-            "custom_history_prompt": "<PROACTIVE_TRIGGER: 时间:{current_time}，用户:{username}>",
-            "sessions": [],
-            "random_delay_enabled": False,
-            "min_random_minutes": 0,
-            "max_random_minutes": 30,
-            "random_min_minutes": 600,
-            "random_max_minutes": 1200,
-            "split_enabled": True,
-            "split_mode": "backslash",
-            "custom_split_pattern": "",
-            "split_message_delay_ms": 500,
-            "use_database_fallback": True,
-        },
-    }
-
     # 运行时数据字段（不在配置界面显示，由 PersistenceManager 独立管理）
     RUNTIME_DATA_KEYS = ["session_user_info", "last_sent_times", "ai_last_sent_times"]
+
+    # 缓存从 schema 读取的默认配置
+    _default_config_cache = None
+
+    @classmethod
+    def _load_default_config_from_schema(cls) -> dict:
+        """从 _conf_schema.json 动态读取默认配置
+
+        确保默认值只在一处定义（_conf_schema.json），避免重复维护
+
+        Returns:
+            默认配置字典
+        """
+        if cls._default_config_cache is not None:
+            return cls._default_config_cache
+
+        default_config = {}
+        schema_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "_conf_schema.json"
+        )
+
+        try:
+            with open(schema_path, "r", encoding="utf-8") as f:
+                schema = json.load(f)
+
+            # 递归提取默认值
+            for section_name, section_def in schema.items():
+                if section_def.get("type") == "object" and "items" in section_def:
+                    default_config[section_name] = cls._extract_defaults_from_items(
+                        section_def["items"]
+                    )
+
+            logger.debug(f"从 schema 加载了 {len(default_config)} 个配置区块的默认值")
+
+        except FileNotFoundError:
+            logger.warning(f"配置 schema 文件不存在: {schema_path}，使用空默认配置")
+        except json.JSONDecodeError as e:
+            logger.error(f"配置 schema JSON 解析失败: {e}")
+        except Exception as e:
+            logger.error(f"加载配置 schema 失败: {e}")
+
+        # 无论成功与否都缓存结果，避免重复读取文件
+        cls._default_config_cache = default_config
+        return default_config
+
+    @classmethod
+    def _extract_defaults_from_items(cls, items: dict) -> dict:
+        """从 schema items 中提取默认值
+
+        Args:
+            items: schema 中的 items 定义
+
+        Returns:
+            包含默认值的字典
+        """
+        defaults = {}
+        for key, item_def in items.items():
+            if "default" in item_def:
+                defaults[key] = item_def["default"]
+            elif item_def.get("type") == "object" and "items" in item_def:
+                # 递归处理嵌套对象
+                defaults[key] = cls._extract_defaults_from_items(item_def["items"])
+        return defaults
+
+    @property
+    def DEFAULT_CONFIG(self) -> dict:
+        """获取默认配置（从 schema 动态读取）"""
+        return self._load_default_config_from_schema()
 
     def __init__(self, config: dict, persistence_manager=None):
         """初始化配置管理器
