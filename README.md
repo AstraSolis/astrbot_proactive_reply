@@ -10,6 +10,8 @@
   一个支持聊天增强、时间感知和智能主动对话的 AstrBot 插件。<br />
 </p>
 
+快速开始:[AstrBot「心念」插件使用指南](https://blog.astrasolis.top/posts/tutorial/astrbot_proactive_reply)
+
 ## 功能特性
 
 ### 聊天附带用户信息
@@ -72,7 +74,7 @@
 ### 用户信息附加设置
 - **时间格式**：时间显示格式（Python datetime 格式）
 - **信息模板**：用户信息的显示模板，支持占位符。会追加到现有系统提示末尾，不会覆盖人格设置
-  - 支持的占位符：`{username}`, `{user_id}`, `{time}`, `{current_time}`, `{platform}`, `{chat_type}`, `{user_last_message_time}`, `{user_last_message_time_ago}`, `{ai_last_sent_time}`
+  - 支持的占位符：`{username}`, `{user_id}`, `{time}`, `{current_time}`, `{weekday}`, `{platform}`, `{chat_type}`, `{user_last_message_time}`, `{user_last_message_time_ago}`, `{ai_last_sent_time}`
 
 ### 智能主动对话设置
 - **启用功能**：是否启用智能主动对话功能
@@ -185,7 +187,7 @@
 /proactive config          # 显示完整的插件配置信息
 /proactive add_session     # 将当前会话添加到主动对话列表
 /proactive remove_session  # 将当前会话从主动对话列表移除
-/proactive restart         # 重启定时任务（配置更改后必须使用）
+/proactive restart         # 重启定时任务（强制刷新计时器）
 ```
 
 #### 测试功能指令（1个指令，7种功能）
@@ -207,7 +209,7 @@
   • show users             # 显示记录的用户信息
 ```
 
-#### 管理功能指令（1个指令，8种操作）
+#### 管理功能指令（1个指令，9种操作）
 ```
 /proactive manage [action] # 统一管理指令
   基础管理操作：
@@ -221,6 +223,7 @@
   • manage debug_info      # 调试用户信息（查看AI收到的信息）
   • manage debug_send      # 调试发送功能（检查LLM生成过程）
   • manage debug_times     # 调试时间记录（查看发送时间记录）
+  • manage fix_history     # 修复历史记录格式（解决验证失败问题）
 ```
 
 ### 快速开始
@@ -310,12 +313,15 @@
 - `{chat_type}` - 聊天类型（群聊/私聊）
 - `{ai_last_sent_time}` - AI上次发送消息的时间
 - `{current_time}` - 当前时间
+- `{weekday}` - 当前星期（如"星期一"、"星期五"）
+- `{unreplied_count}` - 用户连续未回复次数
 
 **用户信息模板支持的占位符**：
 - `{username}` - 用户名
 - `{user_id}` - 用户ID
 - `{time}` - 消息时间
 - `{current_time}` - 当前时间
+- `{weekday}` - 当前星期（如"星期一"、"星期五"）
 - `{platform}` - 平台名
 - `{chat_type}` - 聊天类型（群聊/私聊）
 - `{user_last_message_time}` - 用户上次发消息时间
