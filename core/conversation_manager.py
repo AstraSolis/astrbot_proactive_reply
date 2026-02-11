@@ -156,6 +156,13 @@ class ConversationManager:
                     role = item.get("role")
                     content = item.get("content")
 
+                    # 只保留 user/assistant/system 角色
+                    # tool/function 等角色的消息与主动消息生成无关，
+                    # 且可能缺少必要字段导致 LLM provider 崩溃
+                    if role not in ("user", "assistant", "system"):
+                        skipped_count += 1
+                        continue
+
                     # 处理 content 字段的不同格式
                     if content is None:
                         skipped_count += 1

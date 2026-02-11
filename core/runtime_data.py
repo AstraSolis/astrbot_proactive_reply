@@ -40,6 +40,8 @@ class RuntimeDataStore:
         self.session_last_proactive_message: dict = {}  # session -> message
         # 未回复计数
         self.session_unreplied_count: dict = {}  # session -> int
+        # 连续失败计数（用于错误通知）
+        self.session_consecutive_failures: dict = {}  # session -> int
 
         logger.debug("RuntimeDataStore 初始化完成")
 
@@ -65,6 +67,8 @@ class RuntimeDataStore:
             self.session_last_proactive_message = data["session_last_proactive_message"]
         if "session_unreplied_count" in data:
             self.session_unreplied_count = data["session_unreplied_count"]
+        if "session_consecutive_failures" in data:
+            self.session_consecutive_failures = data["session_consecutive_failures"]
 
     def to_dict(self) -> dict:
         """导出为字典
@@ -81,6 +85,7 @@ class RuntimeDataStore:
             "timing_config_signature": self.timing_config_signature,
             "session_last_proactive_message": self.session_last_proactive_message,
             "session_unreplied_count": self.session_unreplied_count,
+            "session_consecutive_failures": self.session_consecutive_failures,
         }
 
     def clear_all(self):
@@ -93,6 +98,7 @@ class RuntimeDataStore:
         self.timing_config_signature = ""
         self.session_last_proactive_message = {}
         self.session_unreplied_count = {}
+        self.session_consecutive_failures = {}
         logger.info("已清除所有运行时数据")
 
 

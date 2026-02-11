@@ -9,6 +9,7 @@ import random
 from datetime import datetime, timedelta
 from typing import Optional
 from astrbot.api import logger
+from astrbot.api.event import MessageChain
 from ..utils.parsers import parse_sessions_list
 from ..core.runtime_data import runtime_data
 
@@ -395,21 +396,98 @@ class ProactiveTaskManager:
 
             fire_time = self.get_session_next_fire_time(session)
             if fire_time and fire_time <= now:
-                try:
-                    logger.info(f"向会话 {session} 发送主动消息（计时器到期）")
-                    await self.message_generator.send_proactive_message(session)
-                    # 发送后重新计算下次时间
-                    next_fire = self.calculate_next_fire_time(session)
-                    self.set_session_next_fire_time(session, next_fire)
-                    logger.info(
-                        f"会话 {session} 下次发送时间：{next_fire.strftime('%Y-%m-%d %H:%M:%S')}"
-                    )
+                success = await self._send_with_retry(session)
+                # 无论成功失败，都重排程下次触发时间，避免高频循环
+                next_fire = self.calculate_next_fire_time(session)
+                self.set_session_next_fire_time(session, next_fire)
+                logger.info(
+                    f"会话 {session} 下次发送时间：{next_fire.strftime('%Y-%m-%d %H:%M:%S')}"
+                )
+                if success:
                     sent_count += 1
-                except Exception as e:
-                    logger.error(f"向会话 {session} 发送主动消息失败: {e}")
 
         if sent_count > 0:
             logger.info(f"本轮发送了 {sent_count}/{len(sessions)} 条主动消息")
+
+    # ==================== 发送重试 ====================
+
+    _MAX_RETRIES = 3
+    _RETRY_INTERVAL_SECONDS = 60
+
+    async def _send_with_retry(self, session: str) -> bool:
+        """带重试的消息发送
+
+        最多尝试 _MAX_RETRIES 次，每次间隔 _RETRY_INTERVAL_SECONDS 秒。
+        全部失败后发送错误通知给用户（不保存到历史记录）。
+
+        Args:
+            session: 会话ID
+
+        Returns:
+            True 发送成功，False 全部重试失败
+        """
+        last_error = None
+        for attempt in range(1, self._MAX_RETRIES + 1):
+            try:
+                logger.info(
+                    f"向会话 {session} 发送主动消息"
+                    f"（第 {attempt}/{self._MAX_RETRIES} 次尝试）"
+                )
+                await self.message_generator.send_proactive_message(session)
+                # 发送成功，清除连续失败计数
+                runtime_data.session_consecutive_failures.pop(session, None)
+                return True
+            except Exception as e:
+                last_error = e
+                logger.error(
+                    f"向会话 {session} 发送主动消息失败"
+                    f"（第 {attempt}/{self._MAX_RETRIES} 次）: {e}"
+                )
+                if attempt < self._MAX_RETRIES:
+                    logger.info(
+                        f"等待 {self._RETRY_INTERVAL_SECONDS} 秒后重试..."
+                    )
+                    await asyncio.sleep(self._RETRY_INTERVAL_SECONDS)
+
+        # 全部重试失败，发送错误通知给用户（不保存到历史记录）
+        failures = runtime_data.session_consecutive_failures.get(session, 0) + 1
+        runtime_data.session_consecutive_failures[session] = failures
+        logger.error(
+            f"会话 {session} 连续 {failures} 次调度均发送失败，已通知用户"
+        )
+        await self._notify_user_send_failure(session, last_error, failures)
+        return False
+
+    async def _notify_user_send_failure(
+        self, session: str, error: Exception, failures: int
+    ):
+        """向用户发送发送失败的错误通知（不保存到历史记录）
+
+        Args:
+            session: 会话ID
+            error: 最后一次失败的异常
+            failures: 连续调度失败次数
+        """
+        try:
+            # 提取原始异常链中的根因
+            root_cause = error
+            while root_cause.__cause__:
+                root_cause = root_cause.__cause__
+            error_type = type(root_cause).__name__
+            error_detail = str(root_cause)
+
+            error_msg = (
+                f"⚠️ 主动消息发送失败\n"
+                f"已重试 {self._MAX_RETRIES} 次均未成功"
+                f"（连续 {failures} 个调度周期失败）\n"
+                f"错误类型: {error_type}\n"
+                f"错误详情: {error_detail}\n"
+                f"系统将在下个调度周期自动重试。"
+            )
+            message_chain = MessageChain().message(error_msg)
+            await self.context.send_message(session, message_chain)
+        except Exception as e:
+            logger.error(f"向会话 {session} 发送错误通知也失败了: {e}")
 
     # ==================== 状态检查方法 ====================
 

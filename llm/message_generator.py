@@ -231,13 +231,17 @@ class MessageGenerator:
             import traceback
 
             logger.error(f"详细错误信息: {traceback.format_exc()}")
-            return None, None
+            raise
 
     async def send_proactive_message(self, session: str):
         """向指定会话发送主动消息
 
         Args:
             session: 会话ID
+
+        Raises:
+            RuntimeError: 消息生成失败时抛出
+            Exception: 发送过程中的其他异常会向上传播
         """
         try:
             session = ensure_string_encoding(session)
@@ -249,8 +253,7 @@ class MessageGenerator:
             ) = await self.generate_proactive_message_with_retry(session)
 
             if not message:
-                logger.warning(f"无法为会话 {session} 生成主动消息")
-                return
+                raise RuntimeError(f"无法为会话 {session} 生成主动消息")
 
             message = ensure_string_encoding(message)
             original_message = message  # 保存原始消息用于历史记录
@@ -265,9 +268,7 @@ class MessageGenerator:
 
         except Exception as e:
             logger.error(f"❌ 向会话 {session} 发送主动消息时发生错误: {e}")
-            import traceback
-
-            logger.error(f"详细错误信息: {traceback.format_exc()}")
+            raise
 
     async def _send_message_with_split(
         self,
