@@ -5,7 +5,6 @@
 """
 
 import datetime
-import re
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 from .runtime_data import runtime_data
@@ -345,7 +344,7 @@ class UserInfoManager:
     def _safe_format_template(self, template: str, placeholders: dict) -> str:
         """安全地替换模板中的占位符
 
-        使用正则表达式替换，避免 str.format() 的特殊字符问题
+        使用字符串替换，避免 str.format() 和 re.sub 的特殊字符问题
 
         Args:
             template: 模板字符串
@@ -356,9 +355,7 @@ class UserInfoManager:
         """
         result = template
         for key, value in placeholders.items():
-            # 使用正则表达式替换 {key} 格式的占位符
-            pattern = r"\{" + re.escape(key) + r"\}"
-            result = re.sub(pattern, str(value), result)
+            result = result.replace("{" + key + "}", str(value))
         return result
 
     def _get_sleep_prompt_if_active(self) -> str:
