@@ -217,15 +217,3 @@ class PersistenceManager:
             logger.error(f"持久化数据保存错误: {e}")
             return False
 
-    def backup_corrupted_file(self, file_path: str):
-        """备份损坏的文件
-
-        Args:
-            file_path: 文件路径
-        """
-        try:
-            backup_path = f"{file_path}.corrupted.{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            os.rename(file_path, backup_path)
-            logger.info(f"损坏文件已备份到: {backup_path}")
-        except OSError as e:
-            logger.error(f"备份损坏文件失败: {e}")
