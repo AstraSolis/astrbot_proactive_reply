@@ -38,8 +38,6 @@ class PersistenceManager:
                 astrbot_config = self.context.get_config()
                 if hasattr(astrbot_config, "data_dir") and astrbot_config.data_dir:
                     base_data_dir = astrbot_config.data_dir
-                elif hasattr(astrbot_config, "_data_dir") and astrbot_config._data_dir:
-                    base_data_dir = astrbot_config._data_dir
                 else:
                     base_data_dir = os.path.join(os.getcwd(), "data")
             except (AttributeError, KeyError) as e:
@@ -74,7 +72,7 @@ class PersistenceManager:
             persistent_file = os.path.join(plugin_data_dir, "persistent_data.json")
 
             if os.path.exists(persistent_file):
-                for encoding in ["utf-8-sig", "utf-8", "gbk"]:
+                for encoding in ["utf-8-sig", "utf-8"]:
                     try:
                         with open(persistent_file, "r", encoding=encoding) as f:
                             persistent_data = json.load(f)
@@ -91,8 +89,10 @@ class PersistenceManager:
                     except (UnicodeDecodeError, json.JSONDecodeError, PermissionError):
                         continue
 
-            # 尝试从旧的持久化文件迁移数据
-            self.migrate_old_persistent_data(plugin_data_dir)
+            # 尝试从旧的持久化文件迁移数据（仅首次）
+            migrated_marker = os.path.join(plugin_data_dir, ".migrated")
+            if not os.path.exists(migrated_marker):
+                self.migrate_old_persistent_data(plugin_data_dir)
 
         except (FileNotFoundError, OSError, AttributeError) as e:
             logger.info(f"持久化文件加载: {e}")
@@ -123,8 +123,6 @@ class PersistenceManager:
                 astrbot_config = self.context.get_config()
                 if hasattr(astrbot_config, "data_dir") and astrbot_config.data_dir:
                     base_data_dir = astrbot_config.data_dir
-                elif hasattr(astrbot_config, "_data_dir") and astrbot_config._data_dir:
-                    base_data_dir = astrbot_config._data_dir
                 else:
                     base_data_dir = None
 
@@ -163,6 +161,12 @@ class PersistenceManager:
                         backup_file = old_file + ".backup"
                         shutil.move(old_file, backup_file)
                         logger.info(f"✅ 旧文件已备份到: {backup_file}")
+
+                        # 写入迁移完成标记
+                        marker_file = os.path.join(new_data_dir, ".migrated")
+                        with open(marker_file, "w") as f:
+                            f.write(f"migrated from {old_file}")
+
                         return
                     except Exception as e:
                         logger.warning(f"⚠️ 迁移旧持久化文件失败: {e}")
@@ -216,4 +220,3 @@ class PersistenceManager:
         except Exception as e:
             logger.error(f"持久化数据保存错误: {e}")
             return False
-

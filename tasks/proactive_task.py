@@ -444,17 +444,13 @@ class ProactiveTaskManager:
                     f"（第 {attempt}/{self._MAX_RETRIES} 次）: {e}"
                 )
                 if attempt < self._MAX_RETRIES:
-                    logger.info(
-                        f"等待 {self._RETRY_INTERVAL_SECONDS} 秒后重试..."
-                    )
+                    logger.info(f"等待 {self._RETRY_INTERVAL_SECONDS} 秒后重试...")
                     await asyncio.sleep(self._RETRY_INTERVAL_SECONDS)
 
         # 全部重试失败，发送错误通知给用户（不保存到历史记录）
         failures = runtime_data.session_consecutive_failures.get(session, 0) + 1
         runtime_data.session_consecutive_failures[session] = failures
-        logger.error(
-            f"会话 {session} 连续 {failures} 次调度均发送失败，已通知用户"
-        )
+        logger.error(f"会话 {session} 连续 {failures} 次调度均发送失败，已通知用户")
         await self._notify_user_send_failure(session, last_error, failures)
         return False
 

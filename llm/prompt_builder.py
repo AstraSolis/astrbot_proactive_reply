@@ -6,7 +6,6 @@
 
 import random
 from astrbot.api import logger
-from ..utils.formatters import ensure_string_encoding
 from .placeholder_utils import replace_placeholders
 from ..utils.parsers import parse_prompt_list
 
@@ -61,13 +60,12 @@ class PromptBuilder:
 
         # 随机选择一个主动对话提示词
         selected_prompt = random.choice(prompt_list)
-        selected_prompt = ensure_string_encoding(selected_prompt)
 
         # 替换提示词中的占位符
         final_prompt = replace_placeholders(
             selected_prompt, session, self.config, build_user_context_func
         )
-        return ensure_string_encoding(final_prompt)
+        return final_prompt
 
     async def get_persona_system_prompt(self, session: str) -> str:
         """获取人格系统提示词
@@ -111,9 +109,7 @@ class PromptBuilder:
                         # 精确匹配
                         for persona in personas:
                             if self._get_persona_name(persona) == target_persona_id:
-                                base_system_prompt = ensure_string_encoding(
-                                    self._get_persona_prompt(persona)
-                                )
+                                base_system_prompt = self._get_persona_prompt(persona)
                                 logger.debug(
                                     f"人格匹配成功 (精确): '{target_persona_id}'"
                                 )
@@ -124,8 +120,8 @@ class PromptBuilder:
                             for persona in personas:
                                 name = self._get_persona_name(persona)
                                 if name and name.lower() == target_persona_id.lower():
-                                    base_system_prompt = ensure_string_encoding(
-                                        self._get_persona_prompt(persona)
+                                    base_system_prompt = self._get_persona_prompt(
+                                        persona
                                     )
                                     logger.debug(
                                         f"人格匹配成功 (忽略大小写): '{target_persona_id}' -> '{name}'"
@@ -160,7 +156,6 @@ class PromptBuilder:
         """
         try:
             # 从 AstrBot 配置中读取当前设置的默认人格名称
-            # AstrBotConfig 是一个字典式对象，支持 get(), keys() 等方法
             astrbot_config = self.context.get_config()
             default_persona_name = None
 
@@ -178,9 +173,7 @@ class PromptBuilder:
             if default_persona_name and personas:
                 for persona in personas:
                     if self._get_persona_name(persona) == default_persona_name:
-                        prompt = ensure_string_encoding(
-                            self._get_persona_prompt(persona)
-                        )
+                        prompt = self._get_persona_prompt(persona)
                         logger.debug(
                             f"使用默认人格 '{default_persona_name}' (prompt长度: {len(prompt)}字符)"
                         )
@@ -195,7 +188,7 @@ class PromptBuilder:
             # 回退到 selected_default_persona（可能被缓存）
             default_persona_obj = self.context.provider_manager.selected_default_persona
             if default_persona_obj and default_persona_obj.get("prompt"):
-                prompt = ensure_string_encoding(default_persona_obj["prompt"])
+                prompt = default_persona_obj["prompt"]
                 persona_name = default_persona_obj.get("name", "未知")
                 logger.debug(
                     f"使用 AstrBot 默认人格 '{persona_name}' (prompt长度: {len(prompt)}字符) [缓存]"
@@ -209,7 +202,6 @@ class PromptBuilder:
                 prompt = self._get_persona_prompt(first_persona)
 
                 if prompt:
-                    prompt = ensure_string_encoding(prompt)
                     logger.debug(
                         f"使用人格列表第一个 '{persona_name}' (prompt长度: {len(prompt)}字符)"
                     )
@@ -242,8 +234,8 @@ class PromptBuilder:
         Returns:
             组合后的系统提示词
         """
-        default_persona = ensure_string_encoding(
-            self.config.get("proactive_reply", {}).get("proactive_default_persona", "")
+        default_persona = self.config.get("proactive_reply", {}).get(
+            "proactive_default_persona", ""
         )
 
         # 从配置中读取时间感知增强提示词设置
@@ -290,7 +282,7 @@ class PromptBuilder:
                     f"{time_guidance}\n\n{final_prompt}{history_guidance}"
                 )
 
-        return ensure_string_encoding(combined_system_prompt)
+        return combined_system_prompt
 
     def get_base_system_prompt(self) -> str:
         """获取基础系统提示词（人格提示词）
@@ -315,10 +307,9 @@ class PromptBuilder:
             # 如果还是没有获取到，使用插件默认人格
             if not base_system_prompt:
                 proactive_config = self.config.get("proactive_reply", {})
-                default_persona = proactive_config.get(
+                base_system_prompt = proactive_config.get(
                     "proactive_default_persona", "你是一个友好、轻松的AI助手。"
                 )
-                base_system_prompt = ensure_string_encoding(default_persona)
 
             return base_system_prompt
 
@@ -326,7 +317,6 @@ class PromptBuilder:
             logger.warning(f"获取基础系统提示词失败: {e}")
             # 返回插件默认人格
             proactive_config = self.config.get("proactive_reply", {})
-            default_persona = proactive_config.get(
+            return proactive_config.get(
                 "proactive_default_persona", "你是一个友好、轻松的AI助手。"
             )
-            return ensure_string_encoding(default_persona)

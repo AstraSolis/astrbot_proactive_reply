@@ -90,7 +90,15 @@ class UserInfoManager:
             user_last_message_time_ago = format_time_ago(user_last_message_time)
 
             # 构建占位符字典（与主动对话统一）
-            weekday_names = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+            weekday_names = [
+                "星期一",
+                "星期二",
+                "星期三",
+                "星期四",
+                "星期五",
+                "星期六",
+                "星期日",
+            ]
             placeholders = {
                 "username": username,
                 "user_id": user_id,

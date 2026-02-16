@@ -8,7 +8,7 @@ import asyncio
 import re
 from astrbot.api import logger
 from astrbot.api.event import MessageChain
-from ..utils.formatters import ensure_string_encoding
+
 from ..core.runtime_data import runtime_data
 
 
@@ -214,9 +214,7 @@ class MessageGenerator:
             if llm_response and llm_response.role == "assistant":
                 generated_message = llm_response.completion_text
                 if generated_message:
-                    generated_message = ensure_string_encoding(
-                        generated_message.strip()
-                    )
+                    generated_message = generated_message.strip()
                     logger.info("LLM生成主动消息成功")
                     return generated_message, final_prompt
                 else:
@@ -244,8 +242,6 @@ class MessageGenerator:
             Exception: 发送过程中的其他异常会向上传播
         """
         try:
-            session = ensure_string_encoding(session)
-
             # 使用带重复检测的LLM生成主动消息
             (
                 message,
@@ -255,7 +251,6 @@ class MessageGenerator:
             if not message:
                 raise RuntimeError(f"无法为会话 {session} 生成主动消息")
 
-            message = ensure_string_encoding(message)
             original_message = message  # 保存原始消息用于历史记录
 
             # 记录本次发送的消息（用于下次重复检测）

@@ -565,9 +565,7 @@ class CommandHandlers:
         elif manage_type == "debug_times":
             async for result in self._debug_times(event):
                 yield result
-        elif manage_type == "fix_history":
-            async for result in self._fix_history(event):
-                yield result
+
         else:
             yield event.plain_result("""管理操作:
 • clear - 清除用户信息
@@ -577,8 +575,7 @@ class CommandHandlers:
 • save_config - 保存配置
 • debug_info - 调试信息
 • debug_send - 调试发送
-• debug_times - 调试时间
-• fix_history - 修复历史记录格式""")
+• debug_times - 调试时间""")
 
     async def _manage_clear(self, event: AstrMessageEvent):
         """清除记录"""
@@ -676,31 +673,6 @@ class CommandHandlers:
         except Exception as e:
             yield event.plain_result(f"❌ 获取失败: {e}")
 
-    async def _fix_history(self, event: AstrMessageEvent):
-        """修复历史记录格式
-
-        将旧版插件保存的列表格式 [{"text": "..."}] 转换为字符串格式，
-        解决 AstrBot Pydantic 验证失败导致 AI 无法正常回复的问题
-        """
-        yield event.plain_result("⏳ 正在检查并修复历史记录格式...")
-        try:
-            session_id = event.unified_msg_origin
-            result = await self.plugin.conversation_manager.migrate_history_format(
-                session_id
-            )
-
-            if result["success"]:
-                if result["migrated"] > 0:
-                    yield event.plain_result(
-                        f"✅ 修复完成！{result['message']}\n\n💡 现在可以正常对话了"
-                    )
-                else:
-                    yield event.plain_result(f"✅ {result['message']}")
-            else:
-                yield event.plain_result(f"❌ 修复失败: {result['message']}")
-        except Exception as e:
-            yield event.plain_result(f"❌ 修复失败: {e}")
-
     # ==================== 通用命令 ====================
 
     async def help_command(self, event: AstrMessageEvent):
@@ -725,7 +697,7 @@ class CommandHandlers:
 管理命令:
 - `/proactive manage [操作]` - 管理功能
   操作: clear, task_status, force_stop, force_start, save_config
-  调试: debug_info, debug_send, debug_times, fix_history
+  调试: debug_info, debug_send, debug_times
 
 💡 详细配置请在 AstrBot 配置面板中修改"""
         yield event.plain_result(help_text)

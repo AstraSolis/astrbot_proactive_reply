@@ -6,7 +6,6 @@
 
 import json
 from astrbot.api import logger
-from .formatters import ensure_string_encoding
 
 
 def parse_sessions_list(sessions_data) -> list:
@@ -55,37 +54,35 @@ def parse_prompt_list(prompt_list_data) -> list:
     try:
         # 如果已经是列表格式（新的配置格式）
         if isinstance(prompt_list_data, list):
-            prompt_list = []
-            for item in prompt_list_data:
-                if item and str(item).strip():
-                    # 确保每个提示词的编码正确
-                    cleaned_item = ensure_string_encoding(str(item).strip())
-                    prompt_list.append(cleaned_item)
+            prompt_list = [
+                str(item).strip()
+                for item in prompt_list_data
+                if item and str(item).strip()
+            ]
             return prompt_list
 
         # 如果是字符串格式（兼容旧配置）
         if isinstance(prompt_list_data, str):
-            prompt_list_data = ensure_string_encoding(prompt_list_data)
             try:
                 # 尝试解析JSON格式
                 parsed_list = json.loads(prompt_list_data)
                 if not isinstance(parsed_list, list):
                     raise ValueError("不是有效的JSON数组")
 
-                # 过滤空字符串并确保编码正确
-                prompt_list = []
-                for item in parsed_list:
-                    if item and str(item).strip():
-                        cleaned_item = ensure_string_encoding(str(item).strip())
-                        prompt_list.append(cleaned_item)
+                # 过滤空字符串
+                prompt_list = [
+                    str(item).strip()
+                    for item in parsed_list
+                    if item and str(item).strip()
+                ]
 
             except (json.JSONDecodeError, ValueError):
                 # 回退到传统换行格式
-                prompt_list = []
-                for line in prompt_list_data.split("\n"):
-                    if line.strip():
-                        cleaned_line = ensure_string_encoding(line.strip())
-                        prompt_list.append(cleaned_line)
+                prompt_list = [
+                    line.strip()
+                    for line in prompt_list_data.split("\n")
+                    if line.strip()
+                ]
 
     except Exception as e:
         logger.error(f"解析提示词列表失败: {e}")

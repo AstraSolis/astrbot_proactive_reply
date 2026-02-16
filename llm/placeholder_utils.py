@@ -6,7 +6,6 @@
 
 import datetime
 from astrbot.api import logger
-from ..utils.formatters import ensure_string_encoding, safe_string_replace
 from ..core.runtime_data import runtime_data
 
 
@@ -25,42 +24,39 @@ def replace_placeholders(
         替换后的提示词
     """
     try:
-        # 确保输入参数的编码正确
-        prompt = ensure_string_encoding(prompt)
-        session = ensure_string_encoding(session)
-
         user_info = runtime_data.session_user_info.get(session, {})
         last_sent_time = runtime_data.ai_last_sent_times.get(session, "从未发送过")
 
-        # 构建占位符字典，确保所有值都是正确编码的字符串
-        user_last_time = ensure_string_encoding(
-            user_info.get("last_active_time", "未知")
-        )
+        user_last_time = user_info.get("last_active_time", "未知")
 
         placeholders = {
-            "{user_context}": ensure_string_encoding(build_user_context_func(session)),
+            "{user_context}": build_user_context_func(session),
             "{user_last_message_time}": user_last_time,
-            "{user_last_message_time_ago}": ensure_string_encoding(
-                format_time_ago(user_last_time)
-            ),
-            "{username}": ensure_string_encoding(user_info.get("username", "未知用户")),
-            "{platform}": ensure_string_encoding(user_info.get("platform", "未知平台")),
-            "{chat_type}": ensure_string_encoding(user_info.get("chat_type", "未知")),
-            "{ai_last_sent_time}": ensure_string_encoding(last_sent_time),
+            "{user_last_message_time_ago}": format_time_ago(user_last_time),
+            "{username}": user_info.get("username", "未知用户"),
+            "{platform}": user_info.get("platform", "未知平台"),
+            "{chat_type}": user_info.get("chat_type", "未知"),
+            "{ai_last_sent_time}": str(last_sent_time),
             "{current_time}": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "{weekday}": ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"][
-                datetime.datetime.now().weekday()
-            ],
+            "{weekday}": [
+                "星期一",
+                "星期二",
+                "星期三",
+                "星期四",
+                "星期五",
+                "星期六",
+                "星期日",
+            ][datetime.datetime.now().weekday()],
             "{unreplied_count}": str(
                 runtime_data.session_unreplied_count.get(session, 0)
             ),
         }
 
-        # 替换所有占位符，使用安全的字符串替换
+        # 替换所有占位符
         result = prompt
         for placeholder, value in placeholders.items():
             try:
-                result = safe_string_replace(result, placeholder, str(value))
+                result = result.replace(placeholder, str(value))
             except Exception as replace_error:
                 logger.warning(f"替换占位符 {placeholder} 失败: {replace_error}")
                 continue
