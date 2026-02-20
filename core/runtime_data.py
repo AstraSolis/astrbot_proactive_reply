@@ -42,6 +42,9 @@ class RuntimeDataStore:
         self.session_unreplied_count: dict = {}  # session -> int
         # 连续失败计数（用于错误通知）
         self.session_consecutive_failures: dict = {}  # session -> int
+        # AI 自主调度信息
+        # session -> [{"task_id": "...", "delay_minutes": N, "fire_time": "...", "follow_up_prompt": "...", "created_at": "..."}]
+        self.session_ai_scheduled: dict = {}
 
         logger.debug("RuntimeDataStore 初始化完成")
 
@@ -69,6 +72,8 @@ class RuntimeDataStore:
             self.session_unreplied_count = data["session_unreplied_count"]
         if "session_consecutive_failures" in data:
             self.session_consecutive_failures = data["session_consecutive_failures"]
+        if "session_ai_scheduled" in data:
+            self.session_ai_scheduled = data["session_ai_scheduled"]
 
     def to_dict(self) -> dict:
         """导出为字典
@@ -86,6 +91,7 @@ class RuntimeDataStore:
             "session_last_proactive_message": self.session_last_proactive_message,
             "session_unreplied_count": self.session_unreplied_count,
             "session_consecutive_failures": self.session_consecutive_failures,
+            "session_ai_scheduled": self.session_ai_scheduled,
         }
 
     def clear_all(self):
@@ -99,6 +105,7 @@ class RuntimeDataStore:
         self.session_last_proactive_message = {}
         self.session_unreplied_count = {}
         self.session_consecutive_failures = {}
+        self.session_ai_scheduled = {}
         logger.info("已清除所有运行时数据")
 
 

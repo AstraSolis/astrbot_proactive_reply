@@ -6,6 +6,7 @@
 
 import asyncio
 import random
+import uuid
 from datetime import datetime, timedelta
 from typing import Optional
 from astrbot.api import logger
@@ -95,7 +96,8 @@ class ProactiveTaskManager:
     def refresh_session_timer(self, session: str):
         """刷新会话计时器（AI 发消息后调用）
 
-        重新计算下次发送时间
+        重新计算下次发送时间：
+        取 "常规周期时间" 和 "最早的 AI 调度任务时间" 中的较小值。
 
         Args:
             session: 会话ID
@@ -104,7 +106,31 @@ class ProactiveTaskManager:
         if session not in self.get_target_sessions():
             return
 
-        next_fire = self.calculate_next_fire_time(session)
+        # 1. 计算常规周期的下次触发时间
+        regular_next_fire = self.calculate_next_fire_time(session)
+
+        # 2. 检查是否有更早的 AI 调度任务
+        next_fire = regular_next_fire
+        ai_tasks = runtime_data.session_ai_scheduled.get(session, [])
+        if ai_tasks:
+            # 过滤掉无效的时间字符串
+            valid_times = []
+            for task in ai_tasks:
+                try:
+                    t = datetime.strptime(task["fire_time"], "%Y-%m-%d %H:%M:%S")
+                    valid_times.append(t)
+                except ValueError:
+                    continue
+
+            if valid_times:
+                min_ai_time = min(valid_times)
+                # 如果 AI 任务时间更早，则优先触发
+                if min_ai_time < next_fire:
+                    next_fire = min_ai_time
+                    logger.debug(
+                        f"会话 {session} 存在更早的 AI 调度任务 ({min_ai_time})，优先执行"
+                    )
+
         self.set_session_next_fire_time(session, next_fire)
         logger.debug(
             f"会话 {session} 计时器已刷新，下次发送：{next_fire.strftime('%H:%M:%S')}"
@@ -262,12 +288,11 @@ class ProactiveTaskManager:
 
         for session in self.get_target_sessions():
             if not send_on_wake:
-                # 模式1：跳过睡眠期间的主动消息，重新计算
-                new_fire = self.calculate_next_fire_time(session)
-                self.set_session_next_fire_time(session, new_fire)
-                logger.debug(
-                    f"会话 {session} 睡眠结束，跳过模式，重新计时：{new_fire.strftime('%H:%M:%S')}"
-                )
+                # 模式1：跳过睡眠期间的主动消息
+                # 用 refresh_session_timer 而非 set_session_next_fire_time，
+                # 确保 AI 调度任务的 fire_time 不被常规间隔覆盖
+                self.refresh_session_timer(session)
+                logger.debug(f"会话 {session} 睡眠结束，跳过模式，刷新计时器")
             elif wake_mode == "immediate":
                 # 模式2：保持原计时器，让主循环检测到过期后立即发送
                 logger.debug(f"会话 {session} 睡眠结束，立即发送模式，保持原计时器")
@@ -326,6 +351,8 @@ class ProactiveTaskManager:
                     was_sleeping = True
 
                 if is_sleeping:
+                    # 睡眠期间仍检查 AI 调度任务（有约定则穿透发送）
+                    await self.process_due_sessions(sleep_mode=True)
                     await asyncio.sleep(60)
                     continue
 
@@ -384,8 +411,12 @@ class ProactiveTaskManager:
 
         return True
 
-    async def process_due_sessions(self):
-        """处理所有到期的会话"""
+    async def process_due_sessions(self, sleep_mode: bool = False):
+        """处理所有到期的会话
+
+        Args:
+            sleep_mode: 睡眠模式。为 True 时跳过常规消息，只处理 AI 调度任务。
+        """
         now = datetime.now()
         sent_count = 0
         sessions = self.get_target_sessions()
@@ -396,25 +427,176 @@ class ProactiveTaskManager:
 
             fire_time = self.get_session_next_fire_time(session)
             if fire_time and fire_time <= now:
-                success = await self._send_with_retry(session)
-                # 无论成功失败，都重排程下次触发时间，避免高频循环
-                next_fire = self.calculate_next_fire_time(session)
-                self.set_session_next_fire_time(session, next_fire)
-                logger.info(
-                    f"会话 {session} 下次发送时间：{next_fire.strftime('%Y-%m-%d %H:%M:%S')}"
+                # 检查是否是 AI 调度任务触发
+                ai_tasks = runtime_data.session_ai_scheduled.get(session, [])
+                due_ai_task = None
+
+                # 按时间排序找到最早的到期任务
+                sorted_tasks = []
+                for task in ai_tasks:
+                    try:
+                        t = datetime.strptime(task["fire_time"], "%Y-%m-%d %H:%M:%S")
+                        sorted_tasks.append((t, task))
+                    except Exception:
+                        continue
+                sorted_tasks.sort(key=lambda x: x[0])
+
+                # 查找已到期的任务
+                for t, task in sorted_tasks:
+                    if t <= now:
+                        due_ai_task = task
+                        break
+
+                # 睡眠模式：跳过常规消息，只处理 AI 调度任务
+                if sleep_mode and not due_ai_task:
+                    continue
+
+                # 执行发送
+                override_prompt = None
+                if due_ai_task:
+                    override_prompt = due_ai_task.get("follow_up_prompt")
+                    if sleep_mode:
+                        # 睡眠时段内穿透发送，附加此背景让 LLM 知晓当前场景
+                        sleep_ctx = "[系统提示：当前处于夜间休眠时段, 但有预约的跟进任务需要执行, 请据此生成合适的消息]\n"
+                        override_prompt = sleep_ctx + (override_prompt or "")
+                    logger.info(
+                        f"触发 AI 调度任务 [TaskID: {due_ai_task.get('task_id')}]"
+                        f"{'（睡眠时段穿透）' if sleep_mode else ''}"
+                    )
+
+                success, schedule_info = await self._send_with_retry(
+                    session, override_prompt=override_prompt
                 )
+
                 if success:
                     sent_count += 1
+                    # 如果是 AI 任务成功执行，从列表中移除
+                    if due_ai_task:
+                        try:
+                            # 重新获取引用以确保线程安全（虽然这里是单线程 async）
+                            current_tasks = runtime_data.session_ai_scheduled.get(
+                                session, []
+                            )
+                            # 使用 task_id 匹配删除，更稳健
+                            task_id_to_remove = due_ai_task.get("task_id")
+                            if task_id_to_remove:
+                                runtime_data.session_ai_scheduled[session] = [
+                                    t
+                                    for t in current_tasks
+                                    if t.get("task_id") != task_id_to_remove
+                                ]
+                            elif due_ai_task in current_tasks:
+                                # 兼容无 ID 的旧数据
+                                current_tasks.remove(due_ai_task)
+
+                            # 触发持久化
+                            if self.persistence_manager:
+                                self.persistence_manager.save_persistent_data()
+
+                        except Exception as e:
+                            logger.error(f"移除 AI 调度任务失败: {e}")
+
+                    # 如果生成了新的 AI 调度（套娃），应用它
+                    if schedule_info:
+                        self.apply_ai_schedule(session, schedule_info)
+
+                    # 刷新计时器（取常规间隔和剩余 AI 任务中的最小值）
+                    self.refresh_session_timer(session)
+                else:
+                    # 失败逻辑：按理说应该重试或推迟？
+                    # 当前 _send_with_retry 已经重试过了。
+                    # 如果还是失败，暂时重置为默认间隔，避免死循环
+                    next_fire = self.calculate_next_fire_time(session)
+                    self.set_session_next_fire_time(session, next_fire)
 
         if sent_count > 0:
             logger.info(f"本轮发送了 {sent_count}/{len(sessions)} 条主动消息")
+
+    def apply_ai_schedule(self, session: str, schedule_info: dict):
+        """应用 AI 自主调度信息
+
+        将新任务添加到调度列表，并更新下次触发时间（如果是最早的）。
+
+        Args:
+            session: 会话ID
+            schedule_info: 调度详情
+        """
+        # 补全 ID 和时间
+        if "task_id" not in schedule_info:
+            schedule_info["task_id"] = str(uuid.uuid4())
+        if "created_at" not in schedule_info:
+            schedule_info["created_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # 获取或初始化列表
+        if session not in runtime_data.session_ai_scheduled:
+            runtime_data.session_ai_scheduled[session] = []
+
+        # 兼容性处理：如果原来存的是 dict（旧版数据），转为 list
+        current_data = runtime_data.session_ai_scheduled[session]
+        if isinstance(current_data, dict):
+            # 将旧数据包装进列表
+            old_task = current_data
+            if "task_id" not in old_task:
+                old_task["task_id"] = str(uuid.uuid4())
+            runtime_data.session_ai_scheduled[session] = [old_task, schedule_info]
+        else:
+            # 列表追加
+            runtime_data.session_ai_scheduled[session].append(schedule_info)
+
+        # 触发持久化
+        if self.persistence_manager:
+            self.persistence_manager.save_persistent_data()
+
+        fire_time_str = schedule_info["fire_time"]
+        delay_minutes = schedule_info["delay_minutes"]
+        logger.info(
+            f"🕐 会话 {session} 添加 AI 调度任务: "
+            f"{delay_minutes}分钟后（{fire_time_str}） [TaskID: {schedule_info['task_id']}]"
+        )
+
+        # 刷新计时器，确保最早的任务被排程
+        self.refresh_session_timer(session)
+
+    def _restore_ai_schedules(self):
+        """恢复及迁移 AI 调度任务"""
+        logger.info("正在检查并恢复 AI 调度任务...")
+        restored_count = 0
+
+        # 遍历副本以允许修改
+        all_sessions = list(runtime_data.session_ai_scheduled.items())
+
+        for session, data in all_sessions:
+            if not data:
+                continue
+
+            tasks_list = []
+            # 迁移逻辑：Dict -> List
+            if isinstance(data, dict):
+                logger.info(f"迁移会话 {session} 的旧版调度数据结构")
+                task = data
+                if "task_id" not in task:
+                    task["task_id"] = str(uuid.uuid4())
+                tasks_list = [task]
+                runtime_data.session_ai_scheduled[session] = tasks_list
+            elif isinstance(data, list):
+                tasks_list = data
+
+            if tasks_list:
+                restored_count += len(tasks_list)
+                # 刷新该会话的计时器，使其包含 AI 任务
+                self.refresh_session_timer(session)
+
+        if restored_count > 0:
+            logger.info(f"已恢复 {restored_count} 个 AI 调度任务")
 
     # ==================== 发送重试 ====================
 
     _MAX_RETRIES = 3
     _RETRY_INTERVAL_SECONDS = 60
 
-    async def _send_with_retry(self, session: str) -> bool:
+    async def _send_with_retry(
+        self, session: str, override_prompt: str = None
+    ) -> tuple[bool, dict | None]:
         """带重试的消息发送
 
         最多尝试 _MAX_RETRIES 次，每次间隔 _RETRY_INTERVAL_SECONDS 秒。
@@ -422,9 +604,10 @@ class ProactiveTaskManager:
 
         Args:
             session: 会话ID
+            override_prompt: 覆盖用的提示词（用于 AI 自主调度任务）
 
         Returns:
-            True 发送成功，False 全部重试失败
+            元组 (成功标志, AI调度信息或None)
         """
         last_error = None
         for attempt in range(1, self._MAX_RETRIES + 1):
@@ -433,10 +616,12 @@ class ProactiveTaskManager:
                     f"向会话 {session} 发送主动消息"
                     f"（第 {attempt}/{self._MAX_RETRIES} 次尝试）"
                 )
-                await self.message_generator.send_proactive_message(session)
+                schedule_info = await self.message_generator.send_proactive_message(
+                    session, override_prompt=override_prompt
+                )
                 # 发送成功，清除连续失败计数
                 runtime_data.session_consecutive_failures.pop(session, None)
-                return True
+                return True, schedule_info
             except Exception as e:
                 last_error = e
                 logger.error(
@@ -452,7 +637,7 @@ class ProactiveTaskManager:
         runtime_data.session_consecutive_failures[session] = failures
         logger.error(f"会话 {session} 连续 {failures} 次调度均发送失败，已通知用户")
         await self._notify_user_send_failure(session, last_error, failures)
-        return False
+        return False, None
 
     async def _notify_user_send_failure(
         self, session: str, error: Exception, failures: int
@@ -592,18 +777,34 @@ class ProactiveTaskManager:
                 return f"约{hours}小时{minutes}分钟后"
 
         now = datetime.now()
+
+        # 检查是否是 AI 调度任务
+        is_ai_task = False
+        ai_tasks = runtime_data.session_ai_scheduled.get(session, [])
+        for task in ai_tasks:
+            try:
+                tf = datetime.strptime(task["fire_time"], "%Y-%m-%d %H:%M:%S")
+                # 允许 1 秒误差
+                if abs((tf - fire_time).total_seconds()) < 2:
+                    is_ai_task = True
+                    break
+            except ValueError:
+                continue
+
+        suffix = " [AI调度]" if is_ai_task else ""
+
         if fire_time <= now:
-            return "即将发送"
+            return f"即将发送{suffix}"
 
         delta = fire_time - now
         total_minutes = int(delta.total_seconds() / 60)
 
         if total_minutes < 60:
-            return f"{total_minutes}分钟后 ({fire_time.strftime('%H:%M')})"
+            return f"{total_minutes}分钟后 ({fire_time.strftime('%H:%M')}){suffix}"
         else:
             hours = total_minutes // 60
             minutes = total_minutes % 60
-            return f"{hours}小时{minutes}分钟后 ({fire_time.strftime('%H:%M')})"
+            return f"{hours}小时{minutes}分钟后 ({fire_time.strftime('%H:%M')}){suffix}"
 
     def get_all_sessions_status(self) -> list:
         """获取所有会话的状态信息
@@ -648,6 +849,9 @@ class ProactiveTaskManager:
         enabled = proactive_config.get("enabled", False)
 
         if enabled:
+            # 恢复 AI 调度任务
+            self._restore_ai_schedules()
+
             self.proactive_task = asyncio.create_task(self.proactive_message_loop())
             logger.info("定时主动发送任务已启动")
 

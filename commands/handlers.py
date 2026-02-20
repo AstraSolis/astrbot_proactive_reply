@@ -202,6 +202,9 @@ class CommandHandlers:
         elif test_type == "save":
             async for result in self._test_save_conversation(event):
                 yield result
+        elif test_type == "schedule":
+            async for result in self._test_schedule(event):
+                yield result
         else:
             help_text = """可用的测试命令:
 -  `/proactive test basic` - 测试基本发送功能
@@ -210,7 +213,8 @@ class CommandHandlers:
 - `/proactive test prompt` - 测试提示词构建
 - `/proactive test placeholders` - 测试占位符替换
 - `/proactive test history` - 测试对话历史
-- `/proactive test save` - 测试对话保存"""
+- `/proactive test save` - 测试对话保存
+- `/proactive test schedule` - 测试AI调度任务（注入+诊断）"""
             yield event.plain_result(help_text)
 
     async def _test_basic(self, event: AstrMessageEvent):
@@ -479,6 +483,50 @@ class CommandHandlers:
             )
             yield event.plain_result("✅ 对话保存测试完成")
         except Exception as e:
+            yield event.plain_result(f"❌ 测试失败: {e}")
+
+    async def _test_schedule(self, event: AstrMessageEvent):
+        """测试 AI 调度任务——注入一个 1 分钟后到期的任务并显示当前状态"""
+        import uuid
+        from datetime import datetime, timedelta
+
+        session_id = event.unified_msg_origin
+        try:
+            # 1. 注入一个 1 分钟后到期的测试任务
+            fire_dt = datetime.now() + timedelta(minutes=1)
+            fire_time_str = fire_dt.strftime("%Y-%m-%d %H:%M:%S")
+            task = {
+                "task_id": str(uuid.uuid4()),
+                "delay_minutes": 1,
+                "fire_time": fire_time_str,
+                "follow_up_prompt": "[测试] 这是通过 /proactive test schedule 注入的测试跟进消息，请据此发送一条简短的问候。",
+                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            self.plugin.task_manager.apply_ai_schedule(session_id, task)
+
+            # 2. 读取当前会话的 AI 任务列表供诊断
+            ai_tasks = runtime_data.session_ai_scheduled.get(session_id, [])
+            next_fire = self.plugin.task_manager.get_next_fire_info(session_id)
+
+            task_list_text = ""
+            for i, t in enumerate(ai_tasks, 1):
+                task_list_text += (
+                    f"  {i}. [{t.get('task_id', '无ID')[:8]}...] "
+                    f"{t.get('fire_time', '?')} — {t.get('follow_up_prompt', '')[:30]}...\n"
+                )
+
+            yield event.plain_result(
+                f"✅ 已注入测试 AI 调度任务\n"
+                f"\n📋 当前会话调度列表 ({len(ai_tasks)} 个任务):\n{task_list_text}"
+                f"\n⏱️ 下次触发时间: {next_fire}"
+                f"\n\n💡 约 1 分钟后会话将收到 AI 调度消息。"
+                f"若处于睡眠时段，任务将穿透发送并附带睡眠背景提示。"
+            )
+        except Exception as e:
+            logger.error(f"测试调度失败: {e}")
+            import traceback
+
+            logger.error(traceback.format_exc())
             yield event.plain_result(f"❌ 测试失败: {e}")
 
     # ==================== 显示命令 ====================

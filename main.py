@@ -128,6 +128,32 @@ class ProactiveReplyPlugin(Star):
         if session:
             self.task_manager.refresh_session_timer(session)
 
+            # 尝试获取 AI 回复内容进行调度分析（针对普通对话）
+            ai_message_text = ""
+            result = event.get_result()
+            if result:
+                # 尝试从 MessageChain 获取文本
+                if hasattr(result, "chain"):
+                    for component in result.chain:
+                        if hasattr(component, "text"):
+                            ai_message_text += component.text
+                        elif isinstance(component, str):
+                            ai_message_text += component
+                # 尝试直接获取字符串
+                elif isinstance(result, str):
+                    ai_message_text = result
+
+            if ai_message_text:
+                # 异步执行调度分析
+                schedule_result = (
+                    await self.message_generator.analyze_message_for_schedule(
+                        session, ai_message_text
+                    )
+                )
+                if schedule_result:
+                    # 应用 AI 调度
+                    self.task_manager.apply_ai_schedule(session, schedule_result)
+
     # ==================== 命令组定义 ====================
 
     @filter.command_group("proactive")

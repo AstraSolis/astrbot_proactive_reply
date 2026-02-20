@@ -23,6 +23,12 @@ class PromptBuilder:
         self.config = config
         self.context = context
 
+    def replace_placeholders(
+        self, prompt: str, session: str, config: dict, build_user_context_func
+    ) -> str:
+        """替换提示词中的占位符（包装方法）"""
+        return replace_placeholders(prompt, session, config, build_user_context_func)
+
     def _get_persona_name(self, persona) -> str:
         """获取人格名称（支持 dict 和对象两种形式）"""
         if isinstance(persona, dict):
@@ -38,6 +44,9 @@ class PromptBuilder:
     def get_proactive_prompt(self, session: str, build_user_context_func) -> str:
         """获取并处理主动对话提示词
 
+        优先使用 AI 自主调度保存的 follow_up_prompt（一次性），
+        如果没有则从 proactive_prompt_list 中随机选择。
+
         Args:
             session: 会话ID
             build_user_context_func: 构建用户上下文的函数
@@ -49,14 +58,14 @@ class PromptBuilder:
         prompt_list_data = proactive_config.get("proactive_prompt_list", [])
 
         if not prompt_list_data:
-            logger.warning("未配置主动对话提示词列表")
-            return None
+            logger.warning(f"会话 {session} 没有配置主动消息提示词列表")
+            return ""
 
         # 解析主动对话提示词列表
         prompt_list = parse_prompt_list(prompt_list_data)
         if not prompt_list:
             logger.warning("主动对话提示词列表为空")
-            return None
+            return ""
 
         # 随机选择一个主动对话提示词
         selected_prompt = random.choice(prompt_list)

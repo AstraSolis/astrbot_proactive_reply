@@ -6,10 +6,12 @@
 
 import asyncio
 import re
+from datetime import datetime
 from astrbot.api import logger
 from astrbot.api.event import MessageChain
 
 from ..core.runtime_data import runtime_data
+from .ai_schedule_analyzer import analyze_for_schedule
 
 
 class MessageGenerator:
@@ -96,7 +98,7 @@ class MessageGenerator:
         runtime_data.session_last_proactive_message[session] = message
 
     async def generate_proactive_message_with_retry(
-        self, session: str, max_retries: int = 3
+        self, session: str, max_retries: int = 3, override_prompt: str = None
     ) -> tuple:
         """生成主动消息，带重复检测和重试
 
@@ -116,7 +118,9 @@ class MessageGenerator:
         message = None
         final_prompt = None
         for attempt in range(max_retries + 1):
-            message, final_prompt = await self.generate_proactive_message(session)
+            message, final_prompt = await self.generate_proactive_message(
+                session, override_prompt
+            )
             if not message:
                 return None, None
 
@@ -138,7 +142,9 @@ class MessageGenerator:
 
         return message, final_prompt
 
-    async def generate_proactive_message(self, session: str) -> tuple:
+    async def generate_proactive_message(
+        self, session: str, override_prompt: str = None
+    ) -> tuple:
         """使用LLM生成主动消息内容
 
         Args:
@@ -154,9 +160,20 @@ class MessageGenerator:
                 return None, None
 
             # 获取并处理主动对话提示词
-            final_prompt = self.prompt_builder.get_proactive_prompt(
-                session, self.user_info_manager.build_user_context_for_proactive
-            )
+            if override_prompt:
+                final_prompt = override_prompt
+                # 简单替换占位符（保持一致性）
+                final_prompt = self.prompt_builder.replace_placeholders(
+                    final_prompt,
+                    session,
+                    self.config,
+                    self.user_info_manager.build_user_context_for_proactive,
+                )
+            else:
+                final_prompt = self.prompt_builder.get_proactive_prompt(
+                    session, self.user_info_manager.build_user_context_for_proactive
+                )
+
             if not final_prompt:
                 return None, None
 
@@ -231,11 +248,17 @@ class MessageGenerator:
             logger.error(f"详细错误信息: {traceback.format_exc()}")
             raise
 
-    async def send_proactive_message(self, session: str):
+    async def send_proactive_message(
+        self, session: str, override_prompt: str = None
+    ) -> dict | None:
         """向指定会话发送主动消息
 
         Args:
             session: 会话ID
+
+        Returns:
+            AI 自主调度信息 {"delay_minutes": int, "follow_up_prompt": str, "fire_time": str}
+            或 None（无调度）
 
         Raises:
             RuntimeError: 消息生成失败时抛出
@@ -246,7 +269,9 @@ class MessageGenerator:
             (
                 message,
                 proactive_prompt_used,
-            ) = await self.generate_proactive_message_with_retry(session)
+            ) = await self.generate_proactive_message_with_retry(
+                session, override_prompt=override_prompt
+            )
 
             if not message:
                 raise RuntimeError(f"无法为会话 {session} 生成主动消息")
@@ -261,9 +286,61 @@ class MessageGenerator:
                 session, message, original_message, proactive_prompt_used
             )
 
+            # AI 自主调度分析（发送后异步执行，不影响发送本身）
+            schedule_result = await self.analyze_message_for_schedule(
+                session, original_message
+            )
+            return schedule_result
+
         except Exception as e:
             logger.error(f"❌ 向会话 {session} 发送主动消息时发生错误: {e}")
             raise
+
+    async def analyze_message_for_schedule(
+        self, session: str, message: str
+    ) -> dict | None:
+        """分析 AI 消息是否包含时间约定，发起二次 LLM 调用
+
+        Args:
+            session: 会话ID
+            message: AI 生成的消息
+
+        Returns:
+            调度信息 dict 或 None
+        """
+        proactive_config = self.config.get("proactive_reply", {})
+        if not proactive_config.get("ai_schedule_enabled", False):
+            return None
+
+        provider = self.get_llm_provider()
+        if not provider:
+            return None
+
+        # 获取对话历史作为分析上下文
+        contexts = []
+        if proactive_config.get("include_history_enabled", False):
+            history_count = proactive_config.get("history_message_count", 10)
+            history_count = max(1, min(50, history_count))
+            contexts = await self.conversation_manager.get_conversation_history(
+                session, history_count
+            )
+
+        # 获取自定义分析提示词
+        analysis_prompt = proactive_config.get("ai_schedule_analysis_prompt", "")
+
+        # 当前时间
+        time_format = self.config.get("user_info", {}).get(
+            "time_format", "%Y-%m-%d %H:%M:%S"
+        )
+        current_time_str = datetime.now().strftime(time_format)
+
+        return await analyze_for_schedule(
+            provider=provider,
+            ai_message=message,
+            contexts=contexts,
+            analysis_prompt=analysis_prompt,
+            current_time_str=current_time_str,
+        )
 
     async def _send_message_with_split(
         self,
