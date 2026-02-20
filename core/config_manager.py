@@ -146,6 +146,9 @@ class ConfigManager:
         if self.persistence_manager:
             self.persistence_manager.load_persistent_data()
 
+        # 数据迁移（必须在默认值补全之前执行，否则新分组被默认值填充后迁移条件永远不满足）
+        self.migrate_time_records()
+
         # 检查并补充缺失的配置
         config_updated = False
         for section, section_config in self.DEFAULT_CONFIG.items():
@@ -158,9 +161,6 @@ class ConfigManager:
                     if key not in self.config[section]:
                         self.config[section][key] = default_value
                         config_updated = True
-
-        # 数据迁移
-        self.migrate_time_records()
 
         # 如果配置有更新，保存配置文件
         if config_updated:
@@ -185,27 +185,69 @@ class ConfigManager:
         except (KeyError, ValueError, AttributeError) as e:
             logger.error(f"迁移时间记录失败: {e}")
 
-        # 迁移 split_by_backslash 配置
+        # 迁移旧版分割配置到 message_split 顶层组
         try:
             proactive_config = self.config.get("proactive_reply", {})
-            if (
-                "split_by_backslash" in proactive_config
-                and "split_enabled" not in proactive_config
-            ):
+            if "message_split" not in self.config:
+                self.config["message_split"] = {}
+            split_config = self.config["message_split"]
+
+            migrated = False
+
+            # 从 proactive_reply.split_by_backslash 迁移
+            if "split_by_backslash" in proactive_config and "enabled" not in split_config:
                 split_value = proactive_config.get("split_by_backslash", True)
-                self.config["proactive_reply"]["split_enabled"] = split_value
-                if "split_mode" not in proactive_config:
-                    self.config["proactive_reply"]["split_mode"] = "backslash"
+                split_config["enabled"] = split_value
+                if "mode" not in split_config:
+                    split_config["mode"] = "backslash"
+                migrated = True
                 logger.info(
-                    f"已将 split_by_backslash 迁移到 split_enabled (值: {split_value})"
+                    f"已将 split_by_backslash 迁移到 message_split.enabled (值: {split_value})"
                 )
 
+            # 从 proactive_reply.split_enabled 等迁移到 message_split
+            split_migration_map = {
+                "split_enabled": "enabled",
+                "split_mode": "mode",
+                "custom_split_pattern": "custom_pattern",
+                "split_message_delay_ms": "delay_ms",
+            }
+            for old_key, new_key in split_migration_map.items():
+                if old_key in proactive_config and new_key not in split_config:
+                    split_config[new_key] = proactive_config[old_key]
+                    migrated = True
+
+            # 从 proactive_reply.ai_schedule_* 迁移到 ai_schedule
+            if "ai_schedule" not in self.config:
+                self.config["ai_schedule"] = {}
+            ai_config = self.config["ai_schedule"]
+            ai_migration_map = {
+                "ai_schedule_enabled": "enabled",
+                "ai_schedule_analysis_prompt": "analysis_prompt",
+            }
+            for old_key, new_key in ai_migration_map.items():
+                if old_key in proactive_config and new_key not in ai_config:
+                    ai_config[new_key] = proactive_config[old_key]
+                    migrated = True
+
+            # 迁移完成后清理旧 key
+            if migrated:
+                deprecated_keys = [
+                    "split_by_backslash",
+                    *split_migration_map.keys(),
+                    *ai_migration_map.keys(),
+                ]
+                for old_key in deprecated_keys:
+                    if old_key in proactive_config:
+                        del proactive_config[old_key]
+
+                logger.info("已将旧版配置迁移到新分组 (message_split / ai_schedule)")
                 if self.save_config_safely():
-                    logger.info("分割配置迁移已保存")
+                    logger.info("配置迁移已保存")
                 else:
-                    logger.warning("分割配置迁移保存失败")
+                    logger.warning("配置迁移保存失败")
         except Exception as e:
-            logger.error(f"迁移分割配置失败: {e}")
+            logger.error(f"迁移分割/调度配置失败: {e}")
 
     def save_config_safely(self) -> bool:
         """安全的配置保存方法

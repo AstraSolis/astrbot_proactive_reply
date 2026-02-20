@@ -805,12 +805,13 @@ class CommandHandlers:
                 config_text += f"  - 历史记录条数: {proactive_config.get('history_message_count', 10)} 条\n"
 
             # 4. 消息分割配置
-            config_text += f"\n消息分割功能: {'✅ 已启用' if proactive_config.get('split_enabled', True) else '❌ 未启用'}\n"
-            if proactive_config.get("split_enabled", True):
+            split_config = self.config.get("message_split", {})
+            config_text += f"\n消息分割功能: {'✅ 已启用' if split_config.get('enabled', True) else '❌ 未启用'}\n"
+            if split_config.get("enabled", True):
                 config_text += (
-                    f"  - 分割模式: {proactive_config.get('split_mode', 'backslash')}\n"
+                    f"  - 分割模式: {split_config.get('mode', 'backslash')}\n"
                 )
-                config_text += f"  - 分割延迟: {proactive_config.get('split_message_delay_ms', 500)} 毫秒\n"
+                config_text += f"  - 分割延迟: {split_config.get('delay_ms', 500)} 毫秒\n"
 
             # 5. 会话和记录统计
             # 获取会话列表

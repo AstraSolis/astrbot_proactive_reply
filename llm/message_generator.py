@@ -308,8 +308,8 @@ class MessageGenerator:
         Returns:
             调度信息 dict 或 None
         """
-        proactive_config = self.config.get("proactive_reply", {})
-        if not proactive_config.get("ai_schedule_enabled", False):
+        ai_schedule_config = self.config.get("ai_schedule", {})
+        if not ai_schedule_config.get("enabled", False):
             return None
 
         provider = self.get_llm_provider()
@@ -317,6 +317,7 @@ class MessageGenerator:
             return None
 
         # 获取对话历史作为分析上下文
+        proactive_config = self.config.get("proactive_reply", {})
         contexts = []
         if proactive_config.get("include_history_enabled", False):
             history_count = proactive_config.get("history_message_count", 10)
@@ -326,7 +327,7 @@ class MessageGenerator:
             )
 
         # 获取自定义分析提示词
-        analysis_prompt = proactive_config.get("ai_schedule_analysis_prompt", "")
+        analysis_prompt = ai_schedule_config.get("analysis_prompt", "")
 
         # 当前时间
         time_format = self.config.get("user_info", {}).get(
@@ -358,10 +359,8 @@ class MessageGenerator:
             proactive_prompt_used: 本次使用的主动对话提示词
         """
         try:
-            proactive_config = self.config.get("proactive_reply", {})
-            split_enabled = proactive_config.get(
-                "split_enabled", proactive_config.get("split_by_backslash", True)
-            )
+            split_config = self.config.get("message_split", {})
+            split_enabled = split_config.get("enabled", True)
 
             if split_enabled:
                 await self._send_split_message(
@@ -391,12 +390,12 @@ class MessageGenerator:
             original_message: 原始消息
             proactive_prompt_used: 本次使用的主动对话提示词
         """
-        proactive_config = self.config.get("proactive_reply", {})
-        split_mode = proactive_config.get("split_mode", "backslash")
+        split_config = self.config.get("message_split", {})
+        split_mode = split_config.get("mode", "backslash")
 
         # 确定使用的正则表达式
         if split_mode == "custom":
-            split_pattern = proactive_config.get("custom_split_pattern", "")
+            split_pattern = split_config.get("custom_pattern", "")
             if not split_pattern:
                 logger.warning("custom模式下未配置正则表达式,使用默认backslash模式")
                 split_pattern = self.SPLIT_MODE_PATTERNS["backslash"]
@@ -420,7 +419,7 @@ class MessageGenerator:
                 )
                 logger.info(f"📨 使用{mode_display}分割消息,共 {len(message_parts)} 条")
 
-                delay_ms = proactive_config.get("split_message_delay_ms", 500)
+                delay_ms = split_config.get("delay_ms", 500)
                 delay_seconds = delay_ms / 1000.0
 
                 sent_count = 0
