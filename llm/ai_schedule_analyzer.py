@@ -119,7 +119,8 @@ def parse_schedule_response(response_text: str) -> Optional[dict]:
 
 
 async def analyze_for_schedule(
-    provider,
+    context,
+    provider_id: str,
     ai_message: str,
     contexts: list,
     analysis_prompt: str = "",
@@ -128,7 +129,8 @@ async def analyze_for_schedule(
     """发起二次 LLM 调用，分析 AI 是否约定了下次联系时间
 
     Args:
-        provider: LLM 提供商对象
+        context: AstrBot 上下文对象
+        provider_id: LLM 提供商 ID
         ai_message: AI 生成的消息
         contexts: 对话历史（用于上下文）
         analysis_prompt: 自定义分析提示词（空则使用默认）
@@ -162,12 +164,10 @@ async def analyze_for_schedule(
 
     try:
         # 二次 LLM 调用（轻量级，只需输出 JSON）
-        llm_response = await provider.text_chat(
+        llm_response = await context.llm_generate(
+            chat_provider_id=provider_id,
             prompt=user_prompt,
-            session_id=None,
             contexts=contexts,
-            image_urls=[],
-            func_tool=None,
             system_prompt=system_prompt,
         )
 

@@ -195,7 +195,10 @@ class ConfigManager:
             migrated = False
 
             # 从 proactive_reply.split_by_backslash 迁移
-            if "split_by_backslash" in proactive_config and "enabled" not in split_config:
+            if (
+                "split_by_backslash" in proactive_config
+                and "enabled" not in split_config
+            ):
                 split_value = proactive_config.get("split_by_backslash", True)
                 split_config["enabled"] = split_value
                 if "mode" not in split_config:

@@ -49,16 +49,20 @@ class MessageGenerator:
         self.conversation_manager = conversation_manager
         self.user_info_manager = user_info_manager
 
-    def get_llm_provider(self):
-        """获取LLM提供商
+    async def get_provider_id(self, session: str) -> str | None:
+        """获取LLM提供商ID
+
+        Args:
+            session: 会话ID (unified_msg_origin)
 
         Returns:
-            LLM提供商对象，失败返回None
+            LLM提供商ID字符串，失败返回None
         """
-        provider = self.context.get_using_provider()
-        if not provider:
+        try:
+            return await self.context.get_current_chat_provider_id(umo=session)
+        except Exception:
             logger.warning("LLM提供商不可用，无法生成主动消息")
-        return provider
+            return None
 
     def is_duplicate_message(self, session: str, message: str) -> bool:
         """检测消息是否与上次发送的重复
@@ -155,8 +159,8 @@ class MessageGenerator:
         """
         try:
             # 检查LLM是否可用
-            provider = self.get_llm_provider()
-            if not provider:
+            provider_id = await self.get_provider_id(session)
+            if not provider_id:
                 return None, None
 
             # 获取并处理主动对话提示词
@@ -219,12 +223,10 @@ class MessageGenerator:
 
             # 调用LLM生成主动消息
             logger.debug(f"调用LLM生成主动消息, contexts数量: {len(contexts)}")
-            llm_response = await provider.text_chat(
+            llm_response = await self.context.llm_generate(
+                chat_provider_id=provider_id,
                 prompt="[请根据上述指令生成回复]",
-                session_id=None,
                 contexts=contexts,
-                image_urls=[],
-                func_tool=None,
                 system_prompt=combined_system_prompt,
             )
 
@@ -312,8 +314,8 @@ class MessageGenerator:
         if not ai_schedule_config.get("enabled", False):
             return None
 
-        provider = self.get_llm_provider()
-        if not provider:
+        provider_id = await self.get_provider_id(session)
+        if not provider_id:
             return None
 
         # 获取对话历史作为分析上下文
@@ -336,7 +338,8 @@ class MessageGenerator:
         current_time_str = datetime.now().strftime(time_format)
 
         return await analyze_for_schedule(
-            provider=provider,
+            context=self.context,
+            provider_id=provider_id,
             ai_message=message,
             contexts=contexts,
             analysis_prompt=analysis_prompt,

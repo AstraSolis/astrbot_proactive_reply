@@ -30,16 +30,18 @@ class PromptBuilder:
         return replace_placeholders(prompt, session, config, build_user_context_func)
 
     def _get_persona_name(self, persona) -> str:
-        """获取人格名称（支持 dict 和对象两种形式）"""
+        """获取人格名称（支持 dict/Personality 和 Persona SQLModel 两种形式）"""
         if isinstance(persona, dict):
             return persona.get("name", "")
-        return getattr(persona, "name", "")
+        # Persona SQLModel 使用 persona_id 字段
+        return getattr(persona, "persona_id", "") or getattr(persona, "name", "")
 
     def _get_persona_prompt(self, persona) -> str:
-        """获取人格提示词（支持 dict 和对象两种形式）"""
+        """获取人格提示词（支持 dict/Personality 和 Persona SQLModel 两种形式）"""
         if isinstance(persona, dict):
             return persona.get("prompt", "")
-        return getattr(persona, "prompt", "")
+        # Persona SQLModel 使用 system_prompt 字段
+        return getattr(persona, "system_prompt", "") or getattr(persona, "prompt", "")
 
     def get_proactive_prompt(self, session: str, build_user_context_func) -> str:
         """获取并处理主动对话提示词
@@ -93,8 +95,8 @@ class PromptBuilder:
                 uid
             )
 
-            # 获取人格列表（这个列表是实时的）
-            personas = self.context.provider_manager.personas or []
+            # 获取人格列表（通过 persona_manager 异步获取）
+            personas = await self.context.persona_manager.get_all_personas() or []
 
             if curr_cid:
                 conversation = await self.context.conversation_manager.get_conversation(
@@ -155,8 +157,6 @@ class PromptBuilder:
     def _get_default_persona_prompt(self, personas: list) -> str:
         """从 AstrBot 配置中动态获取当前设置的默认人格
 
-        解决 selected_default_persona 被缓存导致切换人格后不更新的问题
-
         Args:
             personas: 人格列表
 
@@ -194,17 +194,7 @@ class PromptBuilder:
                     f"配置的默认人格 '{default_persona_name}' 在人格列表 {available} 中未找到"
                 )
 
-            # 回退到 selected_default_persona（可能被缓存）
-            default_persona_obj = self.context.provider_manager.selected_default_persona
-            if default_persona_obj and default_persona_obj.get("prompt"):
-                prompt = default_persona_obj["prompt"]
-                persona_name = default_persona_obj.get("name", "未知")
-                logger.debug(
-                    f"使用 AstrBot 默认人格 '{persona_name}' (prompt长度: {len(prompt)}字符) [缓存]"
-                )
-                return prompt
-
-            # 方法3: 如果还是没有，使用人格列表的第一个
+            # 方法2: 如果还是没有，使用人格列表的第一个
             if personas:
                 first_persona = personas[0]
                 persona_name = self._get_persona_name(first_persona)
@@ -293,7 +283,7 @@ class PromptBuilder:
 
         return combined_system_prompt
 
-    def get_base_system_prompt(self) -> str:
+    async def get_base_system_prompt(self) -> str:
         """获取基础系统提示词（人格提示词）
 
         与 get_persona_system_prompt 使用相同的动态获取逻辑，
@@ -303,12 +293,8 @@ class PromptBuilder:
             基础系统提示词
         """
         try:
-            # 获取人格列表
-            personas = (
-                self.context.provider_manager.personas
-                if hasattr(self.context, "provider_manager")
-                else []
-            ) or []
+            # 通过 persona_manager 异步获取人格列表
+            personas = await self.context.persona_manager.get_all_personas() or []
 
             # 使用与 get_persona_system_prompt 相同的动态获取逻辑
             base_system_prompt = self._get_default_persona_prompt(personas)

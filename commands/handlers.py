@@ -74,12 +74,17 @@ class CommandHandlers:
             # 获取发送时间记录数量
             ai_sent_times_count = len(runtime_data.ai_last_sent_times)
 
-            # 检查LLM状态
-            provider = self.context.get_using_provider()
-            llm_available = provider is not None
-
             # 检查当前会话状态
             current_session = event.unified_msg_origin
+
+            # 检查LLM状态
+            try:
+                provider_id = await self.context.get_current_chat_provider_id(
+                    umo=current_session
+                )
+                llm_available = provider_id is not None
+            except Exception:
+                llm_available = False
             is_current_in_list = current_session in sessions
 
             # 获取各会话的下次发送时间信息
@@ -232,9 +237,11 @@ class CommandHandlers:
         """测试LLM连接"""
         yield event.plain_result("⏳ 正在测试LLM请求...")
         try:
-            provider = self.plugin.message_generator.get_llm_provider()
-            if provider:
-                yield event.plain_result("✅ LLM提供商可用")
+            provider_id = await self.plugin.message_generator.get_provider_id(
+                event.unified_msg_origin
+            )
+            if provider_id:
+                yield event.plain_result(f"✅ LLM提供商可用 (ID: {provider_id})")
             else:
                 yield event.plain_result("❌ LLM提供商不可用")
         except Exception as e:
@@ -811,7 +818,9 @@ class CommandHandlers:
                 config_text += (
                     f"  - 分割模式: {split_config.get('mode', 'backslash')}\n"
                 )
-                config_text += f"  - 分割延迟: {split_config.get('delay_ms', 500)} 毫秒\n"
+                config_text += (
+                    f"  - 分割延迟: {split_config.get('delay_ms', 500)} 毫秒\n"
+                )
 
             # 5. 会话和记录统计
             # 获取会话列表
@@ -835,7 +844,7 @@ class CommandHandlers:
             config_text += "=" * 50 + "\n"
 
             # 获取基础人格提示词
-            base_prompt = self.plugin.prompt_builder.get_base_system_prompt()
+            base_prompt = await self.plugin.prompt_builder.get_base_system_prompt()
             config_text += f"基础人格提示词长度: {len(base_prompt)} 字符\n"
             config_text += f"基础人格提示词预览:\n{base_prompt[:200]}{'...' if len(base_prompt) > 200 else ''}\n\n"
 
