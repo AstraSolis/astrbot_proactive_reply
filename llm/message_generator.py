@@ -61,7 +61,7 @@ class MessageGenerator:
         try:
             return await self.context.get_current_chat_provider_id(umo=session)
         except Exception:
-            logger.warning("LLM提供商不可用，无法生成主动消息")
+            logger.warning("心念 | ⚠️ LLM 提供商不可用，无法生成主动消息")
             return None
 
     def is_duplicate_message(self, session: str, message: str) -> bool:
@@ -80,14 +80,14 @@ class MessageGenerator:
 
         # 完全相同
         if message == last_message:
-            logger.debug("重复检测: 消息与上次完全相同")
+            logger.debug("心念 | 重复检测: 消息与上次完全相同")
             return True
 
         # 前50个字符相同（避免仅结尾略有不同的情况）
         check_length = 50
         if len(message) >= check_length and len(last_message) >= check_length:
             if message[:check_length] == last_message[:check_length]:
-                logger.debug("重复检测: 消息前50字符与上次相同")
+                logger.debug("心念 | 重复检测: 消息前50字符与上次相同")
                 return True
 
         return False
@@ -139,10 +139,10 @@ class MessageGenerator:
             # 重复了，记录日志
             if attempt < max_retries:
                 logger.warning(
-                    f"🔄 检测到重复消息，重新生成 ({attempt + 1}/{max_retries})"
+                    f"心念 | 🔄 检测到重复消息，重新生成 ({attempt + 1}/{max_retries})"
                 )
             else:
-                logger.warning("⚠️ 多次重试后仍为重复消息，使用当前消息")
+                logger.warning("心念 | ⚠️ 多次重试后仍为重复消息，使用当前消息")
 
         return message, final_prompt
 
@@ -196,16 +196,16 @@ class MessageGenerator:
                 contexts = await self.conversation_manager.get_conversation_history(
                     session, history_count
                 )
-                # 记录历史记录获取结果（使用 info 级别确保可见）
-                logger.info(f"📚 主动消息生成: 获取到 {len(contexts)} 条历史记录")
+                # 记录历史记录获取结果
+                logger.info(f"心念 | 📚 获取到 {len(contexts)} 条历史记录")
                 if contexts:
                     last_msg = contexts[-1]
                     content_preview = last_msg.get("content", "")[:80]
-                    logger.info(
-                        f"📝 最后一条历史: [{last_msg.get('role')}] {content_preview}"
+                    logger.debug(
+                        f"心念 | 最后一条历史: [{last_msg.get('role')}] {content_preview}"
                     )
             else:
-                logger.info("📚 主动消息生成: 历史记录功能未启用")
+                logger.debug("心念 | 历史记录功能未启用")
 
             # 构建历史记录引导提示词
             history_guidance = ""
@@ -222,7 +222,7 @@ class MessageGenerator:
             )
 
             # 调用LLM生成主动消息
-            logger.debug(f"调用LLM生成主动消息, contexts数量: {len(contexts)}")
+            logger.debug(f"心念 | 调用 LLM 生成主动消息, contexts 数量: {len(contexts)}")
             llm_response = await self.context.llm_generate(
                 chat_provider_id=provider_id,
                 prompt="[请根据上述指令生成回复]",
@@ -234,20 +234,20 @@ class MessageGenerator:
                 generated_message = llm_response.completion_text
                 if generated_message:
                     generated_message = generated_message.strip()
-                    logger.info("LLM生成主动消息成功")
+                    logger.info("心念 | ✅ LLM 生成主动消息成功")
                     return generated_message, final_prompt
                 else:
-                    logger.warning("LLM返回了空消息")
+                    logger.warning("心念 | ⚠️ LLM 返回了空消息")
                     return None, None
             else:
-                logger.warning(f"LLM响应异常: {llm_response}")
+                logger.warning(f"心念 | ⚠️ LLM 响应异常: {llm_response}")
                 return None, None
 
         except Exception as e:
-            logger.error(f"使用LLM生成主动消息失败: {e}")
+            logger.error(f"心念 | ❌ 使用 LLM 生成主动消息失败: {e}")
             import traceback
 
-            logger.error(f"详细错误信息: {traceback.format_exc()}")
+            logger.error(f"心念 | 详细错误信息: {traceback.format_exc()}")
             raise
 
     async def send_proactive_message(
@@ -295,7 +295,7 @@ class MessageGenerator:
             return schedule_result
 
         except Exception as e:
-            logger.error(f"❌ 向会话 {session} 发送主动消息时发生错误: {e}")
+            logger.error(f"心念 | ❌ 向会话 {session} 发送主动消息时发生错误: {e}")
             raise
 
     async def analyze_message_for_schedule(
@@ -377,10 +377,10 @@ class MessageGenerator:
                 await self._send_single_message(session, message, proactive_prompt_used)
 
         except Exception as e:
-            logger.error(f"❌ 发送消息时发生错误: {e}")
+            logger.error(f"心念 | ❌ 发送消息时发生错误: {e}")
             import traceback
 
-            logger.error(f"发送错误详情: {traceback.format_exc()}")
+            logger.error(f"心念 | 发送错误详情: {traceback.format_exc()}")
 
     async def _send_split_message(
         self,
@@ -404,7 +404,7 @@ class MessageGenerator:
         if split_mode == "custom":
             split_pattern = split_config.get("custom_pattern", "")
             if not split_pattern:
-                logger.warning("custom模式下未配置正则表达式,使用默认backslash模式")
+                logger.warning("心念 | ⚠️ custom 模式下未配置正则表达式，使用默认 backslash 模式")
                 split_pattern = self.SPLIT_MODE_PATTERNS["backslash"]
                 split_mode = "backslash"
         else:
@@ -424,7 +424,7 @@ class MessageGenerator:
                     if split_mode != "custom"
                     else f"自定义模式(/{split_pattern}/)"
                 )
-                logger.info(f"📨 使用{mode_display}分割消息,共 {len(message_parts)} 条")
+                logger.info(f"心念 | 📨 使用 {mode_display} 分割消息，共 {len(message_parts)} 条")
 
                 delay_ms = split_config.get("delay_ms", 500)
                 delay_seconds = delay_ms / 1000.0
@@ -440,18 +440,18 @@ class MessageGenerator:
                         if success:
                             sent_count += 1
                             logger.debug(
-                                f"  ✅ 已发送第 {i}/{len(message_parts)} 条消息"
+                                f"心念 | ✅ 已发送第 {i}/{len(message_parts)} 条消息"
                             )
                             if i < len(message_parts):
                                 await asyncio.sleep(delay_seconds)
                         else:
                             logger.warning(
-                                f"  ⚠️ 第 {i}/{len(message_parts)} 条消息发送失败"
+                                f"心念 | ⚠️ 第 {i}/{len(message_parts)} 条消息发送失败"
                             )
 
                     except Exception as part_error:
                         logger.error(
-                            f"  ❌ 发送第 {i}/{len(message_parts)} 条消息时出错: {part_error}"
+                            f"心念 | ❌ 发送第 {i}/{len(message_parts)} 条消息时出错: {part_error}"
                         )
 
                 if sent_count > 0:
@@ -463,19 +463,19 @@ class MessageGenerator:
                         build_user_context_func=self.user_info_manager.build_user_context_for_proactive,
                     )
                     logger.info(
-                        f"✅ 成功发送主动消息({sent_count}/{len(message_parts)} 条)"
+                        f"心念 | ✅ 成功发送主动消息 ({sent_count}/{len(message_parts)} 条)"
                     )
                 else:
-                    logger.warning("⚠️ 所有消息片段都发送失败")
+                    logger.warning("心念 | ⚠️ 所有消息片段都发送失败")
             else:
                 # 没有被分割
                 await self._send_single_message(session, message, proactive_prompt_used)
 
         except re.error as e:
             logger.error(
-                f"❌ 正则表达式错误: {e}, 模式: {split_mode}, 表达式: {split_pattern}"
+                f"心念 | ❌ 正则表达式错误: {e}, 模式: {split_mode}, 表达式: {split_pattern}"
             )
-            logger.error("将使用原始消息,不进行分割")
+            logger.error("心念 | 将使用原始消息，不进行分割")
             await self._send_single_message(session, message, proactive_prompt_used)
 
     async def _send_single_message(
@@ -499,6 +499,6 @@ class MessageGenerator:
                 proactive_prompt_used=proactive_prompt_used,
                 build_user_context_func=self.user_info_manager.build_user_context_for_proactive,
             )
-            logger.info("✅ 成功发送主动消息")
+            logger.info("心念 | ✅ 成功发送主动消息")
         else:
-            logger.warning("⚠️ 主动消息发送失败，可能是会话不存在或平台不支持")
+            logger.warning("心念 | ⚠️ 主动消息发送失败，可能是会话不存在或平台不支持")

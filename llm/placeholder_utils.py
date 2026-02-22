@@ -58,16 +58,16 @@ def replace_placeholders(
             try:
                 result = result.replace(placeholder, str(value))
             except Exception as replace_error:
-                logger.warning(f"替换占位符 {placeholder} 失败: {replace_error}")
+                logger.warning(f"心念 | ⚠️ 替换占位符 {placeholder} 失败: {replace_error}")
                 continue
 
         return result
 
     except Exception as e:
-        logger.error(f"替换占位符失败: {e}")
+        logger.error(f"心念 | ❌ 替换占位符失败: {e}")
         import traceback
 
-        logger.error(f"详细错误信息: {traceback.format_exc()}")
+        logger.error(f"心念 | 详细错误信息: {traceback.format_exc()}")
         return prompt  # 如果替换失败，返回原始提示词
 
 
@@ -113,5 +113,5 @@ def format_time_ago(time_str: str) -> str:
             return f"{years}年前"
 
     except Exception as e:
-        logger.error(f"格式化相对时间失败: {e}")
+        logger.error(f"心念 | ❌ 格式化相对时间失败: {e}")
         return "未知"

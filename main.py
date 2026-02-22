@@ -41,7 +41,7 @@ class ProactiveReplyPlugin(Star):
         # 初始化各个管理器
         self._initialize_managers()
 
-        logger.info("ProactiveReplyPlugin 插件已初始化")
+        logger.info("心念 | 插件已初始化")
 
         # 异步初始化
         self._initialization_task = asyncio.create_task(self.initialize())
@@ -96,7 +96,7 @@ class ProactiveReplyPlugin(Star):
         # 启动定时任务
         await self.task_manager.start_proactive_task()
 
-        logger.info("ProactiveReplyPlugin 插件初始化完成")
+        logger.info("心念 | ✅ 插件初始化完成")
 
     # ==================== 事件过滤器 ====================
 
@@ -118,7 +118,7 @@ class ProactiveReplyPlugin(Star):
         # 检查原始消息是否是命令（以 / 开头）
         original_message = event.message_str or ""
         if original_message.strip().startswith("/"):
-            logger.debug(f"跳过命令消息的时间记录: {original_message[:20]}...")
+            logger.debug(f"心念 | 跳过命令消息时间记录: {original_message[:20]}...")
             return
 
         await self.user_info_manager.record_ai_message_time(event)
@@ -296,7 +296,7 @@ class ProactiveReplyPlugin(Star):
 
     async def terminate(self):
         """插件终止时的清理工作"""
-        logger.info("ProactiveReplyPlugin 插件正在终止...")
+        logger.info("心念 | 插件正在终止...")
 
         # 设置终止标志
         self._is_terminating = True
@@ -311,4 +311,4 @@ class ProactiveReplyPlugin(Star):
 
         # 停止定时任务
         await self.task_manager.stop_proactive_task()
-        logger.info("ProactiveReplyPlugin 插件已终止")
+        logger.info("心念 | ✅ 插件已终止")

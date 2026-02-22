@@ -41,7 +41,7 @@ class PersistenceManager:
                 else:
                     base_data_dir = os.path.join(os.getcwd(), "data")
             except (AttributeError, KeyError) as e:
-                logger.warning(f"⚠️ AstrBot配置访问错误: {e}")
+                logger.warning(f"心念 | ⚠️ AstrBot配置访问错误: {e}")
                 base_data_dir = os.path.join(os.getcwd(), "data")
 
             # 创建插件专用的数据子目录（直接在data目录下，不在plugins子目录）
@@ -51,18 +51,18 @@ class PersistenceManager:
             # 确保目录存在
             os.makedirs(plugin_data_dir, exist_ok=True)
 
-            logger.info(f"✅ 插件数据目录: {plugin_data_dir}")
+            logger.info(f"心念 | ✅ 插件数据目录: {plugin_data_dir}")
             return plugin_data_dir
 
         except OSError as e:
-            logger.error(f"❌ 文件系统错误: {e}")
+            logger.error(f"心念 | ❌ 文件系统错误: {e}")
             fallback_dir = os.path.join(os.getcwd(), "data", "astrbot_proactive_reply")
             try:
                 os.makedirs(fallback_dir, exist_ok=True)
-                logger.warning(f"⚠️ 使用回退数据目录: {fallback_dir}")
+                logger.warning(f"心念 | ⚠️ 使用回退数据目录: {fallback_dir}")
                 return fallback_dir
             except OSError:
-                logger.error("❌ 创建回退数据目录失败")
+                logger.error("心念 | ❌ 创建回退数据目录失败")
                 return os.getcwd()
 
     def load_persistent_data(self):
@@ -78,13 +78,13 @@ class PersistenceManager:
                             persistent_data = json.load(f)
 
                         if not isinstance(persistent_data, dict):
-                            logger.error("持久化文件格式错误：根对象不是字典")
+                            logger.error("心念 | ❌ 持久化文件格式错误：根对象不是字典")
                             continue
 
                         # 将持久化数据加载到运行时数据存储中（不是 config 对象）
                         runtime_data.load_from_dict(persistent_data)
 
-                        logger.info("✅ 从新的持久化文件加载数据成功")
+                        logger.info("心念 | ✅ 从新的持久化文件加载数据成功")
                         return
                     except (UnicodeDecodeError, json.JSONDecodeError, PermissionError):
                         continue
@@ -95,7 +95,7 @@ class PersistenceManager:
                 self.migrate_old_persistent_data(plugin_data_dir)
 
         except (FileNotFoundError, OSError, AttributeError) as e:
-            logger.info(f"持久化文件加载: {e}")
+            logger.info(f"心念 | ℹ️ 持久化文件加载: {e}")
 
     def migrate_old_persistent_data(self, new_data_dir: str):
         """迁移旧的持久化数据到新的数据目录（向后兼容）
@@ -136,12 +136,12 @@ class PersistenceManager:
                     if old_plugin_dir_path not in old_locations:
                         old_locations.insert(0, old_plugin_dir_path)
             except Exception as e:
-                logger.debug(f"获取AstrBot data_dir失败: {e}")
+                logger.debug(f"心念 | 获取AstrBot data_dir失败: {e}")
 
             for old_file in old_locations:
                 if os.path.exists(old_file):
                     try:
-                        logger.info(f"🔄 发现旧的持久化数据文件: {old_file}")
+                        logger.info(f"心念 | 🔄 发现旧的持久化数据文件: {old_file}")
 
                         with open(old_file, "r", encoding="utf-8") as f:
                             old_data = json.load(f)
@@ -154,13 +154,13 @@ class PersistenceManager:
                         runtime_data.load_from_dict(old_data)
 
                         logger.info(
-                            f"✅ 成功迁移旧的持久化数据: {old_file} -> {new_file}"
+                            f"心念 | ✅ 成功迁移旧的持久化数据: {old_file} -> {new_file}"
                         )
 
                         # 备份旧文件
                         backup_file = old_file + ".backup"
                         shutil.move(old_file, backup_file)
-                        logger.info(f"✅ 旧文件已备份到: {backup_file}")
+                        logger.info(f"心念 | ✅ 旧文件已备份到: {backup_file}")
 
                         # 写入迁移完成标记
                         marker_file = os.path.join(new_data_dir, ".migrated")
@@ -169,10 +169,10 @@ class PersistenceManager:
 
                         return
                     except Exception as e:
-                        logger.warning(f"⚠️ 迁移旧持久化文件失败: {e}")
+                        logger.warning(f"心念 | ⚠️ 迁移旧持久化文件失败: {e}")
 
         except Exception as e:
-            logger.error(f"❌ 迁移旧持久化数据失败: {e}")
+            logger.error(f"心念 | ❌ 迁移旧持久化数据失败: {e}")
 
     def save_persistent_data(self) -> bool:
         """保存用户数据到独立的持久化文件
@@ -192,7 +192,7 @@ class PersistenceManager:
             persistent_data["data_version"] = "2.0"
 
             if not validate_persistent_data(persistent_data):
-                logger.error("持久化数据验证失败")
+                logger.error("心念 | ❌ 持久化数据验证失败")
                 return False
 
             # 原子性写入
@@ -205,10 +205,10 @@ class PersistenceManager:
                     os.remove(persistent_file)
                 os.rename(temp_file, persistent_file)
 
-                logger.debug(f"✅ 持久化数据已保存到: {persistent_file}")
+                logger.debug(f"心念 | ✅ 持久化数据已保存到: {persistent_file}")
                 return True
             except Exception as e:
-                logger.error(f"保存持久化数据失败: {e}")
+                logger.error(f"心念 | ❌ 保存持久化数据失败: {e}")
                 return False
             finally:
                 if os.path.exists(temp_file):
@@ -218,5 +218,5 @@ class PersistenceManager:
                         pass
 
         except Exception as e:
-            logger.error(f"持久化数据保存错误: {e}")
+            logger.error(f"心念 | ❌ 持久化数据保存错误: {e}")
             return False

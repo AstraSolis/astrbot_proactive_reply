@@ -46,7 +46,7 @@ class RuntimeDataStore:
         # session -> [{"task_id": "...", "delay_minutes": N, "fire_time": "...", "follow_up_prompt": "...", "created_at": "..."}]
         self.session_ai_scheduled: dict = {}
 
-        logger.debug("RuntimeDataStore 初始化完成")
+        logger.debug("心念 | RuntimeDataStore 初始化完成")
 
     def load_from_dict(self, data: dict):
         """从字典加载数据
@@ -106,7 +106,7 @@ class RuntimeDataStore:
         self.session_unreplied_count = {}
         self.session_consecutive_failures = {}
         self.session_ai_scheduled = {}
-        logger.info("已清除所有运行时数据")
+        logger.info("心念 | ✅ 已清除所有运行时数据")
 
 
 # 全局单例实例

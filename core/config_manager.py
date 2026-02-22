@@ -49,14 +49,14 @@ class ConfigManager:
                         section_def["items"]
                     )
 
-            logger.debug(f"从 schema 加载了 {len(default_config)} 个配置区块的默认值")
+            logger.debug(f"心念 | 从 schema 加载了 {len(default_config)} 个配置区块的默认值")
 
         except FileNotFoundError:
-            logger.warning(f"配置 schema 文件不存在: {schema_path}，使用空默认配置")
+            logger.warning(f"心念 | ⚠️ 配置 schema 文件不存在: {schema_path}，使用空默认配置")
         except json.JSONDecodeError as e:
-            logger.error(f"配置 schema JSON 解析失败: {e}")
+            logger.error(f"心念 | ❌ 配置 schema JSON 解析失败: {e}")
         except Exception as e:
-            logger.error(f"加载配置 schema 失败: {e}")
+            logger.error(f"心念 | ❌ 加载配置 schema 失败: {e}")
 
         # 无论成功与否都缓存结果，避免重复读取文件
         cls._default_config_cache = default_config
@@ -103,16 +103,16 @@ class ConfigManager:
             session_user_info = runtime_data.session_user_info
 
             if session_user_info:
-                logger.info(f"✅ 已加载 {len(session_user_info)} 个用户信息记录")
+                logger.info(f"心念 | ✅ 已加载 {len(session_user_info)} 个用户信息记录")
             else:
-                logger.info("ℹ️ 暂无已保存的用户信息（首次运行）")
+                logger.info("心念 | ℹ️ 暂无已保存的用户信息（首次运行）")
 
         except KeyError as e:
-            logger.error(f"配置键错误: {e}")
+            logger.error(f"心念 | ❌ 配置键错误: {e}")
         except AttributeError as e:
-            logger.error(f"配置对象属性错误: {e}")
+            logger.error(f"心念 | ❌ 配置对象属性错误: {e}")
         except TypeError as e:
-            logger.error(f"配置数据类型错误: {e}")
+            logger.error(f"心念 | ❌ 配置数据类型错误: {e}")
 
     def _clean_runtime_data_from_config(self):
         """从配置中清理运行时数据字段
@@ -127,14 +127,14 @@ class ConfigManager:
             if key in proactive_config:
                 del proactive_config[key]
                 cleaned = True
-                logger.debug(f"已从配置中移除运行时数据字段: {key}")
+                logger.debug(f"心念 | 已从配置中移除运行时数据字段: {key}")
 
         if cleaned:
             try:
                 self.config.save_config()
-                logger.info("✅ 已清理配置中的运行时数据字段")
+                logger.info("心念 | ✅ 已清理配置中的运行时数据字段")
             except Exception as e:
-                logger.warning(f"保存清理后的配置失败: {e}")
+                logger.warning(f"心念 | ⚠️ 保存清理后的配置失败: {e}")
 
     def ensure_config_structure(self):
         """确保配置文件结构完整"""
@@ -166,9 +166,9 @@ class ConfigManager:
         if config_updated:
             try:
                 self.config.save_config()
-                logger.info("配置文件已更新")
+                logger.info("心念 | 配置文件已更新")
             except Exception as e:
-                logger.error(f"保存配置文件失败: {e}")
+                logger.error(f"心念 | ❌ 保存配置文件失败: {e}")
 
     def migrate_time_records(self):
         """迁移时间记录数据到运行时数据存储"""
@@ -179,11 +179,11 @@ class ConfigManager:
                 if self.persistence_manager:
                     self.persistence_manager.save_persistent_data()
                     logger.info(
-                        f"成功迁移 {len(runtime_data.last_sent_times)} 条时间记录"
+                        f"心念 | 成功迁移 {len(runtime_data.last_sent_times)} 条时间记录"
                     )
 
         except (KeyError, ValueError, AttributeError) as e:
-            logger.error(f"迁移时间记录失败: {e}")
+            logger.error(f"心念 | ❌ 迁移时间记录失败: {e}")
 
         # 迁移旧版分割配置到 message_split 顶层组
         try:
@@ -205,7 +205,7 @@ class ConfigManager:
                     split_config["mode"] = "backslash"
                 migrated = True
                 logger.info(
-                    f"已将 split_by_backslash 迁移到 message_split.enabled (值: {split_value})"
+                    f"心念 | 已将 split_by_backslash 迁移到 message_split.enabled (值: {split_value})"
                 )
 
             # 从 proactive_reply.split_enabled 等迁移到 message_split
@@ -244,13 +244,13 @@ class ConfigManager:
                     if old_key in proactive_config:
                         del proactive_config[old_key]
 
-                logger.info("已将旧版配置迁移到新分组 (message_split / ai_schedule)")
+                logger.info("心念 | 已将旧版配置迁移到新分组 (message_split / ai_schedule)")
                 if self.save_config_safely():
-                    logger.info("配置迁移已保存")
+                    logger.info("心念 | 配置迁移已保存")
                 else:
-                    logger.warning("配置迁移保存失败")
+                    logger.warning("心念 | ⚠️ 配置迁移保存失败")
         except Exception as e:
-            logger.error(f"迁移分割/调度配置失败: {e}")
+            logger.error(f"心念 | ❌ 迁移分割/调度配置失败: {e}")
 
     def save_config_safely(self) -> bool:
         """安全的配置保存方法
@@ -262,11 +262,11 @@ class ConfigManager:
             self.config.save_config()
             return True
         except PermissionError as e:
-            logger.error(f"配置文件权限不足: {e}")
+            logger.error(f"心念 | ❌ 配置文件权限不足: {e}")
             return False
         except OSError as e:
-            logger.error(f"配置文件系统错误: {e}")
+            logger.error(f"心念 | ❌ 配置文件系统错误: {e}")
             return False
         except AttributeError as e:
-            logger.error(f"配置对象方法不存在: {e}")
+            logger.error(f"心念 | ❌ 配置对象方法不存在: {e}")
             return False

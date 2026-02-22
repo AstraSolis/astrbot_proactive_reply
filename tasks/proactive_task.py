@@ -64,7 +64,7 @@ class ProactiveTaskManager:
         try:
             return datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
         except ValueError:
-            logger.warning(f"会话 {session} 的下次发送时间格式错误: {time_str}")
+            logger.warning(f"心念 | ⚠️ 会话 {session} 的下次发送时间格式错误: {time_str}")
             return None
 
     def set_session_next_fire_time(self, session: str, fire_time: datetime):
@@ -128,12 +128,12 @@ class ProactiveTaskManager:
                 if min_ai_time < next_fire:
                     next_fire = min_ai_time
                     logger.debug(
-                        f"会话 {session} 存在更早的 AI 调度任务 ({min_ai_time})，优先执行"
+                        f"心念 | 会话 {session} 存在更早的 AI 调度任务 ({min_ai_time})，优先执行"
                     )
 
         self.set_session_next_fire_time(session, next_fire)
         logger.debug(
-            f"会话 {session} 计时器已刷新，下次发送：{next_fire.strftime('%H:%M:%S')}"
+            f"心念 | 会话 {session} 计时器已刷新，下次发送：{next_fire.strftime('%H:%M:%S')}"
         )
 
     def ensure_all_sessions_scheduled(self):
@@ -143,7 +143,7 @@ class ProactiveTaskManager:
                 next_fire = self.calculate_next_fire_time(session)
                 self.set_session_next_fire_time(session, next_fire)
                 logger.info(
-                    f"会话 {session} 初始化计时器，下次发送：{next_fire.strftime('%Y-%m-%d %H:%M:%S')}"
+                    f"心念 | 会话 {session} 初始化计时器，下次发送：{next_fire.strftime('%Y-%m-%d %H:%M:%S')}"
                 )
 
     def clear_session_timer(self, session: str):
@@ -170,7 +170,7 @@ class ProactiveTaskManager:
         """
         runtime_data.session_next_fire_times.clear()
         runtime_data.session_sleep_remaining.clear()
-        logger.info("已清除所有会话的计时器")
+        logger.info("心念 | 已清除所有会话的计时器")
         # 触发持久化
         if self.persistence_manager:
             self.persistence_manager.save_persistent_data()
@@ -216,7 +216,7 @@ class ProactiveTaskManager:
         # 签名变化时清理计时器
         if current_signature != last_signature:
             logger.info(
-                f"检测到计时配置变化，自动清除所有计时器 "
+                f"心念 | 检测到计时配置变化，自动清除所有计时器 "
                 f"(旧: {last_signature}, 新: {current_signature})"
             )
             self.clear_all_session_timers()
@@ -266,7 +266,7 @@ class ProactiveTaskManager:
                 remaining_seconds = (fire_time - now).total_seconds()
                 runtime_data.session_sleep_remaining[session] = remaining_seconds
                 logger.debug(
-                    f"会话 {session} 进入睡眠，剩余 {remaining_seconds:.0f} 秒"
+                    f"心念 | 会话 {session} 进入睡眠，剩余 {remaining_seconds:.0f} 秒"
                 )
 
         # 持久化保存
@@ -292,10 +292,10 @@ class ProactiveTaskManager:
                 # 用 refresh_session_timer 而非 set_session_next_fire_time，
                 # 确保 AI 调度任务的 fire_time 不被常规间隔覆盖
                 self.refresh_session_timer(session)
-                logger.debug(f"会话 {session} 睡眠结束，跳过模式，刷新计时器")
+                logger.debug(f"心念 | 会话 {session} 睡眠结束，跳过模式，刷新计时器")
             elif wake_mode == "immediate":
                 # 模式2：保持原计时器，让主循环检测到过期后立即发送
-                logger.debug(f"会话 {session} 睡眠结束，立即发送模式，保持原计时器")
+                logger.debug(f"心念 | 会话 {session} 睡眠结束，立即发送模式，保持原计时器")
             else:
                 # 模式3：恢复剩余计时，延后发送
                 remaining = runtime_data.session_sleep_remaining.get(session)
@@ -303,14 +303,14 @@ class ProactiveTaskManager:
                     new_fire = now + timedelta(seconds=remaining)
                     self.set_session_next_fire_time(session, new_fire)
                     logger.debug(
-                        f"会话 {session} 睡眠结束，延后模式，恢复计时：{new_fire.strftime('%H:%M:%S')}"
+                        f"心念 | 会话 {session} 睡眠结束，延后模式，恢复计时：{new_fire.strftime('%H:%M:%S')}"
                     )
                 else:
                     # 没有记录剩余时间，重新计算
                     new_fire = self.calculate_next_fire_time(session)
                     self.set_session_next_fire_time(session, new_fire)
                     logger.debug(
-                        f"会话 {session} 睡眠结束，延后模式，重新计时：{new_fire.strftime('%H:%M:%S')}"
+                        f"心念 | 会话 {session} 睡眠结束，延后模式，重新计时：{new_fire.strftime('%H:%M:%S')}"
                     )
 
         # 清理 sleep_remaining
@@ -325,7 +325,7 @@ class ProactiveTaskManager:
 
         核心逻辑：预计算下次发送时间 + 智能睡眠
         """
-        logger.info("定时主动发送消息循环已启动（混合计时器模式）")
+        logger.info("心念 | 定时主动发送消息循环已启动（混合计时器模式）")
 
         # 追踪睡眠状态
         was_sleeping = False
@@ -346,7 +346,7 @@ class ProactiveTaskManager:
 
                 if is_sleeping and not was_sleeping:
                     # 刚进入睡眠
-                    logger.info("进入睡眠时间段，暂停主动消息发送")
+                    logger.info("心念 | 进入睡眠时间段，暂停主动消息发送")
                     self.handle_enter_sleep()
                     was_sleeping = True
 
@@ -358,7 +358,7 @@ class ProactiveTaskManager:
 
                 if was_sleeping and not is_sleeping:
                     # 刚退出睡眠
-                    logger.info("睡眠时间结束，恢复主动消息发送")
+                    logger.info("心念 | 睡眠时间结束，恢复主动消息发送")
                     self.handle_exit_sleep()
                     was_sleeping = False
 
@@ -370,7 +370,7 @@ class ProactiveTaskManager:
 
                 # 智能睡眠
                 sleep_seconds = self.calculate_smart_sleep()
-                logger.debug(f"智能睡眠 {sleep_seconds} 秒")
+                logger.debug(f"心念 | 智能睡眠 {sleep_seconds} 秒")
 
                 should_continue = await self.interruptible_sleep(sleep_seconds)
                 if not should_continue:
@@ -380,10 +380,10 @@ class ProactiveTaskManager:
                 await self.process_due_sessions()
 
             except asyncio.CancelledError:
-                logger.info("定时主动发送消息循环已取消")
+                logger.info("心念 | 定时主动发送消息循环已取消")
                 break
             except Exception as e:
-                logger.error(f"定时主动发送消息循环发生错误: {e}")
+                logger.error(f"心念 | ❌ 定时主动发送消息循环发生错误: {e}")
                 await asyncio.sleep(60)
 
     async def interruptible_sleep(self, total_seconds: int) -> bool:
@@ -459,10 +459,10 @@ class ProactiveTaskManager:
                         # 睡眠时段内穿透发送，附加此背景让 LLM 知晓当前场景
                         sleep_ctx = "[系统提示：当前处于夜间休眠时段, 但有预约的跟进任务需要执行, 请据此生成合适的消息]\n"
                         override_prompt = sleep_ctx + (override_prompt or "")
-                    logger.info(
-                        f"触发 AI 调度任务 [TaskID: {due_ai_task.get('task_id')}]"
-                        f"{'（睡眠时段穿透）' if sleep_mode else ''}"
-                    )
+                logger.info(
+                    f"心念 | 触发 AI 调度任务 [TaskID: {due_ai_task.get('task_id')}]"
+                    f"{'（睡眠时段穿透）' if sleep_mode else ''}"
+                )
 
                 success, schedule_info = await self._send_with_retry(
                     session, override_prompt=override_prompt
@@ -494,7 +494,7 @@ class ProactiveTaskManager:
                                 self.persistence_manager.save_persistent_data()
 
                         except Exception as e:
-                            logger.error(f"移除 AI 调度任务失败: {e}")
+                            logger.error(f"心念 | ❌ 移除 AI 调度任务失败: {e}")
 
                     # 如果生成了新的 AI 调度（套娃），应用它
                     if schedule_info:
@@ -510,7 +510,7 @@ class ProactiveTaskManager:
                     self.set_session_next_fire_time(session, next_fire)
 
         if sent_count > 0:
-            logger.info(f"本轮发送了 {sent_count}/{len(sessions)} 条主动消息")
+            logger.info(f"心念 | 本轮发送了 {sent_count}/{len(sessions)} 条主动消息")
 
     def apply_ai_schedule(self, session: str, schedule_info: dict):
         """应用 AI 自主调度信息
@@ -550,7 +550,7 @@ class ProactiveTaskManager:
         fire_time_str = schedule_info["fire_time"]
         delay_minutes = schedule_info["delay_minutes"]
         logger.info(
-            f"🕐 会话 {session} 添加 AI 调度任务: "
+            f"心念 | 🕐 会话 {session} 添加 AI 调度任务: "
             f"{delay_minutes}分钟后（{fire_time_str}） [TaskID: {schedule_info['task_id']}]"
         )
 
@@ -559,7 +559,7 @@ class ProactiveTaskManager:
 
     def _restore_ai_schedules(self):
         """恢复及迁移 AI 调度任务"""
-        logger.info("正在检查并恢复 AI 调度任务...")
+        logger.info("心念 | 正在检查并恢复 AI 调度任务...")
         restored_count = 0
 
         # 遍历副本以允许修改
@@ -572,7 +572,7 @@ class ProactiveTaskManager:
             tasks_list = []
             # 迁移逻辑：Dict -> List
             if isinstance(data, dict):
-                logger.info(f"迁移会话 {session} 的旧版调度数据结构")
+                logger.info(f"心念 | 迁移会话 {session} 的旧版调度数据结构")
                 task = data
                 if "task_id" not in task:
                     task["task_id"] = str(uuid.uuid4())
@@ -587,7 +587,7 @@ class ProactiveTaskManager:
                 self.refresh_session_timer(session)
 
         if restored_count > 0:
-            logger.info(f"已恢复 {restored_count} 个 AI 调度任务")
+            logger.info(f"心念 | 已恢复 {restored_count} 个 AI 调度任务")
 
     # ==================== 发送重试 ====================
 
@@ -613,7 +613,7 @@ class ProactiveTaskManager:
         for attempt in range(1, self._MAX_RETRIES + 1):
             try:
                 logger.info(
-                    f"向会话 {session} 发送主动消息"
+                    f"心念 | 向会话 {session} 发送主动消息"
                     f"（第 {attempt}/{self._MAX_RETRIES} 次尝试）"
                 )
                 schedule_info = await self.message_generator.send_proactive_message(
@@ -625,17 +625,17 @@ class ProactiveTaskManager:
             except Exception as e:
                 last_error = e
                 logger.error(
-                    f"向会话 {session} 发送主动消息失败"
+                    f"心念 | ❌ 向会话 {session} 发送主动消息失败"
                     f"（第 {attempt}/{self._MAX_RETRIES} 次）: {e}"
                 )
                 if attempt < self._MAX_RETRIES:
-                    logger.info(f"等待 {self._RETRY_INTERVAL_SECONDS} 秒后重试...")
+                    logger.info(f"心念 | 等待 {self._RETRY_INTERVAL_SECONDS} 秒后重试...")
                     await asyncio.sleep(self._RETRY_INTERVAL_SECONDS)
 
         # 全部重试失败，发送错误通知给用户（不保存到历史记录）
         failures = runtime_data.session_consecutive_failures.get(session, 0) + 1
         runtime_data.session_consecutive_failures[session] = failures
-        logger.error(f"会话 {session} 连续 {failures} 次调度均发送失败，已通知用户")
+        logger.error(f"心念 | ❌ 会话 {session} 连续 {failures} 次调度均发送失败，已通知用户")
         await self._notify_user_send_failure(session, last_error, failures)
         return False, None
 
@@ -668,18 +668,18 @@ class ProactiveTaskManager:
             message_chain = MessageChain().message(error_msg)
             await self.context.send_message(session, message_chain)
         except Exception as e:
-            logger.error(f"向会话 {session} 发送错误通知也失败了: {e}")
+            logger.error(f"心念 | ❌ 向会话 {session} 发送错误通知也失败了: {e}")
 
     # ==================== 状态检查方法 ====================
 
     def should_terminate(self) -> bool:
         """检查是否应该终止任务"""
         if self.is_terminating_flag_getter():
-            logger.info("插件正在终止，退出定时循环")
+            logger.info("心念 | 插件正在终止，退出定时循环")
             return True
 
         if self.proactive_task and self.proactive_task.cancelled():
-            logger.info("定时主动发送任务已被取消，退出循环")
+            logger.info("心念 | 定时主动发送任务已被取消，退出循环")
             return True
 
         return False
@@ -823,20 +823,20 @@ class ProactiveTaskManager:
     async def stop_proactive_task(self):
         """停止定时主动发送任务"""
         if not self.proactive_task or self.proactive_task.cancelled():
-            logger.debug("定时任务已停止或不存在")
+            logger.debug("心念 | 定时任务已停止或不存在")
             return
 
-        logger.info("正在停止定时主动发送任务...")
+        logger.info("心念 | 正在停止定时主动发送任务...")
         self.proactive_task.cancel()
 
         try:
             await asyncio.wait_for(self.proactive_task, timeout=5.0)
         except asyncio.CancelledError:
-            logger.info("定时主动发送任务已停止")
+            logger.info("心念 | ✅ 定时主动发送任务已停止")
         except asyncio.TimeoutError:
-            logger.warning("停止定时任务超时，任务可能仍在运行")
+            logger.warning("心念 | ⚠️ 停止定时任务超时，任务可能仍在运行")
         except RuntimeError as e:
-            logger.error(f"任务运行时错误: {e}")
+            logger.error(f"心念 | ❌ 任务运行时错误: {e}")
         finally:
             self.proactive_task = None
 
@@ -853,18 +853,18 @@ class ProactiveTaskManager:
             self._restore_ai_schedules()
 
             self.proactive_task = asyncio.create_task(self.proactive_message_loop())
-            logger.info("定时主动发送任务已启动")
+            logger.info("心念 | ✅ 定时主动发送任务已启动")
 
             await asyncio.sleep(0.1)
 
             if self.proactive_task.done():
-                logger.error("定时任务启动后立即结束，可能有错误")
+                logger.error("心念 | ❌ 定时任务启动后立即结束，可能有错误")
                 try:
                     await self.proactive_task
                 except Exception as e:
-                    logger.error(f"定时任务错误: {e}")
+                    logger.error(f"心念 | ❌ 定时任务错误: {e}")
         else:
-            logger.info("定时主动发送功能未启用")
+            logger.info("心念 | 定时主动发送功能未启用")
 
     async def restart_proactive_task(self):
         """重启定时主动发送任务
@@ -881,7 +881,7 @@ class ProactiveTaskManager:
 
     async def force_stop_all_tasks(self):
         """强制停止所有相关任务"""
-        logger.info("强制停止所有相关任务...")
+        logger.info("心念 | 强制停止所有相关任务...")
 
         await self.stop_proactive_task()
 

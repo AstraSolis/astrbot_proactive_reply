@@ -85,10 +85,10 @@ def parse_prompt_list(prompt_list_data) -> list:
                 ]
 
     except Exception as e:
-        logger.error(f"解析提示词列表失败: {e}")
+        logger.error(f"心念 | ❌ 解析提示词列表失败: {e}")
         import traceback
 
-        logger.error(f"详细错误信息: {traceback.format_exc()}")
+        logger.error(f"心念 | 详细错误信息: {traceback.format_exc()}")
         return []
 
     # 最终检查，确保所有提示词都是有效的
@@ -97,6 +97,6 @@ def parse_prompt_list(prompt_list_data) -> list:
         if prompt and len(prompt.strip()) > 0:
             valid_prompts.append(prompt)
         else:
-            logger.warning(f"跳过无效的提示词: {repr(prompt)}")
+            logger.warning(f"心念 | ⚠️ 跳过无效的提示词: {repr(prompt)}")
 
     return valid_prompts

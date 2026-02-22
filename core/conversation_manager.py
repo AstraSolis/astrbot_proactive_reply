@@ -55,7 +55,7 @@ class ConversationManager:
             else:
                 # 回退到默认模式
                 logger.warning(
-                    "历史记录模式为 proactive_prompt 但未提供提示词，使用默认模式"
+                    "心念 | ⚠️ 历史记录模式为 proactive_prompt 但未提供提示词，使用默认模式"
                 )
                 return f"<SYSTEM_TRIGGER: 此条目为主动对话触发记录，非用户实际发言。AI 于 {current_time} 主动向用户发起了对话（当前连续未回复次数：{unreplied_count}），下方的 assistant 消息即为 AI 主动发送的内容>"
 
@@ -111,7 +111,7 @@ class ConversationManager:
                 raw_history = getattr(conversation, "history", None)
 
             if not raw_history:
-                logger.debug(f"会话 {session} 没有历史记录")
+                logger.debug(f"心念 | 会话 {session} 没有历史记录")
                 return []
 
             try:
@@ -121,11 +121,11 @@ class ConversationManager:
 
                 if not isinstance(raw_history, list):
                     logger.warning(
-                        f"会话 {session} 历史记录格式未知: {type(raw_history)}"
+                        f"心念 | ⚠️ 会话 {session} 历史记录格式未知: {type(raw_history)}"
                     )
                     return []
 
-                logger.debug(f"会话 {session} 获取到 {len(raw_history)} 条原始历史记录")
+                logger.debug(f"心念 | 会话 {session} 获取到 {len(raw_history)} 条原始历史记录")
 
                 # 限制历史记录数量
                 history = raw_history
@@ -178,28 +178,28 @@ class ConversationManager:
                             )
                         else:
                             logger.debug(
-                                f"历史记录第 {idx} 条: 列表格式但无可提取文本, content={content}"
+                                f"心念 | 历史记录第 {idx} 条: 列表格式但无可提取文本, content={content}"
                             )
                             skipped_count += 1
                     else:
                         logger.debug(
-                            f"历史记录第 {idx} 条: 未知 content 类型 {type(content)}"
+                            f"心念 | 历史记录第 {idx} 条: 未知 content 类型 {type(content)}"
                         )
                         skipped_count += 1
 
                 if skipped_count > 0:
                     logger.debug(
-                        f"会话 {session} 历史记录处理: 有效 {len(valid_history)} 条, 跳过 {skipped_count} 条"
+                        f"心念 | 会话 {session} 历史记录处理: 有效 {len(valid_history)} 条, 跳过 {skipped_count} 条"
                     )
 
                 return valid_history
 
             except json.JSONDecodeError as e:
-                logger.warning(f"解析会话 {session} 的历史记录JSON失败: {e}")
+                logger.warning(f"心念 | ⚠️ 解析会话 {session} 的历史记录JSON失败: {e}")
                 return []
 
         except Exception as e:
-            logger.error(f"获取会话 {session} 的历史记录失败: {e}")
+            logger.error(f"心念 | ❌ 获取会话 {session} 的历史记录失败: {e}")
             return []
 
     async def add_message_to_conversation_history(
@@ -240,7 +240,7 @@ class ConversationManager:
                 )
 
             if not curr_cid:
-                logger.error("无法获取或创建对话 ID")
+                logger.error("心念 | ❌ 无法获取或创建对话 ID")
                 return
 
             # 使用官方 add_message_pair API
@@ -253,7 +253,7 @@ class ConversationManager:
                     "content": message,
                 },
             )
-            logger.info("✅ 使用 add_message_pair API 保存消息对成功")
+            logger.info("心念 | ✅ 使用 add_message_pair API 保存消息对成功")
 
         except Exception as e:
-            logger.error(f"将消息添加到对话历史时发生错误: {e}")
+            logger.error(f"心念 | ❌ 将消息添加到对话历史时发生错误: {e}")

@@ -123,7 +123,7 @@ class CommandHandlers:
 💡 使用 /proactive help 查看更多指令"""
             yield event.plain_result(status_text)
         except Exception as e:
-            logger.error(f"查询状态失败: {e}")
+            logger.error(f"心念 | ❌ 查询状态失败: {e}")
             yield event.plain_result(f"查询状态失败: {e}")
 
     # ==================== 会话管理命令 ====================
@@ -146,7 +146,7 @@ class CommandHandlers:
                     f"✅ 已添加会话到主动对话列表\n会话ID: {session_id}"
                 )
         except Exception as e:
-            logger.error(f"添加会话失败: {e}")
+            logger.error(f"心念 | ❌ 添加会话失败: {e}")
             yield event.plain_result(f"添加会话失败: {e}")
 
     async def remove_session(self, event: AstrMessageEvent):
@@ -165,7 +165,7 @@ class CommandHandlers:
             else:
                 yield event.plain_result("当前会话不在主动对话列表中")
         except Exception as e:
-            logger.error(f"移除会话失败: {e}")
+            logger.error(f"心念 | ❌ 移除会话失败: {e}")
             yield event.plain_result(f"移除会话失败: {e}")
 
     # ==================== 测试命令 ====================
@@ -230,7 +230,7 @@ class CommandHandlers:
             await self.plugin.message_generator.send_proactive_message(session_id)
             yield event.plain_result("✅ 测试完成")
         except Exception as e:
-            logger.error(f"测试失败: {e}")
+            logger.error(f"心念 | ❌ 测试失败: {e}")
             yield event.plain_result(f"❌ 测试失败: {e}")
 
     async def _test_llm(self, event: AstrMessageEvent):
@@ -403,10 +403,10 @@ class CommandHandlers:
             yield event.plain_result(result_text)
 
         except Exception as e:
-            logger.error(f"测试提示词构建失败: {e}")
+            logger.error(f"心念 | ❌ 测试提示词构建失败: {e}")
             import traceback
 
-            logger.error(f"详细错误: {traceback.format_exc()}")
+            logger.error(f"心念 | 详细错误: {traceback.format_exc()}")
             yield event.plain_result(f"❌ 测试失败: {e}")
 
     async def _test_placeholders(self, event: AstrMessageEvent):
@@ -476,7 +476,7 @@ class CommandHandlers:
 
             yield event.plain_result(result_text)
         except Exception as e:
-            logger.error(f"测试对话历史失败: {e}")
+            logger.error(f"心念 | ❌ 测试对话历史失败: {e}")
             yield event.plain_result(f"❌ 测试失败: {e}")
 
     async def _test_save_conversation(self, event: AstrMessageEvent):
@@ -530,10 +530,10 @@ class CommandHandlers:
                 f"若处于睡眠时段，任务将穿透发送并附带睡眠背景提示。"
             )
         except Exception as e:
-            logger.error(f"测试调度失败: {e}")
+            logger.error(f"心念 | ❌ 测试调度失败: {e}")
             import traceback
 
-            logger.error(traceback.format_exc())
+            logger.error(f"心念 | {traceback.format_exc()}")
             yield event.plain_result(f"❌ 测试失败: {e}")
 
     # ==================== 显示命令 ====================
@@ -862,5 +862,5 @@ class CommandHandlers:
             yield event.plain_result(config_text)
 
         except Exception as e:
-            logger.error(f"显示配置失败: {e}")
+            logger.error(f"心念 | ❌ 显示配置失败: {e}")
             yield event.plain_result(f"❌ 显示配置失败: {e}")

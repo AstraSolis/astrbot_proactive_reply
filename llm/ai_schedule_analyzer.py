@@ -86,7 +86,7 @@ def parse_schedule_response(response_text: str) -> Optional[dict]:
         # 尝试从文本中提取 JSON（处理 LLM 可能添加的多余内容）
         json_match = re.search(r"\{[^}]+\}", response_text, re.DOTALL)
         if not json_match:
-            logger.warning(f"AI 调度响应中未找到 JSON: {response_text[:200]}")
+            logger.warning(f"心念 | ⚠️ AI 调度响应中未找到 JSON: {response_text[:200]}")
             return None
 
         data = json.loads(json_match.group())
@@ -96,13 +96,13 @@ def parse_schedule_response(response_text: str) -> Optional[dict]:
 
         # delay_minutes 必须是正整数
         if not isinstance(delay_minutes, (int, float)) or delay_minutes <= 0:
-            logger.debug("AI 判断不需要自定义调度 (delay_minutes <= 0)")
+            logger.debug("心念 | AI 判断不需要自定义调度 (delay_minutes <= 0)")
             return None
 
         delay_minutes = int(delay_minutes)
 
         if not follow_up_prompt or not isinstance(follow_up_prompt, str):
-            logger.warning("AI 调度响应缺少 follow_up_prompt")
+            logger.warning("心念 | ⚠️ AI 调度响应缺少 follow_up_prompt")
             return None
 
         return {
@@ -111,10 +111,10 @@ def parse_schedule_response(response_text: str) -> Optional[dict]:
         }
 
     except json.JSONDecodeError as e:
-        logger.warning(f"AI 调度响应 JSON 解析失败: {e}, 原文: {response_text[:200]}")
+        logger.warning(f"心念 | ⚠️ AI 调度响应 JSON 解析失败: {e}, 原文: {response_text[:200]}")
         return None
     except Exception as e:
-        logger.error(f"解析 AI 调度响应时发生错误: {e}")
+        logger.error(f"心念 | ❌ 解析 AI 调度响应时发生错误: {e}")
         return None
 
 
@@ -144,16 +144,16 @@ async def analyze_for_schedule(
     """
     # 阶段1：关键词预检
     if not contains_time_keywords(ai_message):
-        logger.debug("AI 消息未包含时间关键词，跳过调度分析")
+        logger.debug("心念 | AI 消息未包含时间关键词，跳过调度分析")
         return None
 
-    logger.info("🕐 AI 消息包含时间关键词，发起调度分析...")
+    logger.info("心念 | 🕐 AI 消息包含时间关键词，发起调度分析...")
 
     # 构建分析提示词
     # 如果未提供 analysis_prompt，则在上层配置中应该已经处理了默认值，
     # 但为了安全起见，这里也可以保留一个简单的 fallback，或者直接报错/跳过
     if not analysis_prompt:
-        logger.warning("未配置调度分析提示词，无法进行分析")
+        logger.warning("心念 | ⚠️ 未配置调度分析提示词，无法进行分析")
         return None
 
     system_prompt = analysis_prompt
@@ -168,9 +168,9 @@ async def analyze_for_schedule(
     actual_provider_id = schedule_provider_id if schedule_provider_id else provider_id
 
     if schedule_provider_id:
-        logger.info(f"🔧 AI 调度分析使用独立模型: {schedule_provider_id}")
+        logger.info(f"心念 | 🔧 AI 调度分析使用独立模型: {schedule_provider_id}")
     else:
-        logger.debug(f"AI 调度分析使用主模型: {provider_id}")
+        logger.debug(f"心念 | AI 调度分析使用主模型: {provider_id}")
 
     try:
         # 二次 LLM 调用（轻量级，只需输出 JSON）
@@ -182,15 +182,15 @@ async def analyze_for_schedule(
         )
 
         if not llm_response or llm_response.role != "assistant":
-            logger.warning(f"调度分析 LLM 响应异常: {llm_response}")
+            logger.warning(f"心念 | ⚠️ 调度分析 LLM 响应异常: {llm_response}")
             return None
 
         response_text = llm_response.completion_text
         if not response_text:
-            logger.warning("调度分析 LLM 返回空响应")
+            logger.warning("心念 | ⚠️ 调度分析 LLM 返回空响应")
             return None
 
-        logger.debug(f"调度分析 LLM 原始响应: {response_text}")
+        logger.debug(f"心念 | 调度分析 LLM 原始响应: {response_text}")
 
         # 阶段2：解析 JSON 结果
         result = parse_schedule_response(response_text)
@@ -204,12 +204,12 @@ async def analyze_for_schedule(
         result["created_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         logger.info(
-            f"🕐 AI 调度分析结果: {result['delay_minutes']}分钟后"
+            f"心念 | 🕐 AI 调度分析结果: {result['delay_minutes']}分钟后"
             f"（{result['fire_time']}）触发主动对话 [TaskID: {result['task_id']}]"
         )
 
         return result
 
     except Exception as e:
-        logger.error(f"调度分析 LLM 调用失败: {e}")
+        logger.error(f"心念 | ❌ 调度分析 LLM 调用失败: {e}")
         return None

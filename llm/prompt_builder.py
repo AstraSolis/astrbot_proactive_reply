@@ -60,13 +60,13 @@ class PromptBuilder:
         prompt_list_data = proactive_config.get("proactive_prompt_list", [])
 
         if not prompt_list_data:
-            logger.warning(f"会话 {session} 没有配置主动消息提示词列表")
+            logger.warning(f"心念 | ⚠️ 会话 {session} 没有配置主动消息提示词列表")
             return ""
 
         # 解析主动对话提示词列表
         prompt_list = parse_prompt_list(prompt_list_data)
         if not prompt_list:
-            logger.warning("主动对话提示词列表为空")
+            logger.warning("心念 | ⚠️ 主动对话提示词列表为空")
             return ""
 
         # 随机选择一个主动对话提示词
@@ -113,7 +113,7 @@ class PromptBuilder:
                     # 人格匹配
                     available_names = [self._get_persona_name(p) for p in personas]
                     logger.debug(
-                        f"人格匹配 - 请求: '{target_persona_id}', 可用: {available_names}"
+                        f"心念 | 人格匹配 - 请求: '{target_persona_id}', 可用: {available_names}"
                     )
 
                     if personas:
@@ -122,7 +122,7 @@ class PromptBuilder:
                             if self._get_persona_name(persona) == target_persona_id:
                                 base_system_prompt = self._get_persona_prompt(persona)
                                 logger.debug(
-                                    f"人格匹配成功 (精确): '{target_persona_id}'"
+                                    f"心念 | 人格匹配成功 (精确): '{target_persona_id}'"
                                 )
                                 break
 
@@ -135,14 +135,14 @@ class PromptBuilder:
                                         persona
                                     )
                                     logger.debug(
-                                        f"人格匹配成功 (忽略大小写): '{target_persona_id}' -> '{name}'"
+                                        f"心念 | 人格匹配成功 (忽略大小写): '{target_persona_id}' -> '{name}'"
                                     )
                                     break
 
                         # 匹配失败警告
                         if not base_system_prompt:
                             logger.warning(
-                                f"人格匹配失败: 会话请求 '{target_persona_id}' 不在可用人格列表 {available_names} 中"
+                                f"心念 | ⚠️ 人格匹配失败: 会话请求 '{target_persona_id}' 不在可用人格列表 {available_names} 中"
                             )
 
             # 如果没有获取到人格提示词，尝试从配置中获取当前默认人格
@@ -150,7 +150,7 @@ class PromptBuilder:
                 base_system_prompt = self._get_default_persona_prompt(personas)
 
         except Exception as e:
-            logger.warning(f"获取人格系统提示词失败: {e}")
+            logger.warning(f"心念 | ⚠️ 获取人格系统提示词失败: {e}")
 
         return base_system_prompt
 
@@ -176,7 +176,7 @@ class PromptBuilder:
                     # 优先使用 default_personality 字段
                     default_persona_name = provider_settings.get("default_personality")
                     if default_persona_name:
-                        logger.debug(f"从配置获取默认人格: '{default_persona_name}'")
+                        logger.debug(f"心念 | 从配置获取默认人格: '{default_persona_name}'")
 
             # 如果获取到默认人格名称，从人格列表中查找
             if default_persona_name and personas:
@@ -184,14 +184,14 @@ class PromptBuilder:
                     if self._get_persona_name(persona) == default_persona_name:
                         prompt = self._get_persona_prompt(persona)
                         logger.debug(
-                            f"使用默认人格 '{default_persona_name}' (prompt长度: {len(prompt)}字符)"
+                            f"心念 | 使用默认人格 '{default_persona_name}' (prompt长度: {len(prompt)}字符)"
                         )
                         return prompt
 
                 # 匹配失败
                 available = [self._get_persona_name(p) for p in personas]
                 logger.warning(
-                    f"配置的默认人格 '{default_persona_name}' 在人格列表 {available} 中未找到"
+                    f"心念 | ⚠️ 配置的默认人格 '{default_persona_name}' 在人格列表 {available} 中未找到"
                 )
 
             # 方法2: 如果还是没有，使用人格列表的第一个
@@ -202,15 +202,15 @@ class PromptBuilder:
 
                 if prompt:
                     logger.debug(
-                        f"使用人格列表第一个 '{persona_name}' (prompt长度: {len(prompt)}字符)"
+                        f"心念 | 使用人格列表第一个 '{persona_name}' (prompt长度: {len(prompt)}字符)"
                     )
                     return prompt
 
-            logger.debug("未找到任何可用人格")
+            logger.debug("心念 | 未找到任何可用人格")
             return ""
 
         except Exception as e:
-            logger.warning(f"获取默认人格失败: {e}")
+            logger.warning(f"心念 | ⚠️ 获取默认人格失败: {e}")
             return ""
 
     def build_combined_system_prompt(
@@ -265,7 +265,7 @@ class PromptBuilder:
                         build_user_context_func,
                     )
                 except Exception as e:
-                    logger.warning(f"时间感知提示词占位符替换失败: {e}")
+                    logger.warning(f"心念 | ⚠️ 时间感知提示词占位符替换失败: {e}")
 
             time_guidance = f"\n\n{time_guidance_content}\n"
 
@@ -309,7 +309,7 @@ class PromptBuilder:
             return base_system_prompt
 
         except Exception as e:
-            logger.warning(f"获取基础系统提示词失败: {e}")
+            logger.warning(f"心念 | ⚠️ 获取基础系统提示词失败: {e}")
             # 返回插件默认人格
             proactive_config = self.config.get("proactive_reply", {})
             return proactive_config.get(

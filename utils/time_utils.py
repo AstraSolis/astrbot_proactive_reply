@@ -37,7 +37,7 @@ def is_in_time_range(time_range: str) -> bool:
             # 不跨午夜：当前时间在开始和结束之间
             return start_minutes <= current_minutes <= end_minutes
     except Exception as e:
-        logger.warning(f"时间范围解析错误: {e}")
+        logger.warning(f"心念 | ⚠️ 时间范围解析错误: {e}")
         return False
 
 

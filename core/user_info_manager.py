@@ -61,7 +61,7 @@ class UserInfoManager:
             else:
                 current_time = datetime.datetime.now().strftime(time_format)
         except Exception as e:
-            logger.warning(f"时间格式错误 '{time_format}': {e}，使用默认格式")
+            logger.warning(f"心念 | ⚠️ 时间格式错误 '{time_format}': {e}，使用默认格式")
             current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         # 获取平台信息
@@ -115,7 +115,7 @@ class UserInfoManager:
             # 使用安全的替换方式处理模板
             user_info = self._safe_format_template(template, placeholders)
         except Exception as e:
-            logger.warning(f"用户信息模板格式错误: {e}，使用默认模板")
+            logger.warning(f"心念 | ⚠️ 用户信息模板格式错误: {e}，使用默认模板")
             user_info = f"当前对话信息：\n用户：{username}\n时间：{current_time}\n平台：{platform_name}（{message_type}）\n\n"
 
         # 获取时间感知增强提示词配置
@@ -138,7 +138,7 @@ class UserInfoManager:
             try:
                 time_guidance = self._safe_format_template(time_guidance, placeholders)
             except Exception as e:
-                logger.warning(f"时间感知提示词占位符替换失败: {e}")
+                logger.warning(f"心念 | ⚠️ 时间感知提示词占位符替换失败: {e}")
 
         # 追加用户信息和时间增强提示词到系统提示
         additional_prompt = user_info
@@ -180,7 +180,7 @@ class UserInfoManager:
             current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
             if not session_id:
-                logger.warning("会话ID为空，跳过用户信息记录")
+                logger.warning("心念 | ⚠️ 会话ID为空，跳过用户信息记录")
                 return
 
             # 记录用户信息到运行时数据存储
@@ -201,10 +201,10 @@ class UserInfoManager:
             persistent_saved = self.persistence_manager.save_persistent_data()
 
             if not persistent_saved:
-                logger.error("❌ 用户信息保存失败")
+                logger.error("心念 | ❌ 用户信息保存失败")
 
         except (KeyError, ValueError, AttributeError) as e:
-            logger.error(f"记录用户信息失败: {e}")
+            logger.error(f"心念 | ❌ 记录用户信息失败: {e}")
 
     async def record_ai_message_time(self, event: AstrMessageEvent):
         """在AI发送消息后记录发送时间
@@ -217,7 +217,7 @@ class UserInfoManager:
             current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
             if not session_id:
-                logger.warning("会话ID为空，跳过AI消息时间记录")
+                logger.warning("心念 | ⚠️ 会话ID为空，跳过AI消息时间记录")
                 return
 
             # 记录AI发送消息时间到运行时数据存储
@@ -227,10 +227,10 @@ class UserInfoManager:
             persistent_saved = self.persistence_manager.save_persistent_data()
 
             if not persistent_saved:
-                logger.warning("⚠️ AI消息时间记录保存失败")
+                logger.warning("心念 | ⚠️ AI消息时间记录保存失败")
 
         except (KeyError, ValueError, AttributeError) as e:
-            logger.error(f"记录AI消息时间失败: {e}")
+            logger.error(f"心念 | ❌ 记录AI消息时间失败: {e}")
 
     def record_sent_time(self, session: str):
         """记录消息发送时间
@@ -242,7 +242,7 @@ class UserInfoManager:
             current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
             if not session:
-                logger.warning("会话ID为空，跳过发送时间记录")
+                logger.warning("心念 | ⚠️ 会话ID为空，跳过发送时间记录")
                 return
 
             # 记录发送时间到运行时数据存储（同时更新两个记录）
@@ -257,10 +257,10 @@ class UserInfoManager:
             persistent_saved = self.persistence_manager.save_persistent_data()
 
             if not persistent_saved:
-                logger.error("❌ 发送时间保存失败")
+                logger.error("心念 | ❌ 发送时间保存失败")
 
         except (KeyError, ValueError, AttributeError) as e:
-            logger.error(f"记录发送时间失败: {e}")
+            logger.error(f"心念 | ❌ 记录发送时间失败: {e}")
 
     def build_user_context_for_proactive(self, session: str) -> str:
         """为主动对话构建用户上下文信息
@@ -309,7 +309,7 @@ class UserInfoManager:
                 return "暂无用户信息记录"
 
         except Exception as e:
-            logger.error(f"构建用户上下文失败: {e}")
+            logger.error(f"心念 | ❌ 构建用户上下文失败: {e}")
             return "无法获取用户信息"
 
     def get_ai_last_message_time(self, session: str) -> str:
@@ -324,7 +324,7 @@ class UserInfoManager:
         try:
             return runtime_data.ai_last_sent_times.get(session, "")
         except Exception as e:
-            logger.error(f"获取AI最后消息时间失败: {e}")
+            logger.error(f"心念 | ❌ 获取AI最后消息时间失败: {e}")
             return ""
 
     def get_minutes_since_ai_last_message(self, session: str) -> int:
@@ -346,7 +346,7 @@ class UserInfoManager:
             delta = now - last_time
             return int(delta.total_seconds() / 60)
         except Exception as e:
-            logger.error(f"计算距离AI最后消息的分钟数失败: {e}")
+            logger.error(f"心念 | ❌ 计算距离AI最后消息的分钟数失败: {e}")
             return -1
 
     def _safe_format_template(self, template: str, placeholders: dict) -> str:

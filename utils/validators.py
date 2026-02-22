@@ -20,10 +20,10 @@ def validate_persistent_data(data: dict) -> bool:
 
     for key in required_keys:
         if key not in data:
-            logger.error(f"持久化数据缺少必需键: {key}")
+            logger.error(f"心念 | ❌ 持久化数据缺少必需键: {key}")
             return False
         if not isinstance(data[key], dict):
-            logger.error(f"持久化数据键 {key} 不是字典类型")
+            logger.error(f"心念 | ❌ 持久化数据键 {key} 不是字典类型")
             return False
 
     return True
