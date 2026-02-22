@@ -44,9 +44,9 @@ class PersistenceManager:
                 logger.warning(f"心念 | ⚠️ AstrBot配置访问错误: {e}")
                 base_data_dir = os.path.join(os.getcwd(), "data")
 
-            # 创建插件专用的数据子目录（直接在data目录下，不在plugins子目录）
+            # 创建插件专用的数据子目录（在 data/plugin_data 目录下）
             # 这符合AstrBot规范，避免插件更新时数据被覆盖
-            plugin_data_dir = os.path.join(base_data_dir, "astrbot_proactive_reply")
+            plugin_data_dir = os.path.join(base_data_dir, "plugin_data", "astrbot_proactive_reply")
 
             # 确保目录存在
             os.makedirs(plugin_data_dir, exist_ok=True)
@@ -56,7 +56,7 @@ class PersistenceManager:
 
         except OSError as e:
             logger.error(f"心念 | ❌ 文件系统错误: {e}")
-            fallback_dir = os.path.join(os.getcwd(), "data", "astrbot_proactive_reply")
+            fallback_dir = os.path.join(os.getcwd(), "data", "plugin_data", "astrbot_proactive_reply")
             try:
                 os.makedirs(fallback_dir, exist_ok=True)
                 logger.warning(f"心念 | ⚠️ 使用回退数据目录: {fallback_dir}")
@@ -108,7 +108,14 @@ class PersistenceManager:
             old_locations = [
                 # 最旧的位置（根目录）
                 os.path.join(os.getcwd(), "astrbot_proactive_reply_persistent.json"),
-                # 旧的插件目录位置（之前的实现）
+                # 旧的 data 目录位置（之前的实现）
+                os.path.join(
+                    os.getcwd(),
+                    "data",
+                    "astrbot_proactive_reply",
+                    "persistent_data.json",
+                ),
+                # 旧的插件目录位置（更早的实现）
                 os.path.join(
                     os.getcwd(),
                     "data",
@@ -127,6 +134,16 @@ class PersistenceManager:
                     base_data_dir = None
 
                 if base_data_dir:
+                    # 添加旧的 data/astrbot_proactive_reply 路径
+                    old_data_dir_path = os.path.join(
+                        base_data_dir,
+                        "astrbot_proactive_reply",
+                        "persistent_data.json",
+                    )
+                    if old_data_dir_path not in old_locations:
+                        old_locations.insert(0, old_data_dir_path)
+
+                    # 添加旧的 data/plugins/astrbot_proactive_reply 路径
                     old_plugin_dir_path = os.path.join(
                         base_data_dir,
                         "plugins",
@@ -143,8 +160,24 @@ class PersistenceManager:
                     try:
                         logger.info(f"心念 | 🔄 发现旧的持久化数据文件: {old_file}")
 
-                        with open(old_file, "r", encoding="utf-8") as f:
-                            old_data = json.load(f)
+                        # 尝试多种编码读取旧文件（与 load_persistent_data 保持一致）
+                        old_data = None
+                        for encoding in ["utf-8-sig", "utf-8"]:
+                            try:
+                                with open(old_file, "r", encoding=encoding) as f:
+                                    old_data = json.load(f)
+                                break
+                            except (UnicodeDecodeError, json.JSONDecodeError):
+                                continue
+
+                        if old_data is None:
+                            logger.warning(f"心念 | ⚠️ 无法读取旧文件: {old_file}")
+                            continue
+
+                        # 验证数据格式（与 load_persistent_data 保持一致）
+                        if not isinstance(old_data, dict):
+                            logger.warning(f"心念 | ⚠️ 旧文件格式错误（非字典）: {old_file}")
+                            continue
 
                         new_file = os.path.join(new_data_dir, "persistent_data.json")
                         with open(new_file, "w", encoding="utf-8") as f:
@@ -157,15 +190,45 @@ class PersistenceManager:
                             f"心念 | ✅ 成功迁移旧的持久化数据: {old_file} -> {new_file}"
                         )
 
-                        # 备份旧文件
-                        backup_file = old_file + ".backup"
-                        shutil.move(old_file, backup_file)
+                        # 将备份文件保存到新目录
+                        backup_filename = f"persistent_data.backup_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+                        backup_file = os.path.join(new_data_dir, backup_filename)
+                        shutil.copy2(old_file, backup_file)
                         logger.info(f"心念 | ✅ 旧文件已备份到: {backup_file}")
+
+                        # 删除旧文件
+                        os.remove(old_file)
+                        logger.info(f"心念 | ✅ 已删除旧文件: {old_file}")
+
+                        # 尝试删除旧目录（如果为空且不是关键目录）
+                        old_dir = os.path.dirname(old_file)
+                        try:
+                            # 安全检查：不删除根目录、data 目录、plugins 目录等关键目录
+                            cwd = os.getcwd()
+                            data_dir = os.path.join(cwd, "data")
+                            plugins_dir = os.path.join(cwd, "data", "plugins")
+
+                            # 规范化路径用于比较
+                            old_dir_normalized = os.path.normpath(old_dir)
+
+                            safe_to_delete = (
+                                os.path.isdir(old_dir)
+                                and not os.listdir(old_dir)
+                                and old_dir_normalized != os.path.normpath(cwd)
+                                and old_dir_normalized != os.path.normpath(data_dir)
+                                and old_dir_normalized != os.path.normpath(plugins_dir)
+                                and len(old_dir_normalized) > len(data_dir)  # 确保是子目录
+                            )
+                            if safe_to_delete:
+                                os.rmdir(old_dir)
+                                logger.info(f"心念 | ✅ 已删除空目录: {old_dir}")
+                        except OSError:
+                            pass  # 目录不为空或无法删除，忽略
 
                         # 写入迁移完成标记
                         marker_file = os.path.join(new_data_dir, ".migrated")
                         with open(marker_file, "w") as f:
-                            f.write(f"migrated from {old_file}")
+                            f.write(f"migrated from {old_file} at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
                         return
                     except Exception as e:

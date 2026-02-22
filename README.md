@@ -62,7 +62,7 @@
 
 - **插件配置文件**：`data/config/astrbot_proactive_reply_config.json`
 - **配置模式文件**：`data/plugins/astrbot_proactive_reply/_conf_schema.json`
-- **持久化数据文件**：`data/astrbot_proactive_reply/persistent_data.json`
+- **持久化数据文件**：`data/plugin_data/astrbot_proactive_reply/persistent_data.json`
 
 **提示**：
 - 推荐通过 AstrBot 管理面板进行配置，会自动生成和保存配置文件
@@ -468,7 +468,7 @@ A: 插件会在启动时自动根据配置启动定时任务。如果功能未�
 ### Q: 为什么重启后用户信息丢失了？
 A: 插件使用双重持久化机制保存用户信息：
 1. **配置文件保存**：保存到AstrBot的配置文件中
-2. **独立持久化文件**：保存到 `data/astrbot_proactive_reply/persistent_data.json`，避免配置重置影响
+2. **独立持久化文件**：保存到 `data/plugin_data/astrbot_proactive_reply/persistent_data.json`，避免配置重置影响
 
 如果重启后信息仍然丢失，请：
 1. 使用 `/proactive config` 检查配置文件状态
