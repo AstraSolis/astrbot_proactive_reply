@@ -459,10 +459,10 @@ class ProactiveTaskManager:
                         # 睡眠时段内穿透发送，附加此背景让 LLM 知晓当前场景
                         sleep_ctx = "[系统提示：当前处于夜间休眠时段, 但有预约的跟进任务需要执行, 请据此生成合适的消息]\n"
                         override_prompt = sleep_ctx + (override_prompt or "")
-                logger.info(
-                    f"心念 | 触发 AI 调度任务 [TaskID: {due_ai_task.get('task_id')}]"
-                    f"{'（睡眠时段穿透）' if sleep_mode else ''}"
-                )
+                    logger.info(
+                        f"心念 | 触发 AI 调度任务 [TaskID: {due_ai_task.get('task_id')}]"
+                        f"{'（睡眠时段穿透）' if sleep_mode else ''}"
+                    )
 
                 success, schedule_info = await self._send_with_retry(
                     session, override_prompt=override_prompt
