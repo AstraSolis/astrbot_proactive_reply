@@ -257,6 +257,13 @@
                 "default": false,
                 "hint": "启用后，AI在对话中提到时间约定（如'40分钟后找你'）时，插件会自动分析并设置一次性定时任务。分析会消耗一次额外的LLM调用"
             },
+            "provider_id": {
+                "description": "AI调度分析使用的模型提供商（留空使用主模型）",
+                "type": "string",
+                "default": "",
+                "_special": "select_provider",
+                "hint": "指定用于AI调度分析的模型提供商。留空则使用主模型（与用户对话相同的模型）。可以选择不同的模型以使用更便宜或更快的模型进行调度分析，节省成本"
+            },
             "analysis_prompt": {
                 "description": "AI调度分析提示词",
                 "type": "text",

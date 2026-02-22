@@ -318,6 +318,9 @@ class MessageGenerator:
         if not provider_id:
             return None
 
+        # 获取 AI 调度专用的模型提供商 ID（如果配置了）
+        schedule_provider_id = ai_schedule_config.get("provider_id", "").strip()
+
         # 获取对话历史作为分析上下文
         proactive_config = self.config.get("proactive_reply", {})
         contexts = []
@@ -344,6 +347,7 @@ class MessageGenerator:
             contexts=contexts,
             analysis_prompt=analysis_prompt,
             current_time_str=current_time_str,
+            schedule_provider_id=schedule_provider_id,
         )
 
     async def _send_message_with_split(

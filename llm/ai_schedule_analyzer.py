@@ -125,16 +125,18 @@ async def analyze_for_schedule(
     contexts: list,
     analysis_prompt: str = "",
     current_time_str: str = "",
+    schedule_provider_id: str = "",
 ) -> Optional[dict]:
     """发起二次 LLM 调用，分析 AI 是否约定了下次联系时间
 
     Args:
         context: AstrBot 上下文对象
-        provider_id: LLM 提供商 ID
+        provider_id: 默认 LLM 提供商 ID（主模型）
         ai_message: AI 生成的消息
         contexts: 对话历史（用于上下文）
         analysis_prompt: 自定义分析提示词（空则使用默认）
         current_time_str: 当前时间字符串
+        schedule_provider_id: AI 调度专用的 LLM 提供商 ID（可选，留空则使用 provider_id）
 
     Returns:
         调度信息 {"delay_minutes": int, "follow_up_prompt": str, "fire_time": str}，
@@ -162,10 +164,18 @@ async def analyze_for_schedule(
     # 构建用户消息：包含 AI 刚生成的消息
     user_prompt = f"请分析以下 AI 消息是否包含时间约定：\n\n{ai_message}"
 
+    # 确定使用的 provider_id
+    actual_provider_id = schedule_provider_id if schedule_provider_id else provider_id
+
+    if schedule_provider_id:
+        logger.info(f"🔧 AI 调度分析使用独立模型: {schedule_provider_id}")
+    else:
+        logger.debug(f"AI 调度分析使用主模型: {provider_id}")
+
     try:
         # 二次 LLM 调用（轻量级，只需输出 JSON）
         llm_response = await context.llm_generate(
-            chat_provider_id=provider_id,
+            chat_provider_id=actual_provider_id,
             prompt=user_prompt,
             contexts=contexts,
             system_prompt=system_prompt,
