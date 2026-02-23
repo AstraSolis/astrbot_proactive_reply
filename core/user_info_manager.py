@@ -35,6 +35,11 @@ class UserInfoManager:
         """
         user_config = self.config.get("user_info", {})
 
+        # 检查是否启用用户信息附加功能
+        if not user_config.get("enabled", True):
+            logger.debug("心念 | 用户信息附加功能已关闭")
+            return
+
         # 获取用户信息
         username = ""
         if hasattr(event.message_obj, "sender") and event.message_obj.sender:

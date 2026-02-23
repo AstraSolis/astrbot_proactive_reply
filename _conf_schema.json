@@ -15,6 +15,12 @@
         "description": "聊天附带用户信息设置",
         "type": "object",
         "items": {
+            "enabled": {
+                "description": "启用聊天附带用户信息",
+                "type": "bool",
+                "default": true,
+                "hint": "启用后，在每次LLM请求前会自动将用户信息（用户名、时间等）追加到系统提示词中"
+            },
             "time_format": {
                 "description": "时间格式",
                 "type": "string",
