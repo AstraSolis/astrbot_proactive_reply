@@ -229,15 +229,29 @@
                     "comma",
                     "semicolon",
                     "punctuation",
-                    "custom"
+                    "custom",
+                    "words",
+                    "regex"
                 ],
-                "hint": "消息分割模式。预设模式: backslash(反斜线\\),newline(换行符),comma(逗号),semicolon(分号),punctuation(多种标点)。选择custom可使用自定义正则表达式"
+                "hint": "消息分割模式。预设模式: backslash(反斜线\\),newline(换行符),comma(逗号),semicolon(分号),punctuation(多种标点),custom(自定义正则)。官方风格模式: words(分段词列表),regex(正则表达式-官方风格)"
             },
             "custom_pattern": {
                 "description": "自定义分割正则表达式",
                 "type": "string",
                 "default": "",
-                "hint": "仅当分割模式为custom时使用。输入Python正则表达式,例如: \\\\(反斜线), \\n(换行), [,;](逗号或分号), [,;。!?](多种标点)。注意JSON中反斜线需要双重转义"
+                "hint": "仅当分割模式为custom时使用。输入Python正则表达式,例如: \\\\(反斜线), \\n(换行), [,;](逗号或分号), [,;。!?](多种标点)。注意JSON中反斜线需要双重转义。使用 re.split() 方法"
+            },
+            "regex": {
+                "description": "正则表达式（regex模式-官方风格）",
+                "type": "string",
+                "default": "",
+                "hint": "仅当分割模式为regex时使用。使用官方风格的正则表达式，例如: .*?[。？！~…\\n]+|.+$ 。自动支持 re.DOTALL 和 re.MULTILINE 标志，使用 re.findall() 方法。与AstrBot官方分段回复实现一致"
+            },
+            "split_words": {
+                "description": "分段词列表（words模式-官方风格）",
+                "type": "list",
+                "default": ["。", "？", "！", "~", "…"],
+                "hint": "仅当分割模式为words时使用。列表中的词会被用作分段标记，分段后会自动去掉末尾的分段词。词会按长度排序，长词优先匹配。与AstrBot官方分段回复实现一致"
             },
             "delay_ms": {
                 "description": "分割消息延迟(毫秒)",
