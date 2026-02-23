@@ -147,21 +147,45 @@ class ProactiveTaskManager:
                 )
 
     def clear_session_timer(self, session: str):
-        """清除会话的计时器
+        """清除会话的计时器和相关数据
+
+        清除指定会话的所有运行时数据，包括计时器、AI调度任务等。
 
         Args:
             session: 会话ID
         """
         changed = False
+
+        # 清除计时器相关
         if session in runtime_data.session_next_fire_times:
             del runtime_data.session_next_fire_times[session]
             changed = True
         if session in runtime_data.session_sleep_remaining:
             del runtime_data.session_sleep_remaining[session]
             changed = True
-        # 触发持久化
-        if changed and self.persistence_manager:
-            self.persistence_manager.save_persistent_data()
+
+        # 清除 AI 调度任务
+        if session in runtime_data.session_ai_scheduled:
+            del runtime_data.session_ai_scheduled[session]
+            changed = True
+
+        # 清除其他会话相关数据（可选，根据需求决定是否清除）
+        # 这些数据不影响计时器，但为了完整性可以清除
+        if session in runtime_data.session_last_proactive_message:
+            del runtime_data.session_last_proactive_message[session]
+            changed = True
+        if session in runtime_data.session_unreplied_count:
+            del runtime_data.session_unreplied_count[session]
+            changed = True
+        if session in runtime_data.session_consecutive_failures:
+            del runtime_data.session_consecutive_failures[session]
+            changed = True
+
+        if changed:
+            logger.info(f"心念 | 已清除会话 {session} 的所有运行时数据")
+            # 触发持久化
+            if self.persistence_manager:
+                self.persistence_manager.save_persistent_data()
 
     def clear_all_session_timers(self):
         """清除所有会话的计时器
@@ -195,12 +219,16 @@ class ProactiveTaskManager:
 
         return f"{timing_mode}|{interval_minutes}|{random_min}|{random_max}|{random_delay_enabled}|{min_random}|{max_random}"
 
-    def _check_and_handle_config_change(self):
+    def _check_and_handle_config_change(self, preserve_sleep_state: bool = False):
         """检测配置变化并自动清理计时器
 
         在主循环中调用，自动检测计时配置是否变化，
         变化时清除所有计时器以使用新配置重新计算。
         配置签名通过 runtime_data 持久化，支持跨插件重载的检测。
+
+        Args:
+            preserve_sleep_state: 是否保留睡眠状态（session_sleep_remaining 和 session_next_fire_times）。
+                                 睡眠期间应设为 True，避免破坏睡眠结束时的恢复逻辑。
         """
         current_signature = self._get_timing_config_signature()
         last_signature = runtime_data.timing_config_signature
@@ -219,7 +247,20 @@ class ProactiveTaskManager:
                 f"心念 | 检测到计时配置变化，自动清除所有计时器 "
                 f"(旧: {last_signature}, 新: {current_signature})"
             )
-            self.clear_all_session_timers()
+
+            if preserve_sleep_state:
+                # 睡眠期间：保留 session_sleep_remaining 和 session_next_fire_times
+                # 避免破坏睡眠结束时的恢复逻辑（immediate/delayed 模式）
+                backup_sleep_remaining = runtime_data.session_sleep_remaining.copy()
+                backup_next_fire_times = runtime_data.session_next_fire_times.copy()
+                self.clear_all_session_timers()
+                runtime_data.session_sleep_remaining = backup_sleep_remaining
+                runtime_data.session_next_fire_times = backup_next_fire_times
+                logger.debug("心念 | 睡眠期间配置变化，已保留睡眠状态和计时器")
+            else:
+                # 非睡眠期间：清除所有计时器
+                self.clear_all_session_timers()
+
             runtime_data.timing_config_signature = current_signature
             self._last_timing_config_signature = current_signature
 
@@ -255,19 +296,70 @@ class ProactiveTaskManager:
         # 限制在 1~300 秒之间
         return max(1, min(300, int(seconds_to_next)))
 
+    def calculate_sleep_mode_smart_sleep(self) -> int:
+        """计算睡眠模式下到下一个事件的睡眠秒数
+
+        睡眠期间只关心 AI 调度任务和睡眠结束时间，忽略常规计时器。
+
+        Returns:
+            睡眠秒数，范围 [1, 300]
+        """
+        from ..utils.time_utils import get_seconds_until_sleep_end
+
+        sessions = self.get_target_sessions()
+        if not sessions:
+            return 300  # 无会话时默认 5 分钟
+
+        now = datetime.now()
+        next_events = []
+
+        # 1. 收集 AI 调度任务的时间
+        for session in sessions:
+            ai_tasks = runtime_data.session_ai_scheduled.get(session, [])
+            for task in ai_tasks:
+                try:
+                    fire_time = datetime.strptime(task["fire_time"], "%Y-%m-%d %H:%M:%S")
+                    if fire_time > now:  # 只考虑未来的任务
+                        next_events.append(fire_time)
+                except (ValueError, KeyError):
+                    continue
+
+        # 2. 添加睡眠结束时间
+        seconds_until_sleep_end = get_seconds_until_sleep_end(self.config)
+        if seconds_until_sleep_end > 0:
+            sleep_end_time = now + timedelta(seconds=seconds_until_sleep_end)
+            next_events.append(sleep_end_time)
+
+        if not next_events:
+            return 300  # 无事件时默认 5 分钟
+
+        earliest = min(next_events)
+        seconds_to_next = (earliest - now).total_seconds()
+
+        # 限制在 1~300 秒之间
+        return max(1, min(300, int(seconds_to_next)))
+
+
     # ==================== 睡眠状态处理 ====================
 
     def handle_enter_sleep(self):
-        """进入睡眠时保存各会话的剩余时间"""
+        """进入睡眠时保存各会话的剩余时间
+
+        只保存未过期的计时器剩余时间，用于延后模式恢复。
+        已过期的计时器不保存，退出睡眠时保持过期状态。
+        """
         now = datetime.now()
         for session in self.get_target_sessions():
             fire_time = self.get_session_next_fire_time(session)
-            if fire_time and fire_time > now:
+            if fire_time:
                 remaining_seconds = (fire_time - now).total_seconds()
-                runtime_data.session_sleep_remaining[session] = remaining_seconds
-                logger.debug(
-                    f"心念 | 会话 {session} 进入睡眠，剩余 {remaining_seconds:.0f} 秒"
-                )
+                if remaining_seconds > 0:
+                    # 只保存未过期的剩余时间
+                    runtime_data.session_sleep_remaining[session] = remaining_seconds
+                    logger.debug(f"心念 | 会话 {session} 进入睡眠，剩余 {remaining_seconds:.0f} 秒")
+                else:
+                    # 已过期的不保存，退出睡眠时保持过期状态
+                    logger.debug(f"心念 | 会话 {session} 进入睡眠，计时器已过期")
 
         # 持久化保存
         if self.persistence_manager:
@@ -300,17 +392,16 @@ class ProactiveTaskManager:
                 # 模式3：恢复剩余计时，延后发送
                 remaining = runtime_data.session_sleep_remaining.get(session)
                 if remaining is not None and remaining > 0:
+                    # 有剩余时间：延后发送
                     new_fire = now + timedelta(seconds=remaining)
                     self.set_session_next_fire_time(session, new_fire)
                     logger.debug(
                         f"心念 | 会话 {session} 睡眠结束，延后模式，恢复计时：{new_fire.strftime('%H:%M:%S')}"
                     )
                 else:
-                    # 没有记录剩余时间，重新计算
-                    new_fire = self.calculate_next_fire_time(session)
-                    self.set_session_next_fire_time(session, new_fire)
+                    # 无剩余时间记录（进入睡眠前已过期）：保持过期状态，立即发送
                     logger.debug(
-                        f"心念 | 会话 {session} 睡眠结束，延后模式，重新计时：{new_fire.strftime('%H:%M:%S')}"
+                        f"心念 | 会话 {session} 睡眠结束，延后模式，计时器已过期，保持过期状态"
                     )
 
         # 清理 sleep_remaining
@@ -351,9 +442,19 @@ class ProactiveTaskManager:
                     was_sleeping = True
 
                 if is_sleeping:
+                    # 睡眠期间也需要检测配置变化，但保留睡眠状态
+                    self._check_and_handle_config_change(preserve_sleep_state=True)
+
+                    # 确保所有会话都有计时器（处理会话列表变化）
+                    self.ensure_all_sessions_scheduled()
+
                     # 睡眠期间仍检查 AI 调度任务（有约定则穿透发送）
                     await self.process_due_sessions(sleep_mode=True)
-                    await asyncio.sleep(60)
+
+                    # 智能睡眠：只关心AI调度任务，忽略常规计时器
+                    sleep_duration = self.calculate_sleep_mode_smart_sleep()
+                    logger.debug(f"心念 | 睡眠模式智能睡眠 {sleep_duration} 秒")
+                    await asyncio.sleep(sleep_duration)
                     continue
 
                 if was_sleeping and not is_sleeping:

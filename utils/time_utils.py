@@ -62,6 +62,49 @@ def is_sleep_time(config: dict) -> bool:
     return is_in_time_range(sleep_hours)
 
 
+def get_seconds_until_sleep_end(config: dict) -> int:
+    """计算到睡眠结束的秒数
+
+    Args:
+        config: 插件配置字典
+
+    Returns:
+        到睡眠结束的秒数，如果不在睡眠时间则返回 0
+    """
+    time_awareness_config = config.get("time_awareness", {})
+
+    # 检查睡眠时间功能是否启用
+    if not time_awareness_config.get("sleep_mode_enabled", False):
+        return 0
+
+    sleep_hours = time_awareness_config.get("sleep_hours", "22:00-8:00")
+
+    # 如果不在睡眠时间，返回 0
+    if not is_in_time_range(sleep_hours):
+        return 0
+
+    try:
+        _, end_time = sleep_hours.split("-")
+        end_hour, end_min = map(int, end_time.split(":"))
+
+        now = datetime.datetime.now()
+        # 构造结束时间（下一分钟的开始，因为 is_in_time_range 使用分钟精度）
+        # 例如：睡眠时间 "xx:xx-15:21" 表示到 15:21:59 结束，即 15:22:00 开始不在睡眠时间
+        end_datetime = now.replace(hour=end_hour, minute=end_min, second=0, microsecond=0)
+        end_datetime += datetime.timedelta(minutes=1)  # 加1分钟，对齐 is_in_time_range 的语义
+
+        # 如果结束时间已经过了，说明是跨午夜，结束时间是明天
+        if end_datetime <= now:
+            end_datetime += datetime.timedelta(days=1)
+
+        seconds_until_end = (end_datetime - now).total_seconds()
+        return max(1, int(seconds_until_end))  # 至少返回1秒
+    except Exception as e:
+        logger.warning(f"心念 | ⚠️ 计算睡眠结束时间失败: {e}")
+        return 0
+
+
+
 def get_sleep_prompt_if_active(config: dict) -> str:
     """获取睡眠时间提示（如果当前处于睡眠时间）
 
