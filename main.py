@@ -4,9 +4,9 @@ AstrBot 主动回复插件(心念)
 支持聊天附带用户信息和定时主动发送消息
 """
 
-import asyncio
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
+from astrbot.api.provider import ProviderRequest
 from astrbot.api.star import Context, Star
 
 # 导入各个功能模块
@@ -36,15 +36,11 @@ class ProactiveReplyPlugin(Star):
         super().__init__(context)
         self.config = config or {}
         self._is_terminating = False
-        self._initialization_task = None
 
         # 初始化各个管理器
         self._initialize_managers()
 
         logger.info("心念 | 插件已初始化")
-
-        # 异步初始化
-        self._initialization_task = asyncio.create_task(self.initialize())
 
     def _initialize_managers(self):
         """初始化所有管理器"""
@@ -101,7 +97,7 @@ class ProactiveReplyPlugin(Star):
     # ==================== 事件过滤器 ====================
 
     @filter.on_llm_request()
-    async def add_user_info(self, event: AstrMessageEvent, req, _ignore=None):
+    async def add_user_info(self, event: AstrMessageEvent, req: ProviderRequest):
         """在LLM请求前添加用户信息和时间
 
         自动触发,在每次LLM请求前自动添加用户相关信息
@@ -109,7 +105,7 @@ class ProactiveReplyPlugin(Star):
         await self.user_info_manager.add_user_info_to_request(event, req)
 
     @filter.after_message_sent()
-    async def record_ai_message_time(self, event: AstrMessageEvent, _ignore=None):
+    async def record_ai_message_time(self, event: AstrMessageEvent):
         """在AI发送消息后记录发送时间
 
         自动触发,记录AI每次发送消息的时间
@@ -180,7 +176,7 @@ class ProactiveReplyPlugin(Star):
     # ==================== 状态命令 ====================
 
     @proactive_group.command("status")
-    async def status(self, event: AstrMessageEvent, _ignore=None):
+    async def status(self, event: AstrMessageEvent):
         """查看插件状态
 
         显示插件的详细运行状态，包括：当前会话信息、用户信息附加功能状态、智能主动发送功能配置、LLM提供商状态、定时任务配置信息
@@ -191,7 +187,7 @@ class ProactiveReplyPlugin(Star):
     # ==================== 会话管理命令 ====================
 
     @proactive_group.command("add_session")
-    async def add_session(self, event: AstrMessageEvent, _ignore=None):
+    async def add_session(self, event: AstrMessageEvent):
         """将当前会话添加到主动对话列表
 
         将执行此命令的会话添加到主动发送目标列表中
@@ -200,7 +196,7 @@ class ProactiveReplyPlugin(Star):
             yield result
 
     @proactive_group.command("remove_session")
-    async def remove_session(self, event: AstrMessageEvent, _ignore=None):
+    async def remove_session(self, event: AstrMessageEvent):
         """将当前会话从主动对话列表中移除
 
         从主动发送目标列表中移除当前会话
@@ -212,7 +208,7 @@ class ProactiveReplyPlugin(Star):
 
     @proactive_group.command("test")
     async def test_proactive(
-        self, event: AstrMessageEvent, test_type: str = "", _ignore=None
+        self, event: AstrMessageEvent, test_type: str = ""
     ):
         """测试功能 - 支持多种测试类型
 
@@ -237,7 +233,7 @@ class ProactiveReplyPlugin(Star):
 
     @proactive_group.command("show")
     async def show_info(
-        self, event: AstrMessageEvent, show_type: str = "", _ignore=None
+        self, event: AstrMessageEvent, show_type: str = ""
     ):
         """显示信息 - 支持多种显示类型
 
@@ -254,7 +250,7 @@ class ProactiveReplyPlugin(Star):
             yield result
 
     @proactive_group.command("config")
-    async def show_config_cmd(self, event: AstrMessageEvent, _ignore=None):
+    async def show_config_cmd(self, event: AstrMessageEvent):
         """显示完整的插件配置信息
 
         查看当前插件的完整配置详情
@@ -266,7 +262,7 @@ class ProactiveReplyPlugin(Star):
 
     @proactive_group.command("manage")
     async def manage_functions(
-        self, event: AstrMessageEvent, action: str = "", _ignore=None
+        self, event: AstrMessageEvent, action: str = ""
     ):
         """管理功能 - 支持多种管理操作
 
@@ -291,7 +287,7 @@ class ProactiveReplyPlugin(Star):
     # ==================== 通用命令 ====================
 
     @proactive_group.command("help")
-    async def help_command(self, event: AstrMessageEvent, _ignore=None):
+    async def help_command(self, event: AstrMessageEvent):
         """显示插件帮助信息
 
         显示所有可用命令和使用说明
@@ -300,7 +296,7 @@ class ProactiveReplyPlugin(Star):
             yield result
 
     @proactive_group.command("restart")
-    async def restart(self, event: AstrMessageEvent, _ignore=None):
+    async def restart(self, event: AstrMessageEvent):
         """重启定时主动发送任务（配置更改后使用）
 
         重启定时任务以应用新的配置更改
@@ -316,14 +312,6 @@ class ProactiveReplyPlugin(Star):
 
         # 设置终止标志
         self._is_terminating = True
-
-        # 停止初始化任务
-        if self._initialization_task and not self._initialization_task.cancelled():
-            self._initialization_task.cancel()
-            try:
-                await self._initialization_task
-            except asyncio.CancelledError:
-                pass
 
         # 停止定时任务
         await self.task_manager.stop_proactive_task()
