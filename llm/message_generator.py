@@ -388,6 +388,12 @@ class MessageGenerator:
         )
         current_time_str = datetime.now().strftime(time_format)
 
+        # 获取该会话已有的待执行调度任务（用于去重）
+        existing_tasks = runtime_data.session_ai_scheduled.get(session, [])
+        if isinstance(existing_tasks, dict):
+            # 兼容旧版 dict 格式
+            existing_tasks = [existing_tasks] if existing_tasks else []
+
         return await analyze_for_schedule(
             context=self.context,
             provider_id=provider_id,
@@ -396,6 +402,7 @@ class MessageGenerator:
             analysis_prompt=analysis_prompt,
             current_time_str=current_time_str,
             schedule_provider_id=schedule_provider_id,
+            existing_tasks=existing_tasks,
         )
 
     def _split_text_by_words(self, text: str) -> list[str]:

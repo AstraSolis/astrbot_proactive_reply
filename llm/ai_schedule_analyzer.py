@@ -126,6 +126,7 @@ async def analyze_for_schedule(
     analysis_prompt: str = "",
     current_time_str: str = "",
     schedule_provider_id: str = "",
+    existing_tasks: list | None = None,
 ) -> Optional[dict]:
     """发起二次 LLM 调用，分析 AI 是否约定了下次联系时间
 
@@ -137,6 +138,7 @@ async def analyze_for_schedule(
         analysis_prompt: 自定义分析提示词（空则使用默认）
         current_time_str: 当前时间字符串
         schedule_provider_id: AI 调度专用的 LLM 提供商 ID（可选，留空则使用 provider_id）
+        existing_tasks: 该会话已有的待执行调度任务列表（用于去重判断）
 
     Returns:
         调度信息 {"delay_minutes": int, "follow_up_prompt": str, "fire_time": str}，
@@ -160,6 +162,25 @@ async def analyze_for_schedule(
 
     if current_time_str:
         system_prompt += f"\n\n当前时间: {current_time_str}"
+
+    # 注入已有约定，帮助 LLM 判断是否重复
+    if existing_tasks:
+        valid_tasks = [
+            t for t in existing_tasks
+            if t.get("fire_time") and t.get("follow_up_prompt")
+        ]
+        if valid_tasks:
+            tasks_desc = "\n".join(
+                f"- {t['fire_time']}：{t['follow_up_prompt']}"
+                for t in valid_tasks
+            )
+            system_prompt += (
+                f"\n\n该用户已有以下待执行的约定：\n{tasks_desc}\n"
+                "如果当前消息提到的约定与上述已有约定是同一件事（相同的时间和目的），"
+                "请返回 delay_minutes 为 0，不要重复创建。"
+                "只有当这是一个全新的、不同的约定时才返回正数的 delay_minutes。"
+            )
+            logger.debug(f"心念 | 调度分析注入 {len(valid_tasks)} 条已有约定用于去重")
 
     # 构建用户消息：包含 AI 刚生成的消息
     user_prompt = f"请分析以下 AI 消息是否包含时间约定：\n\n{ai_message}"
