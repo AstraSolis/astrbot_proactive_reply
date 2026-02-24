@@ -113,12 +113,28 @@ class ProactiveReplyPlugin(Star):
         """在AI发送消息后记录发送时间
 
         自动触发,记录AI每次发送消息的时间
-        注意：命令消息（以 / 开头）不会触发时间记录，避免影响主动消息计时
+        注意：命令消息不会触发时间记录和 AI 调度分析，避免调试信息被误判
         """
-        # 检查原始消息是否是命令（以 / 开头）
-        original_message = event.message_str or ""
-        if original_message.strip().startswith("/"):
-            logger.debug(f"心念 | 跳过命令消息时间记录: {original_message[:20]}...")
+        # 检查是否是命令消息
+        # event.message_obj 包含原始消息（带 /），event.message_str 是处理后的
+        is_command = False
+        try:
+            if hasattr(event, 'message_obj') and event.message_obj:
+                # 尝试从 message_obj 获取原始消息
+                if hasattr(event.message_obj, 'message_str'):
+                    original_msg = event.message_obj.message_str
+                elif isinstance(event.message_obj, dict) and 'message_str' in event.message_obj:
+                    original_msg = event.message_obj['message_str']
+                else:
+                    original_msg = ""
+
+                if original_msg and original_msg.strip().startswith('/'):
+                    is_command = True
+                    logger.debug(f"心念 | 检测到命令消息，跳过时间记录和调度分析: {original_msg[:30]}...")
+        except Exception as e:
+            logger.warning(f"心念 | 检测命令消息时出错: {e}")
+
+        if is_command:
             return
 
         await self.user_info_manager.record_ai_message_time(event)
