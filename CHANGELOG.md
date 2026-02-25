@@ -4,6 +4,68 @@
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-02-25
+
+## 注意
+- 此版本使用了新版api,并删除了旧版本兼容代码,如果更新版本后依然有兼容性问题,请反馈到issues
+- 整理了插件配置选项,部分配置可能丢失,请重新配置
+
+### 新增
+
+- AI 自主调度
+  - 智能时间约定检测：AI 在对话中提到时间约定时(如"40分钟后找你"),插件会自动分析并设置一次性定时任务
+  - 关键词预检测：使用轻量级关键词匹配，避免不必要的 LLM 调用
+  - 独立模型选择：支持为调度分析指定不同的模型提供商，可使用更便宜或更快的模型节省成本
+  - 重复检测：自动注入已有待执行的约定，避免重复创建相同任务
+  - 自定义分析提示词：可配置 AI 调度分析的系统提示词
+
+- 新增官方风格的消息分割模式
+  - words 模式：使用分段词列表分割消息
+  - regex 模式：使用正则表达式分割消息
+  - 提供更多样化的消息分割选择
+
+- 新增"聊天附带用户信息"功能开关
+  - 支持启用/禁用用户信息附加功能
+  - 提供更灵活的配置选项
+
+### 重构
+
+- 迁移 LLM 调用至 AstrBot v4.5.7+ 新版 API
+  - provider.text_chat() 替换为 context.llm_generate()
+  - get_using_provider() 替换为 get_current_chat_provider_id()
+  - provider_manager.personas 替换为 persona_manager.get_all_personas()
+  - 删除已失效的 selected_default_persona 缓存回退逻辑
+  - 适配 Persona SQLModel 字段 (persona_id/system_prompt)
+
+- 迁移至新版 AstrBot 插件规范
+  - 移除手动 asyncio.create_task(initialize()) 双重初始化逻辑
+  - 修复 on_llm_request 和 after_message_sent 钩子签名
+  - 移除所有命令方法的冗余 _ignore 参数
+  - add_message_pair 改用类型化消息段，兼容旧版回退
+  - **最低 AstrBot 版本升至 4.16.0**
+
+- 重构睡眠时间相关逻辑
+  - 修复睡眠期间配置变化导致的计时器异常
+  - 优化睡眠期间性能（检查频率降低80%）
+  - 修复睡眠结束时间计算不准确的问题
+  - 完善会话删除时的数据清理
+
+-  统一日志输出格式 
+
+- 迁移持久化数据至 data/plugin_data 目录
+  - 新路径：data/plugin_data/astrbot_proactive_reply/
+
+### 修复
+
+- 修复命令消息检测逻辑，避免调试信息触发 AI 调度
+  - 改为检查 event.message_obj.message_str（保留原始 / 前缀）
+  - 正确识别所有插件的命令消息，提前返回跳过后续处理
+  - 同时修复了"跳过命令消息时间记录"功能
+
+### 文档
+
+- 更新文档和部分描述
+
 ## [1.5.0] - 2026-02-06
 
 ### 新增
