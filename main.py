@@ -1,7 +1,7 @@
 """
 AstrBot 主动回复插件(心念)
 
-支持聊天附带用户信息和定时主动发送消息
+支持聊天附带用户信息、定时主动发送消息和 AI 自主调度
 """
 
 from astrbot.api import AstrBotConfig, logger
@@ -179,7 +179,7 @@ class ProactiveReplyPlugin(Star):
     async def status(self, event: AstrMessageEvent):
         """查看插件状态
 
-        显示插件的详细运行状态，包括：当前会话信息、用户信息附加功能状态、智能主动发送功能配置、LLM提供商状态、定时任务配置信息
+        显示插件的详细运行状态，包括：当前会话信息、用户信息附加功能状态（含开关状态）、智能主动发送功能配置、LLM提供商状态、定时任务配置信息、AI 自主调度功能状态
         """
         async for result in self.command_handlers.status(event):
             yield result
@@ -219,7 +219,8 @@ class ProactiveReplyPlugin(Star):
         - prompt: 测试系统提示词构建 │
         - placeholders: 测试占位符替换 │
         - history: 测试对话历史记录 │
-        - save: 测试对话保存功能
+        - save: 测试对话保存功能 │
+        - schedule: 测试 AI 调度任务
 
         使用方法: /proactive test [类型]
         例如: /proactive test generation
@@ -253,7 +254,7 @@ class ProactiveReplyPlugin(Star):
     async def show_config_cmd(self, event: AstrMessageEvent):
         """显示完整的插件配置信息
 
-        查看当前插件的完整配置详情
+        查看当前插件的完整配置详情，包括用户信息附加、主动对话、时间感知、消息分割、AI 自主调度等所有功能的配置状态
         """
         async for result in self.command_handlers.show_config(event):
             yield result

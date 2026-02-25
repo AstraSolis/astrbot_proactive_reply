@@ -31,7 +31,7 @@
                 "description": "用户信息模板",
                 "type": "text",
                 "default": "[对话信息] 用户名称:{username},时间:{time},上次聊天时间:{user_last_message_time}",
-                "hint": "用户信息会追加到现有系统提示的末尾，不会覆盖人格设置。可使用占位符：{username}（用户名）、{user_id}（用户ID）、{time}（消息时间）、{current_time}（当前时间）、{platform}（平台名）、{chat_type}（聊天类型）、{user_last_message_time}（用户上次发消息时间）、{user_last_message_time_ago}（相对时间，如5分钟前）、{ai_last_sent_time}（AI上次发送时间）。建议保持简洁，避免与人格设置冲突"
+                "hint": "用户信息会追加到现有系统提示的末尾，不会覆盖人格设置。可使用占位符：{username}（用户名）、{user_id}（用户ID）、{time}（消息时间）、{current_time}（当前时间）、{weekday}（星期，如星期一）、{platform}（平台名）、{chat_type}（聊天类型）、{user_last_message_time}（用户上次发消息时间）、{user_last_message_time_ago}（相对时间，如5分钟前）、{ai_last_sent_time}（AI上次发送时间）。建议保持简洁，避免与人格设置冲突"
             }
         }
     },
@@ -169,7 +169,7 @@
                     "用户（{username}）于{user_last_message_time}最后活跃，相隔{user_last_message_time_ago}，现在是{current_time}，连续未回复{unreplied_count}次，请自然地打个招呼",
                     "现在是{current_time}，有点想念用户（{username}），上次互动是{user_last_message_time_ago}（{user_last_message_time}），已{unreplied_count}次未回复，请发送一条温暖的消息"
                 ],
-                "hint": "主动对话的提示词列表，每个提示词可以单独添加、编辑和删除。系统会随机选择一个提示词来指导AI生成主动消息。支持占位符：{user_context}（用户基本信息，包括昵称、平台、聊天类型、最后活跃时间等）、{user_last_message_time}（用户上次发消息时间）、{user_last_message_time_ago}（用户上次发消息相对时间，如5分钟前）、{username}（用户昵称）、{platform}（平台名称）、{chat_type}（聊天类型）、{ai_last_sent_time}（AI上次发送时间）、{current_time}（当前时间）、{unreplied_count}（用户连续未回复次数）。注意：{user_context}是用户基本信息，与下方的'历史记录功能'不冲突，历史记录功能提供的是对话内容历史"
+                "hint": "主动对话的提示词列表，每个提示词可以单独添加、编辑和删除。系统会随机选择一个提示词来指导AI生成主动消息。支持占位符：{user_context}（用户基本信息，包括昵称、平台、聊天类型、最后活跃时间等）、{user_last_message_time}（用户上次发消息时间）、{user_last_message_time_ago}（用户上次发消息相对时间，如5分钟前）、{username}（用户昵称）、{platform}（平台名称）、{chat_type}（聊天类型）、{ai_last_sent_time}（AI上次发送时间）、{current_time}（当前时间）、{weekday}（星期，如星期一）、{unreplied_count}（用户连续未回复次数）。注意：{user_context}是用户基本信息，与下方的'历史记录功能'不冲突，历史记录功能提供的是对话内容历史"
             },
             "duplicate_detection_enabled": {
                 "description": "启用重复检测",
@@ -204,7 +204,7 @@
                 "description": "自定义历史记录提示词",
                 "type": "text",
                 "default": "<PROACTIVE_TRIGGER: 时间:{current_time}，用户:{username}>",
-                "hint": "仅当历史记录保存模式为custom时生效。支持占位符：{username}、{current_time}、{user_last_message_time}、{user_last_message_time_ago}、{unreplied_count}等"
+                "hint": "仅当历史记录保存模式为custom时生效。支持占位符：{username}、{current_time}、{weekday}、{user_last_message_time}、{user_last_message_time_ago}、{unreplied_count}等"
             },
             "use_database_fallback": {
                 "description": "数据库回退方案状态（信息展示）",

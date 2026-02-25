@@ -101,6 +101,18 @@ class CommandHandlers:
                             f"\n  ... 还有 {len(sessions_status) - 5} 个会话"
                         )
 
+            # 获取 AI 自主调度配置
+            ai_schedule_config = self.config.get("ai_schedule", {})
+            ai_schedule_enabled = ai_schedule_config.get("enabled", False)
+            ai_schedule_provider = ai_schedule_config.get("provider_id", "")
+
+            # 构建 AI 调度状态文本
+            ai_schedule_status = f"\n\n🧠 AI 自主调度功能：{'✅ 已启用' if ai_schedule_enabled else '❌ 已禁用'}"
+            if ai_schedule_enabled:
+                provider_text = ai_schedule_provider if ai_schedule_provider else "主模型（与用户对话相同）"
+                ai_schedule_status += f"\n  - 分析模型：{provider_text}"
+                ai_schedule_status += "\n  - 功能说明：AI 在对话中提到时间约定时自动设置定时任务"
+
             status_text = f"""📊 主动回复插件状态
 
 📍 当前会话：
@@ -118,7 +130,7 @@ class CommandHandlers:
   - 发送间隔：{proactive_config.get("interval_minutes", 60)} 分钟
   - 睡眠时间：{self._get_sleep_time_status()}
   - 配置会话数：{session_count}
-  - AI发送记录数：{ai_sent_times_count}{next_fire_info}
+  - AI发送记录数：{ai_sent_times_count}{next_fire_info}{ai_schedule_status}
 
 💡 使用 /proactive help 查看更多指令"""
             yield event.plain_result(status_text)
@@ -743,7 +755,7 @@ class CommandHandlers:
 
 测试命令:
 - `/proactive test [类型]` - 测试功能
-  类型: basic, llm, generation, prompt, placeholders, history, save
+  类型: basic, llm, generation, prompt, placeholders, history, save, schedule
 
 显示命令:
 - `/proactive show [类型]` - 显示信息
