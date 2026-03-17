@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}页面未找到 - {{ super() }}{% endblock %}
+
+{% block breadcrumb_items %}
+<li class="breadcrumb-item active" aria-current="page">404</li>
+{% endblock %}
+
+{% block content %}
+<div class="error-page">
+    <div class="text-center">
+        <div class="error-code">404</div>
+        <h3>找不到页面</h3>
+        <p>
+            抱歉，您访问的页面不存在或已被移除。<br>
+            请检查 URL 是否正确，或返回首页。
+        </p>
+        <a href="{{ url_for('dashboard.index') }}" class="btn btn-primary">
+            <i class="fas fa-home me-2"></i>返回首页
+        </a>
+    </div>
+</div>
+{% endblock %}

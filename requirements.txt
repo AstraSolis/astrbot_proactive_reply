@@ -1,2 +1,6 @@
 # AstrBot 主动回复插件依赖
-# 本插件仅使用 AstrBot 内置 API，无需额外依赖
+
+# WebUI 相关依赖
+quart>=0.20.0
+hypercorn>=0.18.0
+quart-cors>=0.8.0

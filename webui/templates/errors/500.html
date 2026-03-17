@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}内部错误 - {{ super() }}{% endblock %}
+
+{% block breadcrumb_items %}
+<li class="breadcrumb-item active" aria-current="page">500</li>
+{% endblock %}
+
+{% block content %}
+<div class="error-page">
+    <div class="text-center">
+        <div class="error-code">500</div>
+        <h3>哎呀，服务器出了点问题</h3>
+        <p>
+            这可能是由于后端未预料的异常或数据缺失导致的。<br>
+            别担心，这不是你的问题。你可以返回首页或检查日志记录。
+        </p>
+        <a href="{{ url_for('dashboard.index') }}" class="btn btn-primary">
+            <i class="fas fa-home me-2"></i>返回首页
+        </a>
+    </div>
+</div>
+{% endblock %}

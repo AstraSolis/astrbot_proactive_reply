@@ -1,0 +1,610 @@
+{% extends "base.html" %}
+
+{% block title %}配置管理 - {{ super() }}{% endblock %}
+
+{% block breadcrumb_items %}
+<li class="breadcrumb-item active">配置管理</li>
+{% endblock %}
+
+{% block content %}
+<!-- 页面标题 -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="page-title">
+        <i class="fas fa-sliders-h"></i>配置管理
+    </h1>
+</div>
+
+<!-- 配置分组导航 -->
+<div class="config-tabs mb-4" id="configTabs">
+    <button class="config-tab active" data-target="basic" onclick="switchConfigTab('basic')">
+        <i class="fas fa-globe me-1"></i>基础设置
+    </button>
+    <button class="config-tab" data-target="user-time" onclick="switchConfigTab('user-time')">
+        <i class="fas fa-user-clock me-1"></i>用户与时间
+    </button>
+    <button class="config-tab" data-target="proactive" onclick="switchConfigTab('proactive')">
+        <i class="fas fa-paper-plane me-1"></i>主动消息
+    </button>
+    <button class="config-tab" data-target="ai-schedule" onclick="switchConfigTab('ai-schedule')">
+        <i class="fas fa-robot me-1"></i>AI 调度
+    </button>
+</div>
+
+<!-- 配置表单 -->
+<form id="configForm">
+
+    <!-- ===== Tab: 基础设置 ===== -->
+    <div class="config-group active" data-group="basic">
+        <!-- WebUI 管理界面设置 -->
+        <div class="config-section">
+            <h5><i class="fas fa-globe text-primary"></i>WebUI 管理界面设置</h5>
+            <div class="config-body">
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label for="webui_port" class="form-label">WebUI 端口</label>
+                        <input type="number" class="form-control" id="webui_port" name="webui.webui_port"
+                            value="{{ config.webui.webui_port if config.webui else 8080 }}" min="1024" max="65535">
+                        <div class="form-text">管理界面的访问端口，修改后需重启插件</div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label for="webui_password" class="form-label">登录密码</label>
+                        <input type="password" class="form-control" id="webui_password" name="webui.webui_password"
+                            value="{{ config.webui.webui_password if config.webui else 'admin' }}">
+                        <div class="form-text">建议修改为复杂密码</div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label for="webui_secret_key" class="form-label">会话密钥</label>
+                        <input type="text" class="form-control" id="webui_secret_key" name="webui.webui_secret_key"
+                            value="{{ config.webui.webui_secret_key if config.webui else 'astrbot-proactive-reply-webui-secret' }}">
+                        <div class="form-text">用于加密会话数据的密钥</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Tab: 用户与时间 ===== -->
+    <div class="config-group" data-group="user-time">
+        <!-- 用户信息设置 -->
+        <div class="config-section">
+            <h5><i class="fas fa-user text-primary"></i>用户信息设置</h5>
+            <div class="config-body">
+                <div class="row mb-3">
+                    <div class="col-md-6 mb-3">
+                        <div class="switch-field">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="user_info_enabled"
+                                    name="user_info.enabled" {{ 'checked' if config.user_info.enabled else '' }}>
+                                <label class="form-check-label" for="user_info_enabled">启用用户信息附加</label>
+                            </div>
+                            <div class="form-text">在每次 LLM 请求前自动添加用户信息到系统提示词</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="time_format" class="form-label">时间格式</label>
+                        <input type="text" class="form-control" id="time_format" name="user_info.time_format"
+                            value="{{ config.user_info.time_format if config.user_info else '%Y-%m-%d %H:%M:%S' }}">
+                        <div class="form-text">Python datetime 格式字符串</div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="user_info_template" class="form-label">用户信息模板</label>
+                    <textarea class="form-control" id="user_info_template" name="user_info.template"
+                        rows="3">{{ config.user_info.template if config.user_info else '[对话信息] 用户名称:{username},时间:{time},上次聊天时间:{user_last_message_time}' }}</textarea>
+                    <div class="form-text">
+                        支持占位符：{username}、{user_id}、{time}、{current_time}、{weekday}、{platform}、{chat_type}、{user_last_message_time}、{user_last_message_time_ago}、{ai_last_sent_time}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 时间感知设置 -->
+        <div class="config-section">
+            <h5><i class="fas fa-clock text-primary"></i>时间感知设置</h5>
+            <div class="config-body">
+                <div class="switch-row mb-3">
+                    <div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="time_guidance_enabled"
+                                name="time_awareness.time_guidance_enabled"
+                                {{ 'checked' if config.time_awareness.time_guidance_enabled else '' }}>
+                            <label class="form-check-label" for="time_guidance_enabled">启用时间感知增强</label>
+                        </div>
+                        <div class="form-text">在系统提示中添加时间信息使用指南，指导 AI 正确处理时间表述</div>
+                    </div>
+                    <div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="sleep_mode_enabled"
+                                name="time_awareness.sleep_mode_enabled"
+                                {{ 'checked' if config.time_awareness.sleep_mode_enabled else '' }}
+                                onchange="toggleSleepSettings()">
+                            <label class="form-check-label" for="sleep_mode_enabled">启用睡眠时间</label>
+                        </div>
+                        <div class="form-text">在睡眠时间段内不发送主动消息，用户发消息时附加睡眠提示</div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="time_guidance_prompt" class="form-label">时间感知提示词</label>
+                    <textarea class="form-control" id="time_guidance_prompt"
+                        name="time_awareness.time_guidance_prompt"
+                        rows="4">{{ config.time_awareness.time_guidance_prompt if config.time_awareness else '' }}</textarea>
+                    <div class="form-text">自定义时间信息使用指南，帮助 AI 正确处理时间相关的表述</div>
+                </div>
+
+                <!-- 睡眠相关设置（条件显示） -->
+                <div id="sleepSettings" class="config-conditional {{ '' if config.time_awareness.sleep_mode_enabled else 'hidden' }}">
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label for="sleep_hours" class="form-label">睡眠时间段</label>
+                            <input type="text" class="form-control" id="sleep_hours"
+                                name="time_awareness.sleep_hours"
+                                value="{{ config.time_awareness.sleep_hours if config.time_awareness else '22:00-8:00' }}">
+                            <div class="form-text">格式：开始时间-结束时间（24小时制），支持跨午夜</div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="switch-field">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="send_on_wake_enabled"
+                                        name="time_awareness.send_on_wake_enabled"
+                                        {{ 'checked' if config.time_awareness.send_on_wake_enabled else '' }}>
+                                    <label class="form-check-label" for="send_on_wake_enabled">睡眠结束时发送消息</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="wake_send_mode" class="form-label">睡眠结束发送模式</label>
+                            <select class="form-select" id="wake_send_mode" name="time_awareness.wake_send_mode">
+                                <option value="immediate" {{ 'selected' if config.time_awareness.wake_send_mode == 'immediate' else '' }}>立即发送</option>
+                                <option value="delayed" {{ 'selected' if config.time_awareness.wake_send_mode == 'delayed' else '' }}>延后发送</option>
+                            </select>
+                            <div class="form-text">immediate=立即发送，delayed=恢复剩余计时</div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="sleep_prompt" class="form-label">睡眠时间提示内容</label>
+                        <textarea class="form-control" id="sleep_prompt"
+                            name="time_awareness.sleep_prompt"
+                            rows="2">{{ config.time_awareness.sleep_prompt if config.time_awareness else '' }}</textarea>
+                        <div class="form-text">在睡眠时间段内附加到系统提示词中，让 AI 感知当前处于休眠状态</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Tab: 主动消息 ===== -->
+    <div class="config-group" data-group="proactive">
+        <!-- 主动消息设置 -->
+        <div class="config-section">
+            <h5><i class="fas fa-paper-plane text-primary"></i>定时主动发送消息设置</h5>
+            <div class="config-body">
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <div class="switch-field">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="proactive_enabled"
+                                    name="proactive_reply.enabled"
+                                    {{ 'checked' if config.proactive_reply.enabled else '' }}>
+                                <label class="form-check-label" for="proactive_enabled">启用主动消息</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="timing_mode" class="form-label">时间模式</label>
+                        <select class="form-select" id="timing_mode" name="proactive_reply.timing_mode"
+                            onchange="toggleTimingMode()">
+                            <option value="fixed_interval" {{ 'selected' if config.proactive_reply.timing_mode == 'fixed_interval' else '' }}>固定间隔</option>
+                            <option value="random_interval" {{ 'selected' if config.proactive_reply.timing_mode == 'random_interval' else '' }}>完全随机间隔</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="switch-field">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="duplicate_detection_enabled"
+                                    name="proactive_reply.duplicate_detection_enabled"
+                                    {{ 'checked' if config.proactive_reply.duplicate_detection_enabled else '' }}>
+                                <label class="form-check-label" for="duplicate_detection_enabled">启用重复检测</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 固定间隔参数 -->
+                <div id="fixedIntervalSettings" class="config-conditional {{ '' if config.proactive_reply.timing_mode == 'fixed_interval' else 'hidden' }}">
+                    <div class="row mb-3">
+                        <div class="col-md-3">
+                            <label for="interval_minutes" class="form-label">发送间隔（分钟）</label>
+                            <input type="number" class="form-control" id="interval_minutes"
+                                name="proactive_reply.interval_minutes"
+                                value="{{ config.proactive_reply.interval_minutes if config.proactive_reply else 600 }}" min="1">
+                        </div>
+                        <div class="col-md-3">
+                            <div class="switch-field">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="random_delay_enabled"
+                                        name="proactive_reply.random_delay_enabled"
+                                        {{ 'checked' if config.proactive_reply.random_delay_enabled else '' }}
+                                        onchange="toggleRandomDelay()">
+                                    <label class="form-check-label" for="random_delay_enabled">随机延迟</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3" id="minRandomDelayGroup">
+                            <label for="min_random_minutes" class="form-label">最小随机延迟（分钟）</label>
+                            <input type="number" class="form-control" id="min_random_minutes"
+                                name="proactive_reply.min_random_minutes"
+                                value="{{ config.proactive_reply.min_random_minutes if config.proactive_reply else 0 }}" min="0">
+                        </div>
+                        <div class="col-md-3" id="maxRandomDelayGroup">
+                            <label for="max_random_minutes" class="form-label">最大随机延迟（分钟）</label>
+                            <input type="number" class="form-control" id="max_random_minutes"
+                                name="proactive_reply.max_random_minutes"
+                                value="{{ config.proactive_reply.max_random_minutes if config.proactive_reply else 30 }}" min="0">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 随机间隔参数 -->
+                <div id="randomIntervalSettings" class="config-conditional {{ '' if config.proactive_reply.timing_mode == 'random_interval' else 'hidden' }}">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="random_min_minutes" class="form-label">随机间隔最小时间（分钟）</label>
+                            <input type="number" class="form-control" id="random_min_minutes"
+                                name="proactive_reply.random_min_minutes"
+                                value="{{ config.proactive_reply.random_min_minutes if config.proactive_reply else 600 }}" min="1">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="random_max_minutes" class="form-label">随机间隔最大时间（分钟）</label>
+                            <input type="number" class="form-control" id="random_max_minutes"
+                                name="proactive_reply.random_max_minutes"
+                                value="{{ config.proactive_reply.random_max_minutes if config.proactive_reply else 1200 }}" min="1">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 历史记录设置 -->
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <div class="switch-field">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="include_history_enabled"
+                                    name="proactive_reply.include_history_enabled"
+                                    {{ 'checked' if config.proactive_reply.include_history_enabled else '' }}
+                                    onchange="toggleHistorySettings()">
+                                <label class="form-check-label" for="include_history_enabled">附带历史记录</label>
+                            </div>
+                            <div class="form-text">AI 生成消息时参考之前的对话历史</div>
+                        </div>
+                    </div>
+                    <div id="historySettings" class="col-md-8 config-conditional {{ '' if config.proactive_reply.include_history_enabled else 'hidden' }}">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <label for="history_message_count" class="form-label">历史记录条数</label>
+                                <input type="number" class="form-control" id="history_message_count"
+                                    name="proactive_reply.history_message_count"
+                                    value="{{ config.proactive_reply.history_message_count if config.proactive_reply else 10 }}" min="1" max="50">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="history_save_mode" class="form-label">保存模式</label>
+                                <select class="form-select" id="history_save_mode" name="proactive_reply.history_save_mode">
+                                    <option value="default" {{ 'selected' if config.proactive_reply.history_save_mode == 'default' else '' }}>默认系统标记</option>
+                                    <option value="proactive_prompt" {{ 'selected' if config.proactive_reply.history_save_mode == 'proactive_prompt' else '' }}>主动提示词</option>
+                                    <option value="custom" {{ 'selected' if config.proactive_reply.history_save_mode == 'custom' else '' }}>自定义</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="custom_history_prompt" class="form-label">自定义历史记录提示词</label>
+                    <textarea class="form-control" id="custom_history_prompt"
+                        name="proactive_reply.custom_history_prompt"
+                        rows="2">{{ config.proactive_reply.custom_history_prompt if config.proactive_reply else '<PROACTIVE_TRIGGER: 时间:{current_time}，用户:{username}>' }}</textarea>
+                    <div class="form-text">仅当保存模式为 custom 时生效</div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="proactive_default_persona" class="form-label">主动对话默认人格</label>
+                    <textarea class="form-control" id="proactive_default_persona"
+                        name="proactive_reply.proactive_default_persona"
+                        rows="3">{{ config.proactive_reply.proactive_default_persona if config.proactive_reply else '' }}</textarea>
+                    <div class="form-text">当没有 AstrBot 人格时使用的默认人格设定</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 消息分割设置 -->
+        <div class="config-section">
+            <h5><i class="fas fa-cut text-primary"></i>消息分割设置</h5>
+            <div class="config-body">
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <div class="switch-field">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="split_enabled"
+                                    name="message_split.enabled"
+                                    {{ 'checked' if config.message_split.enabled else '' }}>
+                                <label class="form-check-label" for="split_enabled">启用消息分割</label>
+                            </div>
+                            <div class="form-text">LLM 消息将按配置模式分割后逐条发送</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="split_mode" class="form-label">分割模式</label>
+                        <select class="form-select" id="split_mode" name="message_split.mode"
+                            onchange="toggleSplitMode()">
+                            <option value="backslash" {{ 'selected' if config.message_split.mode == 'backslash' else '' }}>反斜线 (\)</option>
+                            <option value="newline" {{ 'selected' if config.message_split.mode == 'newline' else '' }}>换行符</option>
+                            <option value="comma" {{ 'selected' if config.message_split.mode == 'comma' else '' }}>逗号</option>
+                            <option value="semicolon" {{ 'selected' if config.message_split.mode == 'semicolon' else '' }}>分号</option>
+                            <option value="punctuation" {{ 'selected' if config.message_split.mode == 'punctuation' else '' }}>多种标点</option>
+                            <option value="custom" {{ 'selected' if config.message_split.mode == 'custom' else '' }}>自定义正则</option>
+                            <option value="words" {{ 'selected' if config.message_split.mode == 'words' else '' }}>分段词列表（官方</option>
+                            <option value="regex" {{ 'selected' if config.message_split.mode == 'regex' else '' }}>正则表达式（官方）</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="delay_ms" class="form-label">分割消息延迟（毫秒）</label>
+                        <input type="number" class="form-control" id="delay_ms" name="message_split.delay_ms"
+                            value="{{ config.message_split.delay_ms if config.message_split else 500 }}" min="0" max="5000">
+                        <div class="form-text">建议 300-1000ms</div>
+                    </div>
+                </div>
+
+                <!-- custom 模式参数 -->
+                <div id="customPatternGroup" class="config-conditional {{ '' if config.message_split.mode == 'custom' else 'hidden' }}">
+                    <div class="mb-3">
+                        <label for="custom_pattern" class="form-label">自定义分割正则表达式</label>
+                        <input type="text" class="form-control" id="custom_pattern" name="message_split.custom_pattern"
+                            value="{{ config.message_split.custom_pattern if config.message_split else '' }}">
+                        <div class="form-text">使用 re.split() 方法，例如：\\（反斜线）、\n（换行）、[,;]（逗号或分号）</div>
+                    </div>
+                </div>
+
+                <!-- regex 模式参数 -->
+                <div id="regexGroup" class="config-conditional {{ '' if config.message_split.mode == 'regex' else 'hidden' }}">
+                    <div class="mb-3">
+                        <label for="split_regex" class="form-label">正则表达式（官方风格）</label>
+                        <input type="text" class="form-control" id="split_regex" name="message_split.regex"
+                            value="{{ config.message_split.regex if config.message_split else '' }}">
+                        <div class="form-text">使用 re.findall() 方法，例如：.*?[。？！~…\n]+|.+$</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Tab: AI 调度 ===== -->
+    <div class="config-group" data-group="ai-schedule">
+        <!-- AI 调度设置 -->
+        <div class="config-section">
+            <h5><i class="fas fa-robot text-primary"></i>AI 自主调度设置</h5>
+            <div class="config-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="switch-field">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="ai_scheduling_enabled"
+                                    name="ai_schedule.enabled"
+                                    {{ 'checked' if config.ai_schedule.enabled else '' }}>
+                                <label class="form-check-label" for="ai_scheduling_enabled">启用 AI 自主调度</label>
+                            </div>
+                            <div class="form-text">AI 对话中提到时间约定时自动设置一次性定时任务</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="ai_provider_id" class="form-label">分析模型提供商</label>
+                        <input type="text" class="form-control" id="ai_provider_id" name="ai_schedule.provider_id"
+                            value="{{ config.ai_schedule.provider_id if config.ai_schedule else '' }}"
+                            placeholder="留空使用主模型">
+                        <div class="form-text">指定用于调度分析的模型，留空则使用主模型</div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="analysis_prompt" class="form-label">AI 调度分析提示词</label>
+                    <textarea class="form-control" id="analysis_prompt" name="ai_schedule.analysis_prompt"
+                        rows="4">{{ config.ai_schedule.analysis_prompt if config.ai_schedule else '' }}</textarea>
+                    <div class="form-text">自定义 AI 调度分析的系统提示词，用于指导 AI 判断消息中是否包含时间约定</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</form>
+
+<!-- Sticky 保存栏 -->
+<div class="sticky-save-bar" id="stickySaveBar">
+    <div class="save-hint">
+        <i class="fas fa-exclamation-circle"></i>
+        <span>配置已修改，记得保存</span>
+    </div>
+    <button class="btn btn-outline-secondary btn-sm" onclick="resetConfig()">
+        <i class="fas fa-undo"></i> 重置默认
+    </button>
+    <button class="btn btn-primary btn-sm" onclick="saveConfig()">
+        <i class="fas fa-save"></i> 保存配置
+    </button>
+</div>
+
+{% if error %}
+<div class="alert alert-danger mt-3" role="alert">
+    <i class="fas fa-exclamation-triangle me-2"></i>
+    <strong>错误：</strong>{{ error }}
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // ===== Tab 切换逻辑 =====
+    function switchConfigTab(target) {
+        // 切换 tab 按钮
+        document.querySelectorAll('.config-tab').forEach(tab => {
+            tab.classList.toggle('active', tab.dataset.target === target);
+        });
+        // 切换内容组
+        document.querySelectorAll('.config-group').forEach(group => {
+            group.classList.toggle('active', group.dataset.group === target);
+        });
+        // 保存到 localStorage
+        DataManager.storage.set('activeConfigTab', target);
+    }
+
+    // ===== 条件显示逻辑 =====
+    function toggleSleepSettings() {
+        const el = document.getElementById('sleepSettings');
+        el.classList.toggle('hidden', !document.getElementById('sleep_mode_enabled').checked);
+    }
+
+    function toggleTimingMode() {
+        const mode = document.getElementById('timing_mode').value;
+        document.getElementById('fixedIntervalSettings').classList.toggle('hidden', mode !== 'fixed_interval');
+        document.getElementById('randomIntervalSettings').classList.toggle('hidden', mode !== 'random_interval');
+    }
+
+    function toggleRandomDelay() {
+        const enabled = document.getElementById('random_delay_enabled').checked;
+        document.getElementById('minRandomDelayGroup').style.opacity = enabled ? '1' : '0.4';
+        document.getElementById('maxRandomDelayGroup').style.opacity = enabled ? '1' : '0.4';
+    }
+
+    function toggleHistorySettings() {
+        const el = document.getElementById('historySettings');
+        el.classList.toggle('hidden', !document.getElementById('include_history_enabled').checked);
+    }
+
+    function toggleSplitMode() {
+        const mode = document.getElementById('split_mode').value;
+        document.getElementById('customPatternGroup').classList.toggle('hidden', mode !== 'custom');
+        document.getElementById('regexGroup').classList.toggle('hidden', mode !== 'regex');
+    }
+
+    // ===== Sticky 保存栏 =====
+    let hasChanges = false;
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const form = document.getElementById('configForm');
+
+        form.addEventListener('change', function () {
+            hasChanges = true;
+            document.getElementById('stickySaveBar').classList.add('visible');
+        });
+
+        form.addEventListener('input', function () {
+            hasChanges = true;
+            document.getElementById('stickySaveBar').classList.add('visible');
+        });
+
+        // 页面离开前提醒
+        window.addEventListener('beforeunload', function (e) {
+            if (hasChanges) {
+                e.preventDefault();
+                e.returnValue = '您有未保存的配置更改，确定要离开吗？';
+            }
+        });
+
+        // 初始化条件显示状态
+        toggleRandomDelay();
+
+        // 恢复上次活跃的 Tab
+        const savedTab = DataManager.storage.get('activeConfigTab', 'basic');
+        switchConfigTab(savedTab);
+    });
+
+    // ===== 保存配置 =====
+    async function saveConfig() {
+        const form = document.getElementById('configForm');
+        const formData = new FormData(form);
+
+        // 构建配置对象（需要遍历所有 config-group，包括隐藏的）
+        const config = {};
+
+        // 先处理所有 checkbox，设置默认 false
+        form.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            const keys = cb.name.split('.');
+            let current = config;
+            for (let i = 0; i < keys.length - 1; i++) {
+                if (!current[keys[i]]) current[keys[i]] = {};
+                current = current[keys[i]];
+            }
+            current[keys[keys.length - 1]] = cb.checked;
+        });
+
+        // 再处理其他字段
+        for (const [key, value] of formData.entries()) {
+            const keys = key.split('.');
+            let current = config;
+
+            for (let i = 0; i < keys.length - 1; i++) {
+                if (!current[keys[i]]) current[keys[i]] = {};
+                current = current[keys[i]];
+            }
+
+            const lastKey = keys[keys.length - 1];
+            const input = form.querySelector(`[name="${key}"]`);
+
+            if (input.type === 'checkbox') {
+                current[lastKey] = input.checked;
+            } else if (input.type === 'number') {
+                current[lastKey] = parseInt(value) || 0;
+            } else {
+                current[lastKey] = value;
+            }
+        }
+
+        showLoading();
+        try {
+            const response = await fetch('/config/api/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ config })
+            });
+
+            const data = await response.json();
+            hideLoading();
+
+            if (data.success) {
+                Toast.success(data.message);
+                hasChanges = false;
+                document.getElementById('stickySaveBar').classList.remove('visible');
+            } else {
+                Toast.error(data.error);
+            }
+        } catch (error) {
+            hideLoading();
+            Toast.error('保存配置失败: ' + error.message);
+        }
+    }
+
+    // ===== 重置配置 =====
+    async function resetConfig() {
+        if (!await UI.confirm('确定要重置所有配置为默认值吗？此操作不可撤销。', '重置配置')) {
+            return;
+        }
+
+        showLoading();
+        try {
+            const response = await fetch('/config/api/reset', {
+                method: 'POST'
+            });
+
+            const data = await response.json();
+            hideLoading();
+
+            if (data.success) {
+                Toast.success(data.message);
+                hasChanges = false;
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                Toast.error(data.error);
+            }
+        } catch (error) {
+            hideLoading();
+            Toast.error('重置配置失败: ' + error.message);
+        }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+
+{% block title %}仪表板 - {{ super() }}{% endblock %}
+
+{% block breadcrumb_items %}
+<li class="breadcrumb-item active">仪表板</li>
+{% endblock %}
+
+{% block content %}
+<!-- 页面标题 -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="page-title">
+        <i class="fas fa-compass"></i>仪表盘
+    </h1>
+    <button class="btn btn-outline-primary btn-sm" onclick="refreshDashboard()">
+        <i class="fas fa-sync-alt"></i>刷新
+    </button>
+</div>
+
+<!-- 统计卡片 -->
+<div class="stats-row">
+    <div class="stats-card">
+        <div class="stats-icon-wrapper info">
+            <i class="fas fa-comments"></i>
+        </div>
+        <div class="stats-info">
+            <div class="stats-label">总会话数</div>
+                <div class="stats-number count-up" id="total-sessions" data-target="{{ stats.session_stats.total_sessions if stats else 0 }}">
+                    0
+                </div>
+        </div>
+    </div>
+
+    <div class="stats-card">
+        <div class="stats-icon-wrapper warning">
+            <i class="fas fa-robot"></i>
+        </div>
+        <div class="stats-info">
+            <div class="stats-label">AI调度任务</div>
+                <div class="stats-number count-up" id="ai-schedules" data-target="{{ stats.task_stats.ai_schedules_count if stats else 0 }}">
+                    0
+                </div>
+        </div>
+    </div>
+
+    <div class="stats-card">
+        <div class="stats-icon-wrapper success">
+            <i class="fas fa-toggle-on"></i>
+        </div>
+        <div class="stats-info">
+            <div class="stats-label">已启用功能</div>
+            <div class="stats-number" id="enabled-features">
+                {% set count = 0 %}
+                {% if stats and stats.config_stats.proactive_messaging_enabled %}{% set count = count + 1 %}{% endif %}
+                {% if stats and stats.config_stats.ai_scheduling_enabled %}{% set count = count + 1 %}{% endif %}
+                {{ count }} / 2
+            </div>
+        </div>
+    </div>
+
+    <div class="stats-card">
+        <div class="stats-icon-wrapper primary">
+            <i class="fas fa-heartbeat"></i>
+        </div>
+        <div class="stats-info">
+            <div class="stats-label">运行状态</div>
+            <div class="stats-number" style="font-size: 1.125rem;">
+                {% if stats and stats.task_stats.proactive_task_status == 'running' %}
+                <span style="color: var(--success-color);">
+                    <i class="fas fa-circle status-pulse" style="font-size: 0.5rem; vertical-align: middle;"></i> 运行中
+                </span>
+                {% else %}
+                <span style="color: var(--text-muted);">
+                    <i class="fas fa-circle" style="font-size: 0.5rem; vertical-align: middle;"></i> 已停止
+                </span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 插件状态 + 快速操作 -->
+<div class="row">
+    <!-- 插件状态 -->
+    <div class="col-lg-5 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <span><i class="fas fa-info-circle me-2 text-primary"></i>插件状态</span>
+            </div>
+            <div class="card-body">
+                <div class="info-row">
+                    <span class="info-label">插件名称</span>
+                    <span class="info-value">{{ stats.plugin_info.name if stats else '心念' }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">版本</span>
+                    <span class="info-value">{{ stats.plugin_info.version if stats else version }}</span>
+                </div>
+                <div class="info-row" style="border-bottom: none;">
+                    <span class="info-label">功能状态</span>
+                    <div class="status-tags">
+                        <span class="status-tag {{ 'on' if stats and stats.config_stats.proactive_messaging_enabled else 'off' }}">
+                            <i class="fas fa-circle"></i>主动消息
+                        </span>
+                        <span class="status-tag {{ 'on' if stats and stats.config_stats.ai_scheduling_enabled else 'off' }}">
+                            <i class="fas fa-circle"></i>AI 调度
+                        </span>
+                        <span class="status-tag {{ 'on' if stats and stats.task_stats.proactive_task_status == 'running' else 'off' }}">
+                            <i class="fas fa-circle"></i>定时任务
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 快速操作 -->
+    <div class="col-lg-7 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <span><i class="fas fa-bolt me-2 text-primary"></i>快速操作</span>
+            </div>
+            <div class="card-body">
+                <div class="action-grid">
+                    <div class="action-card" onclick="triggerProactiveMessage()">
+                        <div class="action-icon primary">
+                            <i class="fas fa-paper-plane"></i>
+                        </div>
+                        <div class="action-title">触发主动消息</div>
+                        <div class="action-desc">立即向所有会话发送一条主动消息</div>
+                    </div>
+                    <div class="action-card" onclick="restartTasks()">
+                        <div class="action-icon success">
+                            <i class="fas fa-redo"></i>
+                        </div>
+                        <div class="action-title">重启任务</div>
+                        <div class="action-desc">重新启动定时发送任务</div>
+                    </div>
+                    <div class="action-card" onclick="clearCache()">
+                        <div class="action-icon warning">
+                            <i class="fas fa-broom"></i>
+                        </div>
+                        <div class="action-title">清理缓存</div>
+                        <div class="action-desc">清除本地缓存和临时数据</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if error %}
+<div class="alert alert-danger" role="alert">
+    <i class="fas fa-exclamation-triangle me-2"></i>
+    <strong>错误：</strong>{{ error }}
+</div>
+{% endif %}
+
+<!-- 最近活动 -->
+<div class="card">
+    <div class="card-header">
+        <span><i class="fas fa-clock-rotate-left me-2 text-primary"></i>最近活动</span>
+    </div>
+    <div class="card-body" id="recent-activity">
+        <div class="timeline" id="activity-timeline">
+            <div class="timeline-item">
+                <div class="timeline-dot info"><i class="fas fa-circle"></i></div>
+                <div class="timeline-content">
+                    <div class="timeline-title">插件已启动</div>
+                    <div class="timeline-desc">心念 WebUI 服务已成功启动</div>
+                </div>
+                <div class="timeline-time">当前会话</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // 每30秒自动刷新统计信息
+    document.addEventListener('DOMContentLoaded', function () {
+        setInterval(refreshStats, 30000);
+    });
+
+    function refreshDashboard() {
+        showLoading();
+        location.reload();
+    }
+
+    async function refreshStats() {
+        try {
+            const response = await fetch('/api/stats');
+            const data = await response.json();
+            if (data.success) {
+                updateStatsDisplay(data.stats);
+            }
+        } catch (error) {
+            console.error('刷新统计信息失败:', error);
+        }
+    }
+
+    function updateStatsDisplay(stats) {
+        const totalSessions = document.getElementById('total-sessions');
+        if (totalSessions) totalSessions.textContent = stats.session_stats.total_sessions || 0;
+
+        const aiSchedules = document.getElementById('ai-schedules');
+        if (aiSchedules) aiSchedules.textContent = stats.task_stats.ai_schedules_count || 0;
+    }
+
+    async function triggerProactiveMessage() {
+        if (!await UI.confirm('确定要为所有会话触发主动消息吗？', '触发主动消息')) return;
+
+        showLoading();
+        try {
+            const response = await fetch('/tasks/api/trigger_proactive', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+
+            const data = await response.json();
+            hideLoading();
+
+            if (data.success) {
+                Toast.success(data.message);
+            } else {
+                Toast.error(data.error);
+            }
+        } catch (error) {
+            hideLoading();
+            Toast.error('触发主动消息失败: ' + error.message);
+        }
+    }
+
+    async function restartTasks() {
+        if (!await UI.confirm('确定要重启定时任务吗？', '重启任务')) return;
+
+        showLoading();
+        try {
+            const response = await fetch('/tasks/api/restart_proactive', {
+                method: 'POST'
+            });
+
+            const data = await response.json();
+            hideLoading();
+
+            if (data.success) {
+                Toast.success(data.message);
+            } else {
+                Toast.error(data.error);
+            }
+        } catch (error) {
+            hideLoading();
+            Toast.error('重启任务失败: ' + error.message);
+        }
+    }
+
+    async function clearCache() {
+        if (!await UI.confirm('确定要清理缓存吗？', '清理缓存')) return;
+
+        showLoading();
+        try {
+            const response = await fetch('/debug/api/clear_cache', {
+                method: 'POST'
+            });
+
+            const data = await response.json();
+            hideLoading();
+
+            if (data.success) {
+                Toast.success(data.message);
+            } else {
+                Toast.error(data.error);
+            }
+        } catch (error) {
+            hideLoading();
+            Toast.error('清理缓存失败: ' + error.message);
+        }
+    }
+</script>
+{% endblock %}

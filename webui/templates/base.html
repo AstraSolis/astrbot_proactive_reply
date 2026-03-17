@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ app_name }}{% endblock %}</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet"
+        crossorigin="anonymous">
+
+    <!-- 自定义样式 -->
+    <link href="{{ url_for('static', filename='css/main.css') }}" rel="stylesheet">
+
+    {% block extra_head %}{% endblock %}
+</head>
+
+<body>
+    <div class="app-wrapper">
+        <!-- 移动端侧边栏切换按钮 -->
+        <button class="mobile-toggle d-lg-none m-3" id="sidebarToggle">
+            <i class="fas fa-bars"></i>
+        </button>
+
+        <!-- 侧边栏 -->
+        <aside class="sidebar" id="sidebar">
+            <a class="sidebar-header" href="{{ url_for('dashboard.index') }}">
+                <i class="fas fa-cube animate-float"></i>
+                <span>{{ app_name }}</span>
+            </a>
+
+            <ul class="sidebar-nav">
+                <li class="nav-item">
+                    <a class="nav-link {% if request.endpoint and request.endpoint == 'dashboard.index' %}active{% endif %}"
+                        href="{{ url_for('dashboard.index') }}">
+                        <i class="fas fa-compass"></i><span>仪表盘</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.endpoint and request.endpoint.startswith('config.') %}active{% endif %}"
+                        href="{{ url_for('config.index') }}">
+                        <i class="fas fa-sliders-h"></i><span>配置管理</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.endpoint and request.endpoint.startswith('sessions.') %}active{% endif %}"
+                        href="{{ url_for('sessions.index') }}">
+                        <i class="fas fa-comment-dots"></i><span>会话管理</span>
+                    </a>
+                </li>
+            </ul>
+
+            <div class="sidebar-footer">
+                <button class="theme-toggle" id="themeToggle" onclick="ThemeManager.toggle()">
+                    <i class="fas fa-moon"></i>
+                    <span>深色模式</span>
+                </button>
+                <a class="nav-link" href="{{ url_for('api.info') }}" target="_blank">
+                    <i class="fas fa-info-circle"></i><span>插件信息</span>
+                </a>
+                <button class="nav-link logout-btn" id="logoutBtn" onclick="logout()" style="border: none; background: none; width: 100%; text-align: left; color: var(--text-color); padding: 0.5rem 1rem;">
+                    <i class="fas fa-sign-out-alt"></i><span>退出登录</span>
+                </button>
+                <div class="mt-2 text-center text-muted" style="font-size: 0.75rem;">
+                    {{ app_name }} {{ version }}
+                </div>
+            </div>
+        </aside>
+
+        <!-- 主要内容区 -->
+        <main class="main-content">
+            <div class="content-header" style="border-bottom: 0; padding-bottom: 0.5rem; margin-bottom: 1.5rem;">
+                <!-- 面包屑导航 -->
+                {% block breadcrumb %}
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb" style="background: transparent; padding: 0; margin: 0; list-style: none;">
+                        <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index') }}"
+                                style="color: var(--text-muted); text-decoration: none;">首页</a></li>
+                        {% block breadcrumb_items %}{% endblock %}
+                    </ol>
+                </nav>
+                {% endblock %}
+
+                <div class="d-flex align-items-center">
+                    <a href="https://github.com/AstraSolis/astrbot_proactive_reply" target="_blank"
+                        class="btn btn-outline-secondary btn-sm" style="border:none;">
+                        <i class="fab fa-github"></i>
+                    </a>
+                </div>
+            </div>
+
+            <!-- 页面具体内容 -->
+            <div class="fade-in">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+
+    <!-- 侧边栏遮罩层（移动端） -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- 自定义脚本 -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script>
+        // 移动端侧边栏切换逻辑
+        const sidebarToggleBtn = document.getElementById('sidebarToggle');
+        const sidebar = document.getElementById('sidebar');
+        const sidebarOverlay = document.getElementById('sidebarOverlay');
+
+        function closeSidebar() {
+            sidebar.classList.remove('show');
+            sidebarOverlay.classList.remove('show');
+        }
+
+        sidebarToggleBtn?.addEventListener('click', function () {
+            const isOpen = sidebar.classList.toggle('show');
+            sidebarOverlay.classList.toggle('show', isOpen);
+        });
+
+        sidebarOverlay?.addEventListener('click', closeSidebar);
+
+        // 登出功能
+        async function logout() {
+            if (!confirm('确定要退出登录吗？')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/auth/logout', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    window.location.href = result.redirect || '/auth/login';
+                } else {
+                    alert('登出失败：' + (result.error || '未知错误'));
+                }
+            } catch (error) {
+                console.error('登出请求失败:', error);
+                alert('网络错误，请重试');
+            }
+        }
+    </script>
+    {% block extra_scripts %}{% endblock %}
+
+    <!-- 加载指示器（脉冲点） -->
+    <div id="loading-overlay" class="loading-overlay" style="display: none;">
+        <div class="pulse-loader">
+            <div class="dot"></div>
+            <div class="dot"></div>
+            <div class="dot"></div>
+        </div>
+    </div>
+</body>
+
+</html>

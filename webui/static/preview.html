@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>心念 WebUI - 样式预览</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet" crossorigin="anonymous">
+    <link href="css/main.css" rel="stylesheet">
+</head>
+<body>
+    <div class="app-wrapper">
+        <!-- 侧边栏 -->
+        <aside class="sidebar" id="sidebar">
+            <a class="sidebar-header" href="#">
+                <i class="fas fa-cube animate-float"></i>
+                <span>心念 WebUI</span>
+            </a>
+            <ul class="sidebar-nav">
+                <li class="nav-item">
+                    <a class="nav-link active" href="#">
+                        <i class="fas fa-compass"></i><span>仪表盘</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="#">
+                        <i class="fas fa-sliders-h"></i><span>配置管理</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="#">
+                        <i class="fas fa-comment-dots"></i><span>会话管理</span>
+                    </a>
+                </li>
+            </ul>
+            <div class="sidebar-footer">
+                <a class="nav-link" href="#">
+                    <i class="fas fa-info-circle"></i><span>插件信息</span>
+                </a>
+                <div class="mt-2 text-center text-muted" style="font-size: 0.75rem;">
+                    心念 WebUI v2.0.0
+                </div>
+            </div>
+        </aside>
+
+        <!-- 主要内容区 -->
+        <main class="main-content">
+            <div class="content-header" style="border-bottom: 0; padding-bottom: 0.5rem; margin-bottom: 1.5rem;">
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb" style="background: transparent; padding: 0; margin: 0; list-style: none;">
+                        <li class="breadcrumb-item"><a href="#" style="color: var(--text-muted); text-decoration: none;">首页</a></li>
+                        <li class="breadcrumb-item active">仪表板</li>
+                    </ol>
+                </nav>
+                <div class="d-flex align-items-center">
+                    <a href="#" class="btn btn-outline-secondary btn-sm" style="border:none;">
+                        <i class="fab fa-github"></i>
+                    </a>
+                </div>
+            </div>
+
+            <div class="fade-in">
+                <!-- 页面标题 -->
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h1 class="page-title">
+                        <i class="fas fa-compass"></i>仪表盘
+                    </h1>
+                    <button class="btn btn-outline-primary btn-sm">
+                        <i class="fas fa-sync-alt"></i>刷新
+                    </button>
+                </div>
+
+                <!-- 统计卡片 -->
+                <div class="stats-row">
+                    <div class="stats-card">
+                        <div class="stats-icon-wrapper info">
+                            <i class="fas fa-comments"></i>
+                        </div>
+                        <div class="stats-info">
+                            <div class="stats-label">总会话数</div>
+                            <div class="stats-number">3</div>
+                        </div>
+                    </div>
+                    <div class="stats-card">
+                        <div class="stats-icon-wrapper warning">
+                            <i class="fas fa-robot"></i>
+                        </div>
+                        <div class="stats-info">
+                            <div class="stats-label">AI调度任务</div>
+                            <div class="stats-number">2</div>
+                        </div>
+                    </div>
+                    <div class="stats-card">
+                        <div class="stats-icon-wrapper success">
+                            <i class="fas fa-toggle-on"></i>
+                        </div>
+                        <div class="stats-info">
+                            <div class="stats-label">已启用功能</div>
+                            <div class="stats-number">2 / 2</div>
+                        </div>
+                    </div>
+                    <div class="stats-card">
+                        <div class="stats-icon-wrapper primary">
+                            <i class="fas fa-heartbeat"></i>
+                        </div>
+                        <div class="stats-info">
+                            <div class="stats-label">运行状态</div>
+                            <div class="stats-number" style="font-size: 1.125rem;">
+                                <span style="color: var(--success-color);">
+                                    <i class="fas fa-circle" style="font-size: 0.5rem; vertical-align: middle;"></i> 运行中
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 插件状态 + 快速操作 -->
+                <div class="row">
+                    <div class="col-lg-5 mb-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <span><i class="fas fa-info-circle me-2 text-primary"></i>插件状态</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="info-row">
+                                    <span class="info-label">插件名称</span>
+                                    <span class="info-value">心念</span>
+                                </div>
+                                <div class="info-row">
+                                    <span class="info-label">版本</span>
+                                    <span class="info-value">v2.0.0</span>
+                                </div>
+                                <div class="info-row" style="border-bottom: none;">
+                                    <span class="info-label">功能状态</span>
+                                    <div class="status-tags">
+                                        <span class="status-tag on">
+                                            <i class="fas fa-circle"></i>主动消息
+                                        </span>
+                                        <span class="status-tag on">
+                                            <i class="fas fa-circle"></i>AI 调度
+                                        </span>
+                                        <span class="status-tag on">
+                                            <i class="fas fa-circle"></i>定时任务
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-7 mb-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <span><i class="fas fa-bolt me-2 text-primary"></i>快速操作</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="action-grid">
+                                    <div class="action-card">
+                                        <div class="action-icon primary">
+                                            <i class="fas fa-paper-plane"></i>
+                                        </div>
+                                        <div class="action-title">触发主动消息</div>
+                                        <div class="action-desc">立即向所有会话发送一条主动消息</div>
+                                    </div>
+                                    <div class="action-card">
+                                        <div class="action-icon success">
+                                            <i class="fas fa-redo"></i>
+                                        </div>
+                                        <div class="action-title">重启任务</div>
+                                        <div class="action-desc">重新启动定时发送任务</div>
+                                    </div>
+                                    <div class="action-card">
+                                        <div class="action-icon warning">
+                                            <i class="fas fa-broom"></i>
+                                        </div>
+                                        <div class="action-title">清理缓存</div>
+                                        <div class="action-desc">清除本地缓存和临时数据</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Toast 测试 -->
+                <div class="card">
+                    <div class="card-header">
+                        <span><i class="fas fa-bell me-2 text-primary"></i>Toast 通知测试</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex gap-2 flex-wrap">
+                            <button class="btn btn-primary btn-sm" onclick="Toast.success('配置已成功更新')">Success Toast</button>
+                            <button class="btn btn-danger btn-sm" onclick="Toast.error('保存配置失败')">Error Toast</button>
+                            <button class="btn btn-warning btn-sm" onclick="Toast.warning('请输入会话 ID')">Warning Toast</button>
+                            <button class="btn btn-info btn-sm" onclick="Toast.info('正在刷新数据...')">Info Toast</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 配置区域预览 -->
+                <div class="mt-4">
+                    <h1 class="page-title mb-4">
+                        <i class="fas fa-sliders-h"></i>配置管理（预览）
+                    </h1>
+                    <div class="config-section">
+                        <h5><i class="fas fa-globe text-primary"></i>WebUI 管理界面设置</h5>
+                        <div class="config-body">
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label">WebUI 端口</label>
+                                    <input type="number" class="form-control" value="8080">
+                                    <div class="form-text">管理界面的访问端口，修改后需重启插件</div>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label">登录密码</label>
+                                    <input type="password" class="form-control" value="admin">
+                                    <div class="form-text">建议修改为复杂密码</div>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label">会话密钥</label>
+                                    <input type="text" class="form-control" value="astrbot-webui-secret">
+                                    <div class="form-text">用于加密会话数据的密钥</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="config-section">
+                        <h5><i class="fas fa-user text-primary"></i>用户信息设置</h5>
+                        <div class="config-body">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" checked>
+                                        <label class="form-check-label">启用用户信息附加</label>
+                                    </div>
+                                    <div class="form-text">在每次 LLM 请求前自动添加用户信息</div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">时间格式</label>
+                                    <input type="text" class="form-control" value="%Y-%m-%d %H:%M:%S">
+                                    <div class="form-text">Python datetime 格式字符串</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 会话管理预览 -->
+                <div class="mt-4">
+                    <h1 class="page-title mb-4">
+                        <i class="fas fa-comment-dots"></i>会话管理（预览）
+                    </h1>
+                    <div class="session-summary">
+                        <div class="session-summary-item">
+                            <span class="count">3</span>
+                            <span class="label">总会话</span>
+                        </div>
+                        <div class="session-summary-item">
+                            <span class="count" style="color: var(--success-color);">2</span>
+                            <span class="label">活跃</span>
+                        </div>
+                        <div class="session-summary-item">
+                            <span class="count" style="color: var(--warning-color);">1</span>
+                            <span class="label">非活跃</span>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <span><i class="fas fa-list me-2 text-primary"></i>主动会话列表</span>
+                        </div>
+                        <div class="card-body" style="padding: 0;">
+                            <div class="table-responsive">
+                                <table class="table align-middle">
+                                    <thead>
+                                        <tr>
+                                            <th>会话组 ID</th>
+                                            <th>平台</th>
+                                            <th>会话类型</th>
+                                            <th>加入时间</th>
+                                            <th>当前状态</th>
+                                            <th style="width: 80px; text-align: center;">操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td><code style="font-size: 0.8125rem;">aiocqhttp:GroupMessage:123456789</code></td>
+                                            <td><span class="badge bg-secondary"><i class="fab fa-qq me-1"></i>aiocqhttp</span></td>
+                                            <td><i class="fas fa-users me-1 text-muted"></i>群聊</td>
+                                            <td>2026-03-15 12:00:00</td>
+                                            <td><span class="badge bg-success">活跃</span></td>
+                                            <td style="text-align: center;">
+                                                <button class="btn btn-outline-danger btn-sm" style="padding: 0.25rem 0.5rem;">
+                                                    <i class="fas fa-trash-alt"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td><code style="font-size: 0.8125rem;">aiocqhttp:FriendMessage:987654321</code></td>
+                                            <td><span class="badge bg-secondary"><i class="fab fa-qq me-1"></i>aiocqhttp</span></td>
+                                            <td><i class="fas fa-user me-1 text-muted"></i>私聊</td>
+                                            <td>2026-03-14 08:30:00</td>
+                                            <td><span class="badge bg-success">活跃</span></td>
+                                            <td style="text-align: center;">
+                                                <button class="btn btn-outline-danger btn-sm" style="padding: 0.25rem 0.5rem;">
+                                                    <i class="fas fa-trash-alt"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 空状态预览 -->
+                    <div class="card mt-3">
+                        <div class="card-header">
+                            <span><i class="fas fa-list me-2 text-primary"></i>空状态预览</span>
+                        </div>
+                        <div class="card-body" style="padding: 0;">
+                            <div class="empty-state">
+                                <div class="empty-icon">
+                                    <i class="fas fa-comment-slash"></i>
+                                </div>
+                                <h5>还没有主动会话</h5>
+                                <p>通过上方按钮手动添加，或在聊天中使用 <code>/proactive add_session</code> 指令添加当前会话。</p>
+                                <button class="btn btn-primary btn-sm">
+                                    <i class="fas fa-plus me-1"></i>添加第一个会话
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 错误页预览 -->
+                <div class="mt-4">
+                    <h1 class="page-title mb-4">
+                        <i class="fas fa-exclamation-triangle"></i>错误页预览
+                    </h1>
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="error-page" style="min-height: 30vh;">
+                                <div class="text-center">
+                                    <div class="error-code">404</div>
+                                    <h3>找不到页面</h3>
+                                    <p>抱歉，您访问的页面不存在或已被移除。</p>
+                                    <a href="#" class="btn btn-primary"><i class="fas fa-home me-2"></i>返回首页</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+
+{% block title %}会话管理 - {{ super() }}{% endblock %}
+
+{% block breadcrumb_items %}
+<li class="breadcrumb-item active" aria-current="page">会话管理</li>
+{% endblock %}
+
+{% block content %}
+<!-- 页面标题 -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="page-title">
+        <i class="fas fa-comment-dots"></i>会话管理
+    </h1>
+    <button class="btn btn-primary btn-sm" onclick="showAddSessionModal()">
+        <i class="fas fa-plus"></i> 添加会话
+    </button>
+</div>
+
+{% if error %}
+<div class="alert alert-danger" role="alert">
+    <i class="fas fa-exclamation-triangle me-2"></i>{{ error }}
+</div>
+{% endif %}
+
+<!-- 会话统计汇总 -->
+<div class="stats-row" style="grid-template-columns: repeat(3, 1fr);">
+    <div class="stats-card">
+        <div class="stats-icon-wrapper info">
+            <i class="fas fa-comments"></i>
+        </div>
+        <div class="stats-info">
+            <div class="stats-label">总会话</div>
+            <div class="stats-number count-up" id="summary-total" data-target="{{ sessions|length }}">0</div>
+        </div>
+    </div>
+    <div class="stats-card">
+        <div class="stats-icon-wrapper success">
+            <i class="fas fa-bolt"></i>
+        </div>
+        <div class="stats-info">
+            <div class="stats-label">活跃</div>
+            <div class="stats-number count-up" id="summary-active" data-target="{{ sessions|selectattr('status', 'equalto', 'active')|list|length }}">0</div>
+        </div>
+    </div>
+    <div class="stats-card">
+        <div class="stats-icon-wrapper warning">
+            <i class="fas fa-pause-circle"></i>
+        </div>
+        <div class="stats-info">
+            <div class="stats-label">非活跃</div>
+            <div class="stats-number count-up" id="summary-inactive" data-target="{{ sessions|rejectattr('status', 'equalto', 'active')|list|length }}">0</div>
+        </div>
+    </div>
+</div>
+
+<!-- 会话列表 -->
+<div class="card">
+    <div class="card-header">
+        <span><i class="fas fa-list me-2 text-primary"></i>主动会话列表</span>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        {% if sessions %}
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                    <tr>
+                        <th>会话组 ID</th>
+                        <th>平台</th>
+                        <th>会话类型</th>
+                        <th>加入时间</th>
+                        <th>当前状态</th>
+                        <th style="width: 80px; text-align: center;">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in sessions %}
+                    <tr>
+                        <td>
+                            <code style="font-size: 0.8125rem;">{{ s.session_id }}</code>
+                        </td>
+                        <td>
+                            <span class="badge bg-secondary">
+                                {% if s.platform == 'qq' or s.platform == 'aiocqhttp' %}
+                                <i class="fab fa-qq me-1"></i>
+                                {% elif s.platform == 'wechat' %}
+                                <i class="fab fa-weixin me-1"></i>
+                                {% elif s.platform == 'telegram' %}
+                                <i class="fab fa-telegram me-1"></i>
+                                {% else %}
+                                <i class="fas fa-plug me-1"></i>
+                                {% endif %}
+                                {{ s.platform }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if s.chat_type == 'group' or s.chat_type == 'GroupMessage' %}
+                            <i class="fas fa-users me-1 text-muted"></i>群聊
+                            {% else %}
+                            <i class="fas fa-user me-1 text-muted"></i>私聊
+                            {% endif %}
+                        </td>
+                        <td>{{ s.added_time_display }}</td>
+                        <td>
+                            <span class="badge {{ 'bg-success' if s.status == 'active' else 'bg-warning' }}">
+                                {{ s.status_display }}
+                            </span>
+                        </td>
+                        <td style="text-align: center;">
+                            <button class="btn btn-outline-danger btn-sm"
+                                onclick="removeSession('{{ s.session_id }}')"
+                                title="移除会话" style="padding: 0.25rem 0.5rem;">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">
+                <i class="fas fa-comment-slash"></i>
+            </div>
+            <h5>还没有主动会话</h5>
+            <p>通过上方按钮手动添加，或在聊天中使用 <code>/proactive add_session</code> 指令添加当前会话。</p>
+            <button class="btn btn-primary btn-sm" onclick="showAddSessionModal()">
+                <i class="fas fa-plus me-1"></i>添加第一个会话
+            </button>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 添加会话 Modal -->
+<div class="modal fade" id="addSessionModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">添加主动会话</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="new_session_id" class="form-label">会话 ID</label>
+                    <input type="text" class="form-control" id="new_session_id"
+                        placeholder="例如：aiocqhttp:GroupMessage:123456789">
+                    <div class="form-text">
+                        格式：<code>platform_name:message_type:session_id</code><br>
+                        示例：<code>aiocqhttp:GroupMessage:123456789</code>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="addSession()">
+                    <i class="fas fa-plus me-1"></i>添加
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let addSessionModalInstance = null;
+
+    function showAddSessionModal() {
+        if (!addSessionModalInstance) {
+            addSessionModalInstance = new bootstrap.Modal(document.getElementById('addSessionModal'));
+        }
+        document.getElementById('new_session_id').value = '';
+        addSessionModalInstance.show();
+    }
+
+    async function addSession() {
+        const sessionId = document.getElementById('new_session_id').value.trim();
+        if (!sessionId) {
+            Toast.warning('请输入会话 ID');
+            return;
+        }
+
+        // 简单格式校验
+        const parts = sessionId.split(':');
+        if (parts.length < 3) {
+            Toast.warning('会话 ID 格式不正确，应为 platform:type:id');
+            return;
+        }
+
+        showLoading();
+        try {
+            const response = await fetch('/sessions/api/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: sessionId })
+            });
+
+            const data = await response.json();
+            hideLoading();
+
+            if (data.success) {
+                Toast.success(data.message || '会话已添加');
+                addSessionModalInstance.hide();
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                Toast.error(data.error || '添加失败');
+            }
+        } catch (error) {
+            hideLoading();
+            Toast.error('添加会话失败: ' + error.message);
+        }
+    }
+
+    async function removeSession(sessionId) {
+        if (!await UI.confirm(`确定要移除会话 "${sessionId}" 吗？`, '移除会话')) return;
+
+        showLoading();
+        try {
+            const response = await fetch('/sessions/api/remove', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: sessionId })
+            });
+
+            const data = await response.json();
+            hideLoading();
+
+            if (data.success) {
+                Toast.success(data.message || '会话已移除');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                Toast.error(data.error || '移除失败');
+            }
+        } catch (error) {
+            hideLoading();
+            Toast.error('移除会话失败: ' + error.message);
+        }
+    }
+</script>
+{% endblock %}

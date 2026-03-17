@@ -291,5 +291,29 @@
                 "hint": "自定义AI调度分析的系统提示词。用于指导AI判断消息中是否包含时间约定并提取信息"
             }
         }
+    },
+    "webui": {
+        "description": "WebUI 管理界面设置",
+        "type": "object",
+        "items": {
+            "webui_port": {
+                "description": "WebUI 端口",
+                "type": "int",
+                "default": 8080,
+                "hint": "WebUI 管理界面的访问端口，默认为 8080。修改后需要重启插件生效"
+            },
+            "webui_password": {
+                "description": "WebUI 登录密码",
+                "type": "string",
+                "default": "admin",
+                "hint": "WebUI 管理界面的登录密码，建议修改为复杂密码以确保安全"
+            },
+            "webui_secret_key": {
+                "description": "WebUI 会话密钥",
+                "type": "string",
+                "default": "astrbot-proactive-reply-webui-secret",
+                "hint": "用于加密会话数据的密钥，建议修改为随机字符串"
+            }
+        }
     }
 }
