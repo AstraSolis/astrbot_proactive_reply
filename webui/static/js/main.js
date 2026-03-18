@@ -109,17 +109,38 @@ const Toast = {
     },
 
     show(type, message, duration = CONFIG.TOAST_DURATION) {
+        // 验证类型参数，防止CSS注入
+        const validTypes = ['success', 'error', 'warning', 'info'];
+        const safeType = validTypes.includes(type) ? type : 'info';
+
         const container = this._ensureContainer();
         const id = 'toast_' + Utils.generateId();
 
         const toastEl = document.createElement('div');
-        toastEl.className = `toast-item ${type}`;
+        toastEl.className = `toast-item ${safeType}`;
         toastEl.id = id;
-        toastEl.innerHTML = `
-            <div class="toast-icon"><i class="${this._getIcon(type)}"></i></div>
-            <div class="toast-text">${message}</div>
-            <button class="toast-close" onclick="Toast.dismiss('${id}')"><i class="fas fa-times"></i></button>
-        `;
+
+        // 安全地创建 DOM 结构
+        const iconDiv = document.createElement('div');
+        iconDiv.className = 'toast-icon';
+        const iconEl = document.createElement('i');
+        iconEl.className = this._getIcon(safeType);
+        iconDiv.appendChild(iconEl);
+
+        const textDiv = document.createElement('div');
+        textDiv.className = 'toast-text';
+        textDiv.textContent = message; // 使用 textContent 防止 XSS
+
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'toast-close';
+        const closeIcon = document.createElement('i');
+        closeIcon.className = 'fas fa-times';
+        closeBtn.appendChild(closeIcon);
+        closeBtn.addEventListener('click', () => this.dismiss(id)); // 使用事件监听器
+
+        toastEl.appendChild(iconDiv);
+        toastEl.appendChild(textDiv);
+        toastEl.appendChild(closeBtn);
 
         container.appendChild(toastEl);
 
@@ -246,37 +267,81 @@ const UI = {
     async confirm(message, title = '确认操作') {
         return new Promise((resolve) => {
             const modalId = 'confirmModal_' + Utils.generateId();
-            const modalHtml = `
-                <div class="modal fade" id="${modalId}" tabindex="-1">
-                    <div class="modal-dialog modal-dialog-centered">
-                        <div class="modal-content">
-                            <div class="modal-header">
-                                <h5 class="modal-title">${title}</h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                            </div>
-                            <div class="modal-body">
-                                <p class="mb-0">${message}</p>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                                <button type="button" class="btn btn-primary" id="${modalId}_confirm">确认</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
 
-            document.body.insertAdjacentHTML('beforeend', modalHtml);
-            const modalElement = document.getElementById(modalId);
-            const modal = new bootstrap.Modal(modalElement);
+            // 安全地创建模态框 DOM 结构
+            const modalDiv = document.createElement('div');
+            modalDiv.className = 'modal fade';
+            modalDiv.id = modalId;
+            modalDiv.setAttribute('tabindex', '-1');
 
-            document.getElementById(`${modalId}_confirm`).addEventListener('click', () => {
+            const modalDialog = document.createElement('div');
+            modalDialog.className = 'modal-dialog modal-dialog-centered';
+
+            const modalContent = document.createElement('div');
+            modalContent.className = 'modal-content';
+
+            // 模态框头部
+            const modalHeader = document.createElement('div');
+            modalHeader.className = 'modal-header';
+
+            const modalTitle = document.createElement('h5');
+            modalTitle.className = 'modal-title';
+            modalTitle.textContent = title; // 安全设置文本内容
+
+            const closeBtn = document.createElement('button');
+            closeBtn.type = 'button';
+            closeBtn.className = 'btn-close';
+            closeBtn.setAttribute('data-bs-dismiss', 'modal');
+
+            modalHeader.appendChild(modalTitle);
+            modalHeader.appendChild(closeBtn);
+
+            // 模态框主体
+            const modalBody = document.createElement('div');
+            modalBody.className = 'modal-body';
+
+            const messageP = document.createElement('p');
+            messageP.className = 'mb-0';
+            messageP.textContent = message; // 安全设置文本内容
+
+            modalBody.appendChild(messageP);
+
+            // 模态框底部
+            const modalFooter = document.createElement('div');
+            modalFooter.className = 'modal-footer';
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.type = 'button';
+            cancelBtn.className = 'btn btn-secondary';
+            cancelBtn.setAttribute('data-bs-dismiss', 'modal');
+            cancelBtn.textContent = '取消';
+
+            const confirmBtn = document.createElement('button');
+            confirmBtn.type = 'button';
+            confirmBtn.className = 'btn btn-primary';
+            confirmBtn.id = `${modalId}_confirm`;
+            confirmBtn.textContent = '确认';
+
+            modalFooter.appendChild(cancelBtn);
+            modalFooter.appendChild(confirmBtn);
+
+            // 组装模态框
+            modalContent.appendChild(modalHeader);
+            modalContent.appendChild(modalBody);
+            modalContent.appendChild(modalFooter);
+            modalDialog.appendChild(modalContent);
+            modalDiv.appendChild(modalDialog);
+
+            document.body.appendChild(modalDiv);
+            const modal = new bootstrap.Modal(modalDiv);
+
+            confirmBtn.addEventListener('click', () => {
                 modal.hide();
                 resolve(true);
             });
 
-            modalElement.addEventListener('hidden.bs.modal', () => {
-                modalElement.remove();
+            modalDiv.addEventListener('hidden.bs.modal', () => {
+                modalDiv.remove();
                 resolve(false);
             });
 

@@ -107,8 +107,8 @@
                             </span>
                         </td>
                         <td style="text-align: center;">
-                            <button class="btn btn-outline-danger btn-sm"
-                                onclick="removeSession('{{ s.session_id }}')"
+                            <button class="btn btn-outline-danger btn-sm remove-session-btn"
+                                data-session-id="{{ s.session_id }}"
                                 title="移除会话" style="padding: 0.25rem 0.5rem;">
                                 <i class="fas fa-trash-alt"></i>
                             </button>
@@ -239,5 +239,14 @@
             Toast.error('移除会话失败: ' + error.message);
         }
     }
+
+    // 使用事件委托处理移除会话按钮点击
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('.remove-session-btn')) {
+            const button = e.target.closest('.remove-session-btn');
+            const sessionId = button.getAttribute('data-session-id');
+            removeSession(sessionId);
+        }
+    });
 </script>
 {% endblock %}

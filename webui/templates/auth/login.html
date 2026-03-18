@@ -364,6 +364,10 @@
 
         // 显示提示信息
         function showAlert(message, type) {
+            // 验证类型参数，防止CSS注入
+            const validTypes = ['success', 'danger', 'warning', 'info'];
+            const safeType = validTypes.includes(type) ? type : 'info';
+
             // 移除现有的提示
             const existingAlert = document.querySelector('.alert');
             if (existingAlert) {
@@ -372,8 +376,18 @@
 
             // 创建新的提示
             const alertDiv = document.createElement('div');
-            alertDiv.className = `alert alert-${type}`;
-            alertDiv.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-triangle'} me-2"></i>${message}`;
+            alertDiv.className = `alert alert-${safeType}`;
+
+            // 安全地创建图标和消息
+            const icon = document.createElement('i');
+            const iconClass = safeType === 'success' ? 'check-circle' : 'exclamation-triangle';
+            icon.className = `fas fa-${iconClass} me-2`;
+
+            const messageSpan = document.createElement('span');
+            messageSpan.textContent = message; // 使用 textContent 防止 XSS
+
+            alertDiv.appendChild(icon);
+            alertDiv.appendChild(messageSpan);
 
             // 插入到表单前面
             const form = document.getElementById('loginForm');
