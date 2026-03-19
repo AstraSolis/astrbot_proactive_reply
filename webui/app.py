@@ -125,11 +125,3 @@ def register_context_processors(app: Quart):
         """健康检查端点"""
         return {'status': 'running', 'version': app.plugin_config.get('version', 'v2.0.0')}
 
-    # 根路径重定向
-    @app.route('/')
-    async def index():
-        """根路径重定向到仪表板或登录页面"""
-        if session.get('authenticated'):
-            return redirect(url_for('dashboard.index'))
-        else:
-            return redirect(url_for('auth.login'))
