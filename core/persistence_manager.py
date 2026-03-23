@@ -285,17 +285,13 @@ class PersistenceManager:
             return False
 
     def load_data(self, key: str, default=None):
-        """兼容旧版WebUI加载数据的方法"""
+        """加载特定的运行时数据"""
         if key == 'user_info':
             return runtime_data.session_user_info
-        elif key == 'proactive_sessions':
-            return getattr(runtime_data, 'proactive_sessions', default)
         return default
 
     def save_data(self, key: str, data):
-        """兼容旧版WebUI保存数据的方法"""
+        """保存特定的运行时数据"""
         if key == 'user_info':
             runtime_data.session_user_info = data
-        elif key == 'proactive_sessions':
-            runtime_data.proactive_sessions = data
         self.save_persistent_data()

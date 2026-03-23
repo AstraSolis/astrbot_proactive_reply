@@ -65,32 +65,37 @@ async def info():
 async def stats_overview():
     """获取概览统计信息"""
     try:
+        from ...core.runtime_data import runtime_data
+
         managers = current_app.managers
 
-        # 获取用户统计
-        user_stats = {'total': 0}
-        user_info_manager = managers.get('user_info_manager')
-        if user_info_manager:
-            user_data = user_info_manager.persistence_manager.load_data('user_info', {})
-            user_stats['total'] = len(user_data)
+        # 获取用户统计（从运行时数据获取）
+        user_stats = {'total': len(runtime_data.session_user_info)}
 
         # 获取会话统计
         session_stats = {'total': 0}
-        persistence_manager = managers.get('persistence_manager')
-        if persistence_manager:
-            sessions_data = persistence_manager.load_data('proactive_sessions', [])
+        config_manager = managers.get('config_manager')
+        if config_manager:
+            config = config_manager.config if hasattr(config_manager, 'config') else {}
+            sessions_data = config.get('proactive_reply', {}).get('sessions', [])
             session_stats['total'] = len(sessions_data)
 
         # 获取任务统计
         task_stats = {'proactive_running': False, 'ai_schedules': 0}
         task_manager = managers.get('task_manager')
         if task_manager:
-            is_running = getattr(task_manager, 'is_running', False)
-            if callable(is_running):
-                is_running = is_running()
-            task_stats['proactive_running'] = bool(is_running)
-            if hasattr(task_manager, 'ai_schedules'):
-                task_stats['ai_schedules'] = len(task_manager.ai_schedules)
+            proactive_task = getattr(task_manager, 'proactive_task', None)
+            is_running = proactive_task is not None and not proactive_task.done() if proactive_task else False
+            task_stats['proactive_running'] = is_running
+
+            # 从 runtime_data 统计 AI 调度任务数量
+            total_ai_tasks = 0
+            for tasks in runtime_data.session_ai_scheduled.values():
+                if isinstance(tasks, list):
+                    total_ai_tasks += len(tasks)
+                elif isinstance(tasks, dict):
+                    total_ai_tasks += 1
+            task_stats['ai_schedules'] = total_ai_tasks
 
         overview = {
             'users': user_stats,

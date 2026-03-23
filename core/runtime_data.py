@@ -44,8 +44,6 @@ class RuntimeDataStore:
         self.session_consecutive_failures: dict = {}  # session -> int
         # AI 自主调度信息
         self.session_ai_scheduled: dict = {}
-        # 兼容旧版本 UI 使用的主动会话列表
-        self.proactive_sessions: list = []
 
         logger.debug("心念 | RuntimeDataStore 初始化完成")
 
@@ -75,8 +73,6 @@ class RuntimeDataStore:
             self.session_consecutive_failures = data["session_consecutive_failures"]
         if "session_ai_scheduled" in data:
             self.session_ai_scheduled = data["session_ai_scheduled"]
-        if "proactive_sessions" in data:
-            self.proactive_sessions = data["proactive_sessions"]
 
     def to_dict(self) -> dict:
         """导出为字典
@@ -95,7 +91,6 @@ class RuntimeDataStore:
             "session_unreplied_count": self.session_unreplied_count,
             "session_consecutive_failures": self.session_consecutive_failures,
             "session_ai_scheduled": self.session_ai_scheduled,
-            "proactive_sessions": self.proactive_sessions,
         }
 
     def clear_all(self):

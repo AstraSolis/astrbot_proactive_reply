@@ -67,8 +67,10 @@
                     <tr>
                         <th>会话组 ID</th>
                         <th>平台</th>
-                        <th>会话类型</th>
-                        <th>加入时间</th>
+                        <th>用户</th>
+                        <th>下次发送</th>
+                        <th>最后发送</th>
+                        <th>未回复</th>
                         <th>当前状态</th>
                         <th style="width: 80px; text-align: center;">操作</th>
                     </tr>
@@ -94,17 +96,38 @@
                             </span>
                         </td>
                         <td>
-                            {% if s.chat_type == 'group' or s.chat_type == 'GroupMessage' %}
-                            <i class="fas fa-users me-1 text-muted"></i>群聊
+                            {% if s.username %}
+                            <i class="fas fa-user me-1 text-muted"></i>{{ s.username }}
                             {% else %}
-                            <i class="fas fa-user me-1 text-muted"></i>私聊
+                            <span class="text-muted">—</span>
                             {% endif %}
                         </td>
-                        <td>{{ s.added_time_display }}</td>
+                        <td>
+                            {% if s.next_fire_display == '即将发送' %}
+                            <span class="text-success"><i class="fas fa-clock me-1"></i>{{ s.next_fire_display }}</span>
+                            {% elif s.next_fire_display == '等待初始化' %}
+                            <span class="text-muted">{{ s.next_fire_display }}</span>
+                            {% else %}
+                            {{ s.next_fire_display }}
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span style="font-size: 0.8125rem;">{{ s.last_sent_time }}</span>
+                        </td>
+                        <td>
+                            {% if s.unreplied_count > 0 %}
+                            <span class="badge bg-warning">{{ s.unreplied_count }}</span>
+                            {% else %}
+                            <span class="text-muted">0</span>
+                            {% endif %}
+                        </td>
                         <td>
                             <span class="badge {{ 'bg-success' if s.status == 'active' else 'bg-warning' }}">
                                 {{ s.status_display }}
                             </span>
+                            {% if s.ai_task_count > 0 %}
+                            <span class="badge bg-info ms-1" title="AI 调度任务">AI ×{{ s.ai_task_count }}</span>
+                            {% endif %}
                         </td>
                         <td style="text-align: center;">
                             <button class="btn btn-outline-danger btn-sm remove-session-btn"
