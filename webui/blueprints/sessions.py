@@ -4,7 +4,7 @@
 处理主动对话会话的查看、添加和删除
 """
 
-from datetime import datetime
+
 from quart import Blueprint, render_template, request, jsonify, current_app
 from astrbot.api import logger
 from ..auth import login_required
@@ -68,9 +68,7 @@ async def api_add_session():
         if len(parts) < 3:
             return jsonify({'success': False, 'error': '会话 ID 格式不正确，应为 platform:type:id'}), 400
 
-        platform = parts[0]
-        chat_type = parts[1]
-        raw_id = ':'.join(parts[2:])
+
 
         # 加载现有会话
         config = config_manager.config if hasattr(config_manager, 'config') else {}

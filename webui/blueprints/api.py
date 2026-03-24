@@ -4,7 +4,7 @@ API 蓝图
 提供统一的 REST API 接口
 """
 
-from quart import Blueprint, jsonify, request, current_app
+from quart import Blueprint, jsonify, current_app
 from astrbot.api import logger
 from datetime import datetime
 from ..auth import login_required

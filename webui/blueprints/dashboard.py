@@ -117,7 +117,7 @@ def _build_recent_activities(managers) -> list:
             # 获取用户名（如果有）
             user_info = runtime_data.session_user_info.get(session, {})
             username = user_info.get('username', '')
-            label = f"向 {username}" if username else f"向会话"
+            label = f"向 {username}" if username else "向会话"
             activities.append({
                 'type': 'send',
                 'icon': 'fas fa-paper-plane',

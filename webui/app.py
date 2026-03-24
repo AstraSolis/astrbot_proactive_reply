@@ -7,7 +7,7 @@ WebUI 应用工厂
 import os
 from typing import Dict, Any
 
-from quart import Quart, render_template, session, redirect, url_for, request
+from quart import Quart, render_template
 from quart_cors import cors
 
 from astrbot.api import logger

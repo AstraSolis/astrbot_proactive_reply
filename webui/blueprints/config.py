@@ -4,7 +4,6 @@
 处理插件配置的查看、修改和保存
 """
 
-import json
 from quart import Blueprint, render_template, request, jsonify, current_app
 from astrbot.api import logger
 from ..auth import login_required
