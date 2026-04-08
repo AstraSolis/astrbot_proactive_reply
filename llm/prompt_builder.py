@@ -103,47 +103,77 @@ class PromptBuilder:
                     uid, curr_cid
                 )
 
-                if (
-                    conversation
-                    and conversation.persona_id
-                    and conversation.persona_id != "[%None]"
-                ):
-                    target_persona_id = conversation.persona_id
+                # 获取 provider_settings 用于 resolve_selected_persona
+                provider_settings = {}
+                try:
+                    astrbot_config = self.context.get_config(umo=uid)
+                    if hasattr(astrbot_config, "get"):
+                        provider_settings = astrbot_config.get("provider_settings", {}) or {}
+                except Exception as e:
+                    logger.warning(f"心念 | ⚠️ 获取 provider_settings 失败: {e}")
 
-                    # 人格匹配
-                    available_names = [self._get_persona_name(p) for p in personas]
-                    logger.debug(
-                        f"心念 | 人格匹配 - 请求: '{target_persona_id}', 可用: {available_names}"
+                # 提取平台名称
+                platform_name = "unknown"
+                if isinstance(uid, str) and ":" in uid:
+                    platform_name = uid.split(":", 1)[0]
+
+                # 获取会话的 persona_id
+                conversation_persona_id = (
+                    getattr(conversation, "persona_id", None) if conversation else None
+                )
+
+                # 使用 resolve_selected_persona 获取正确的人格 ID
+                try:
+                    (
+                        target_persona_id,
+                        selected_persona,
+                        force_applied_persona_id,
+                        _,
+                    ) = await self.context.persona_manager.resolve_selected_persona(
+                        umo=uid,
+                        conversation_persona_id=conversation_persona_id,
+                        platform_name=platform_name,
+                        provider_settings=provider_settings,
                     )
 
-                    if personas:
-                        # 精确匹配
-                        for persona in personas:
-                            if self._get_persona_name(persona) == target_persona_id:
-                                base_system_prompt = self._get_persona_prompt(persona)
-                                logger.debug(
-                                    f"心念 | 人格匹配成功 (精确): '{target_persona_id}'"
-                                )
-                                break
+                    if target_persona_id and target_persona_id != "[%None]":
+                        # 人格匹配
+                        available_names = [self._get_persona_name(p) for p in personas]
+                        logger.debug(
+                            f"心念 | 人格匹配 - 请求: '{target_persona_id}', 可用: {available_names}"
+                        )
 
-                        # 若精确匹配失败，尝试大小写不敏感匹配
-                        if not base_system_prompt:
+                        if personas:
+                            # 精确匹配
                             for persona in personas:
-                                name = self._get_persona_name(persona)
-                                if name and name.lower() == target_persona_id.lower():
-                                    base_system_prompt = self._get_persona_prompt(
-                                        persona
-                                    )
+                                if self._get_persona_name(persona) == target_persona_id:
+                                    base_system_prompt = self._get_persona_prompt(persona)
                                     logger.debug(
-                                        f"心念 | 人格匹配成功 (忽略大小写): '{target_persona_id}' -> '{name}'"
+                                        f"心念 | 人格匹配成功 (精确): '{target_persona_id}'"
                                     )
                                     break
 
-                        # 匹配失败警告
-                        if not base_system_prompt:
-                            logger.warning(
-                                f"心念 | ⚠️ 人格匹配失败: 会话请求 '{target_persona_id}' 不在可用人格列表 {available_names} 中"
-                            )
+                            # 若精确匹配失败，尝试大小写不敏感匹配
+                            if not base_system_prompt:
+                                for persona in personas:
+                                    name = self._get_persona_name(persona)
+                                    if name and name.lower() == target_persona_id.lower():
+                                        base_system_prompt = self._get_persona_prompt(
+                                            persona
+                                        )
+                                        logger.debug(
+                                            f"心念 | 人格匹配成功 (忽略大小写): '{target_persona_id}' -> '{name}'"
+                                        )
+                                        break
+
+                            # 匹配失败警告
+                            if not base_system_prompt:
+                                logger.warning(
+                                    f"心念 | ⚠️ 人格匹配失败: 会话请求 '{target_persona_id}' 不在可用人格列表 {available_names} 中"
+                                )
+
+                except Exception as e:
+                    logger.warning(f"心念 | ⚠️ resolve_selected_persona 调用失败: {e}")
 
             # 如果没有获取到人格提示词，尝试从配置中获取当前默认人格
             if not base_system_prompt:
