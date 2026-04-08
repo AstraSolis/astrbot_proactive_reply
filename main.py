@@ -78,20 +78,24 @@ class ProactiveReplyPlugin(Star):
         # 命令处理器
         self.command_handlers = CommandHandlers(self)
 
-        # WebUI 管理器
-        self.webui_manager = WebUIManager(
-            self.config,
-            self.context,
-            {
-                'config_manager': self.config_manager,
-                'user_info_manager': self.user_info_manager,
-                'task_manager': self.task_manager,
-                'conversation_manager': self.conversation_manager,
-                'persistence_manager': self.persistence_manager,
-                'prompt_builder': self.prompt_builder,
-                'message_generator': self.message_generator
-            }
-        )
+        # WebUI 管理器（仅在启用时初始化）
+        webui_config = self.config.get('webui', {})
+        if webui_config.get('enabled', False):
+            self.webui_manager = WebUIManager(
+                self.config,
+                self.context,
+                {
+                    'config_manager': self.config_manager,
+                    'user_info_manager': self.user_info_manager,
+                    'task_manager': self.task_manager,
+                    'conversation_manager': self.conversation_manager,
+                    'persistence_manager': self.persistence_manager,
+                    'prompt_builder': self.prompt_builder,
+                    'message_generator': self.message_generator
+                }
+            )
+        else:
+            self.webui_manager = None
 
     def _verify_config_loading(self):
         """验证配置文件加载状态"""
@@ -108,12 +112,13 @@ class ProactiveReplyPlugin(Star):
         # 启动定时任务
         await self.task_manager.start_proactive_task()
 
-        # 启动 WebUI
-        try:
-            await self.webui_manager.start()
-        except Exception as e:
-            logger.error(f"心念 | WebUI 启动失败: {e}")
-            logger.info("心念 | 插件将继续运行，但 WebUI 不可用")
+        # 启动 WebUI（如果已启用）
+        if self.webui_manager:
+            try:
+                await self.webui_manager.start()
+            except Exception as e:
+                logger.error(f"心念 | WebUI 启动失败: {e}")
+                logger.info("心念 | 插件将继续运行，但 WebUI 不可用")
 
         logger.info("心念 | ✅ 插件初始化完成")
 
@@ -337,11 +342,12 @@ class ProactiveReplyPlugin(Star):
         # 设置终止标志
         self._is_terminating = True
 
-        # 停止 WebUI
-        try:
-            await self.webui_manager.stop()
-        except Exception as e:
-            logger.error(f"心念 | WebUI 停止时出错: {e}")
+        # 停止 WebUI（如果已启用）
+        if self.webui_manager:
+            try:
+                await self.webui_manager.stop()
+            except Exception as e:
+                logger.error(f"心念 | WebUI 停止时出错: {e}")
 
         # 停止定时任务
         await self.task_manager.stop_proactive_task()

@@ -295,24 +295,35 @@
     "webui": {
         "description": "WebUI 管理界面设置",
         "type": "object",
+        "invisible": true,
         "items": {
+            "enabled": {
+                "description": "启用 WebUI 管理界面",
+                "type": "bool",
+                "default": false,
+                "hint": "启用后，可以通过浏览器访问 WebUI 管理界面。禁用后不会启动 WebUI 服务器",
+                "invisible": true
+            },
             "webui_port": {
                 "description": "WebUI 端口",
                 "type": "int",
                 "default": 8080,
-                "hint": "WebUI 管理界面的访问端口，默认为 8080。修改后需要重启插件生效"
+                "hint": "WebUI 管理界面的访问端口，默认为 8080。修改后需要重启插件生效",
+                "invisible": true
             },
             "webui_password": {
                 "description": "WebUI 登录密码",
                 "type": "string",
                 "default": "admin",
-                "hint": "WebUI 管理界面的登录密码，建议修改为复杂密码以确保安全"
+                "hint": "WebUI 管理界面的登录密码，建议修改为复杂密码以确保安全",
+                "invisible": true
             },
             "webui_secret_key": {
                 "description": "WebUI 会话密钥",
                 "type": "string",
                 "default": "astrbot-proactive-reply-webui-secret",
-                "hint": "用于加密会话数据的密钥，建议修改为随机字符串"
+                "hint": "用于加密会话数据的密钥，建议修改为随机字符串",
+                "invisible": true
             }
         }
     }
