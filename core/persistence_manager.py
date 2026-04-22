@@ -76,18 +76,26 @@ class PersistenceManager:
                     try:
                         with open(persistent_file, "r", encoding=encoding) as f:
                             persistent_data = json.load(f)
-
-                        if not isinstance(persistent_data, dict):
-                            logger.error("心念 | ❌ 持久化文件格式错误：根对象不是字典")
-                            continue
-
-                        # 将持久化数据加载到运行时数据存储中（不是 config 对象）
-                        runtime_data.load_from_dict(persistent_data)
-
-                        logger.info("心念 | ✅ 从新的持久化文件加载数据成功")
+                        break  # 读取成功，退出编码重试循环
+                    except PermissionError:
+                        logger.error("心念 | ❌ 持久化文件读取权限不足")
                         return
-                    except (UnicodeDecodeError, json.JSONDecodeError, PermissionError):
-                        continue
+                    except UnicodeDecodeError:
+                        continue  # 尝试下一个编码
+                    except json.JSONDecodeError:
+                        logger.error("心念 | ❌ 持久化文件 JSON 解析失败，文件可能已损坏")
+                        return
+                else:
+                    logger.error("心念 | ❌ 无法以任何编码读取持久化文件")
+                    return
+
+                if not isinstance(persistent_data, dict):
+                    logger.error("心念 | ❌ 持久化文件格式错误：根对象不是字典")
+                    return
+
+                # 将持久化数据加载到运行时数据存储中（不是 config 对象）
+                runtime_data.load_from_dict(persistent_data)
+                logger.info("心念 | ✅ 从新的持久化文件加载数据成功")
 
             # 尝试从旧的持久化文件迁移数据（仅首次）
             migrated_marker = os.path.join(plugin_data_dir, ".migrated")

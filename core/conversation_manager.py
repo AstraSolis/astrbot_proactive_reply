@@ -244,24 +244,16 @@ class ConversationManager:
                 return
 
             # 使用官方 add_message_pair API
-            try:
-                from astrbot.core.agent.message import (
-                    AssistantMessageSegment,
-                    UserMessageSegment,
-                    TextPart,
-                )
-                await self.context.conversation_manager.add_message_pair(
-                    cid=curr_cid,
-                    user_message=UserMessageSegment(content=[TextPart(text=user_prompt)]),
-                    assistant_message=AssistantMessageSegment(content=[TextPart(text=message)]),
-                )
-            except ImportError:
-                # 回退到旧版 dict 格式
-                await self.context.conversation_manager.add_message_pair(
-                    cid=curr_cid,
-                    user_message={"role": "user", "content": user_prompt},
-                    assistant_message={"role": "assistant", "content": message},
-                )
+            from astrbot.core.agent.message import (
+                AssistantMessageSegment,
+                UserMessageSegment,
+                TextPart,
+            )
+            await self.context.conversation_manager.add_message_pair(
+                cid=curr_cid,
+                user_message=UserMessageSegment(content=[TextPart(text=user_prompt)]),
+                assistant_message=AssistantMessageSegment(content=[TextPart(text=message)]),
+            )
             logger.info("心念 | ✅ 使用 add_message_pair API 保存消息对成功")
 
         except Exception as e:

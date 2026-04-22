@@ -29,7 +29,7 @@ def create_app(config: Dict[str, Any], managers: Dict[str, Any]) -> Quart:
     # 配置应用
     webui_config = config.get('webui', {})
     app.config.update({
-        'SECRET_KEY': webui_config.get('webui_secret_key', 'astrbot-proactive-reply-webui'),
+        'SECRET_KEY': webui_config.get('webui_secret_key', 'astrbot-proactive-reply-webui-secret'),
         'TEMPLATES_AUTO_RELOAD': True,
         'JSON_AS_ASCII': False,
     })

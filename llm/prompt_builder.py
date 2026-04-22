@@ -106,7 +106,7 @@ class PromptBuilder:
                 # 获取 provider_settings 用于 resolve_selected_persona
                 provider_settings = {}
                 try:
-                    astrbot_config = self.context.get_config(umo=uid)
+                    astrbot_config = self.context.get_config()
                     if hasattr(astrbot_config, "get"):
                         provider_settings = astrbot_config.get("provider_settings", {}) or {}
                 except Exception as e:
