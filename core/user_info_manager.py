@@ -9,12 +9,13 @@ from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 from .runtime_data import runtime_data
 from ..llm.placeholder_utils import format_time_ago
+from ..utils.time_utils import get_now, get_tz, get_sleep_prompt_if_active as _check_sleep_prompt
 
 
 class UserInfoManager:
     """用户信息管理器类"""
 
-    def __init__(self, config: dict, config_manager, persistence_manager):
+    def __init__(self, config: dict, config_manager, persistence_manager, context=None):
         """初始化用户信息管理器
 
         Args:
@@ -25,6 +26,16 @@ class UserInfoManager:
         self.config = config
         self.config_manager = config_manager
         self.persistence_manager = persistence_manager
+        self.context = context
+
+    def _get_astrbot_config(self):
+        """安全获取 AstrBot 全局配置"""
+        try:
+            if self.context is not None:
+                return self.context.get_config()
+        except Exception:
+            pass
+        return None
 
     async def add_user_info_to_request(self, event: AstrMessageEvent, req):
         """在LLM请求前添加用户信息和时间
@@ -58,16 +69,18 @@ class UserInfoManager:
 
         # 获取时间信息
         time_format = user_config.get("time_format", "%Y-%m-%d %H:%M:%S")
+        astrbot_config = self._get_astrbot_config()
+        tz = get_tz(self.config, astrbot_config)
         try:
             if hasattr(event.message_obj, "timestamp") and event.message_obj.timestamp:
                 current_time = datetime.datetime.fromtimestamp(
-                    event.message_obj.timestamp
+                    event.message_obj.timestamp, tz=tz
                 ).strftime(time_format)
             else:
-                current_time = datetime.datetime.now().strftime(time_format)
+                current_time = get_now(self.config, astrbot_config).strftime(time_format)
         except Exception as e:
             logger.warning(f"心念 | ⚠️ 时间格式错误 '{time_format}': {e}，使用默认格式")
-            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            current_time = get_now(self.config, astrbot_config).strftime("%Y-%m-%d %H:%M:%S")
 
         # 获取平台信息
         platform_name = event.get_platform_name() or "未知平台"
@@ -92,7 +105,7 @@ class UserInfoManager:
             )
 
             # 计算相对时间
-            user_last_message_time_ago = format_time_ago(user_last_message_time)
+            user_last_message_time_ago = format_time_ago(user_last_message_time, tz=tz)
 
             # 构建占位符字典（与主动对话统一）
             weekday_names = [
@@ -111,7 +124,7 @@ class UserInfoManager:
                 "platform": platform_name,
                 "chat_type": message_type,
                 "current_time": current_time,
-                "weekday": weekday_names[datetime.datetime.now().weekday()],
+                "weekday": weekday_names[get_now(self.config, astrbot_config).weekday()],
                 "user_last_message_time": user_last_message_time,
                 "user_last_message_time_ago": user_last_message_time_ago,
                 "ai_last_sent_time": ai_last_sent_time,
@@ -182,7 +195,7 @@ class UserInfoManager:
         """
         try:
             session_id = event.unified_msg_origin
-            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            current_time = get_now(self.config, self._get_astrbot_config()).strftime("%Y-%m-%d %H:%M:%S")
 
             if not session_id:
                 logger.warning("心念 | ⚠️ 会话ID为空，跳过用户信息记录")
@@ -219,7 +232,7 @@ class UserInfoManager:
         """
         try:
             session_id = event.unified_msg_origin
-            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            current_time = get_now(self.config, self._get_astrbot_config()).strftime("%Y-%m-%d %H:%M:%S")
 
             if not session_id:
                 logger.warning("心念 | ⚠️ 会话ID为空，跳过AI消息时间记录")
@@ -244,7 +257,7 @@ class UserInfoManager:
             session: 会话ID
         """
         try:
-            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            current_time = get_now(self.config, self._get_astrbot_config()).strftime("%Y-%m-%d %H:%M:%S")
 
             if not session:
                 logger.warning("心念 | ⚠️ 会话ID为空，跳过发送时间记录")
@@ -305,7 +318,7 @@ class UserInfoManager:
                 context_parts.append("这是AI第一次主动发起对话")
 
             # 添加当前时间
-            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            current_time = get_now(self.config, self._get_astrbot_config()).strftime("%Y-%m-%d %H:%M:%S")
             context_parts.append(f"当前时间：{current_time}")
 
             if context_parts:
@@ -347,7 +360,7 @@ class UserInfoManager:
                 return -1  # 从未发送过消息
 
             last_time = datetime.datetime.strptime(last_time_str, "%Y-%m-%d %H:%M:%S")
-            now = datetime.datetime.now()
+            now = get_now(self.config, self._get_astrbot_config()).replace(tzinfo=None)
             delta = now - last_time
             return int(delta.total_seconds() / 60)
         except Exception as e:
@@ -377,6 +390,4 @@ class UserInfoManager:
         Returns:
             睡眠提示字符串，如果不在睡眠时间则返回空字符串
         """
-        from ..utils.time_utils import get_sleep_prompt_if_active
-
-        return get_sleep_prompt_if_active(self.config)
+        return _check_sleep_prompt(self.config, self._get_astrbot_config())

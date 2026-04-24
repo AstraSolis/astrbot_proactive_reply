@@ -105,10 +105,25 @@ async def get_dashboard_stats(managers):
     return stats
 
 
+def _get_astrbot_config_from_managers(managers):
+    """从 managers 中安全获取 AstrBot 全局配置"""
+    try:
+        mgr = managers.get('conversation_manager') or managers.get('user_info_manager')
+        if mgr and hasattr(mgr, 'context') and mgr.context:
+            return mgr.context.get_config()
+    except Exception:
+        pass
+    return None
+
+
 def _build_recent_activities(managers) -> list:
     """从运行时数据构建最近活动时间线"""
+    from ...utils.time_utils import get_now
+    config_manager = managers.get('config_manager')
+    config = config_manager.config if config_manager and hasattr(config_manager, 'config') else {}
+    astrbot_config = _get_astrbot_config_from_managers(managers)
     activities = []
-    now = datetime.now()
+    now = get_now(config, astrbot_config).replace(tzinfo=None)
 
     # 收集最近的消息发送记录
     for session, time_str in runtime_data.last_sent_times.items():

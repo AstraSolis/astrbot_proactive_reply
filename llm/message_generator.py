@@ -11,6 +11,7 @@ from astrbot.api import logger
 from astrbot.api.event import MessageChain
 
 from ..core.runtime_data import runtime_data
+from ..utils.time_utils import get_tz
 from .ai_schedule_analyzer import analyze_for_schedule
 
 
@@ -96,6 +97,13 @@ class MessageGenerator:
                 except re.error as e:
                     logger.error(f"心念 | ❌ 正则表达式编译失败: {e}, 表达式: {regex}")
                     self.split_regex_pattern = None
+
+    def _get_astrbot_config(self):
+        """安全获取 AstrBot 全局配置"""
+        try:
+            return self.context.get_config()
+        except Exception:
+            return None
 
     async def get_provider_id(self, session: str) -> str | None:
         """获取LLM提供商ID
@@ -386,7 +394,12 @@ class MessageGenerator:
         time_format = self.config.get("user_info", {}).get(
             "time_format", "%Y-%m-%d %H:%M:%S"
         )
-        current_time_str = datetime.now().strftime(time_format)
+        tz = get_tz(self.config, self._get_astrbot_config())
+        current_time_str = (
+            datetime.now(tz=tz).strftime(time_format)
+            if tz is not None
+            else datetime.now().strftime(time_format)
+        )
 
         # 获取该会话已有的待执行调度任务（用于去重）
         existing_tasks = runtime_data.session_ai_scheduled.get(session, [])
@@ -403,6 +416,7 @@ class MessageGenerator:
             current_time_str=current_time_str,
             schedule_provider_id=schedule_provider_id,
             existing_tasks=existing_tasks,
+            tz=tz,
         )
 
     def _split_text_by_words(self, text: str) -> list[str]:

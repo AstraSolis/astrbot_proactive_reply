@@ -49,6 +49,88 @@ class ProactiveTaskManager:
 
     # ==================== 计时器管理方法 ====================
 
+    def _get_astrbot_config(self):
+        """安全获取 AstrBot 全局配置"""
+        try:
+            return self.context.get_config()
+        except Exception:
+            return None
+
+    def _get_now(self) -> datetime:
+        """获取当前时间（naive，已转换为配置时区的本地时间）"""
+        from ..utils.time_utils import get_now
+        return get_now(self.config, self._get_astrbot_config()).replace(tzinfo=None)
+
+    def _get_timezone_signature(self) -> str:
+        """生成当前时区配置的签名
+
+        用于检测时区是否发生变化。
+        """
+        from ..utils.time_utils import get_tz
+        tz = get_tz(self.config, self._get_astrbot_config())
+        return str(tz) if tz is not None else "system_local"
+
+    def _recalculate_ai_schedule_fire_times(self, old_tz_sig: str, new_tz_sig: str):
+        """时区变化后重算 AI 调度任务的 fire_time
+
+        将旧时区下的 wall-clock 时间转换为新时区下的 wall-clock 时间，
+        保证任务在同一 UTC 绝对时刻触发。
+        """
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        try:
+            old_tz = ZoneInfo(old_tz_sig) if old_tz_sig != "system_local" else None
+            new_tz = ZoneInfo(new_tz_sig) if new_tz_sig != "system_local" else None
+        except (ZoneInfoNotFoundError, KeyError) as e:
+            logger.warning(f"心念 | ⚠️ AI 调度任务 fire_time 重算失败，无法解析时区: {e}")
+            return
+
+        recalc_count = 0
+        for tasks in runtime_data.session_ai_scheduled.values():
+            if not isinstance(tasks, list):
+                continue
+            for task in tasks:
+                fire_time_str = task.get("fire_time")
+                if not fire_time_str:
+                    continue
+                try:
+                    naive = datetime.strptime(fire_time_str, "%Y-%m-%d %H:%M:%S")
+                    aware = naive.replace(tzinfo=old_tz) if old_tz else naive.astimezone()
+                    converted = aware.astimezone(new_tz) if new_tz else aware.astimezone()
+                    new_str = converted.strftime("%Y-%m-%d %H:%M:%S")
+                    if new_str != fire_time_str:
+                        task["fire_time"] = new_str
+                        recalc_count += 1
+                except Exception as e:
+                    logger.debug(f"心念 | AI 调度任务 fire_time 重算跳过: {e}")
+
+        if recalc_count:
+            logger.info(f"心念 | 已重算 {recalc_count} 个 AI 调度任务的触发时间")
+
+    def _check_and_handle_timezone_change(self):
+        """检测时区变化，变化时清除计时器并重算 AI 调度任务触发时间"""
+        current_tz_sig = self._get_timezone_signature()
+        last_tz_sig = runtime_data.timezone_signature
+
+        # 首次运行：仅记录签名
+        if not last_tz_sig:
+            runtime_data.timezone_signature = current_tz_sig
+            logger.info(f"心念 | 🕐 当前有效时区: {current_tz_sig}")
+            if self.persistence_manager:
+                self.persistence_manager.save_persistent_data()
+            return
+
+        if current_tz_sig != last_tz_sig:
+            logger.info(
+                f"心念 | ⚠️ 检测到时区变化 ({last_tz_sig} → {current_tz_sig})，"
+                f"清除计时器并重算 AI 调度任务触发时间"
+            )
+            self.clear_all_session_timers()
+            self._recalculate_ai_schedule_fire_times(last_tz_sig, current_tz_sig)
+            runtime_data.timezone_signature = current_tz_sig
+            if self.persistence_manager:
+                self.persistence_manager.save_persistent_data()
+
     def get_session_next_fire_time(self, session: str) -> Optional[datetime]:
         """获取会话的下次发送时间
 
@@ -91,7 +173,7 @@ class ProactiveTaskManager:
             下次发送时间
         """
         interval_minutes = self.get_session_target_interval(session)
-        return datetime.now() + timedelta(minutes=interval_minutes)
+        return self._get_now() + timedelta(minutes=interval_minutes)
 
     def refresh_session_timer(self, session: str):
         """刷新会话计时器（AI 发消息后调用）
@@ -276,7 +358,7 @@ class ProactiveTaskManager:
         if not sessions:
             return 60  # 无会话时默认 60 秒检查
 
-        now = datetime.now()
+        now = self._get_now()
         next_fires = []
         for session in sessions:
             fire_time = self.get_session_next_fire_time(session)
@@ -310,7 +392,7 @@ class ProactiveTaskManager:
         if not sessions:
             return 300  # 无会话时默认 5 分钟
 
-        now = datetime.now()
+        now = self._get_now()
         next_events = []
 
         # 1. 收集 AI 调度任务的时间
@@ -325,7 +407,7 @@ class ProactiveTaskManager:
                     continue
 
         # 2. 添加睡眠结束时间
-        seconds_until_sleep_end = get_seconds_until_sleep_end(self.config)
+        seconds_until_sleep_end = get_seconds_until_sleep_end(self.config, self._get_astrbot_config())
         if seconds_until_sleep_end > 0:
             sleep_end_time = now + timedelta(seconds=seconds_until_sleep_end)
             next_events.append(sleep_end_time)
@@ -348,7 +430,7 @@ class ProactiveTaskManager:
         只保存未过期的计时器剩余时间，用于延后模式恢复。
         已过期的计时器不保存，退出睡眠时保持过期状态。
         """
-        now = datetime.now()
+        now = self._get_now()
         for session in self.get_target_sessions():
             fire_time = self.get_session_next_fire_time(session)
             if fire_time:
@@ -376,7 +458,7 @@ class ProactiveTaskManager:
         time_awareness = self.config.get("time_awareness", {})
         send_on_wake = time_awareness.get("send_on_wake_enabled", False)
         wake_mode = time_awareness.get("wake_send_mode", "immediate")
-        now = datetime.now()
+        now = self._get_now()
 
         for session in self.get_target_sessions():
             if not send_on_wake:
@@ -443,6 +525,7 @@ class ProactiveTaskManager:
 
                 if is_sleeping:
                     # 睡眠期间也需要检测配置变化，但保留睡眠状态
+                    self._check_and_handle_timezone_change()
                     self._check_and_handle_config_change(preserve_sleep_state=True)
 
                     # 确保所有会话都有计时器（处理会话列表变化）
@@ -463,7 +546,8 @@ class ProactiveTaskManager:
                     self.handle_exit_sleep()
                     was_sleeping = False
 
-                # 检测配置变化，变化时自动清理计时器
+                # 检测时区和配置变化
+                self._check_and_handle_timezone_change()
                 self._check_and_handle_config_change()
 
                 # 确保所有会话都有计时器
@@ -518,7 +602,7 @@ class ProactiveTaskManager:
         Args:
             sleep_mode: 睡眠模式。为 True 时跳过常规消息，只处理 AI 调度任务。
         """
-        now = datetime.now()
+        now = self._get_now()
         sent_count = 0
         sessions = self.get_target_sessions()
 
@@ -626,7 +710,7 @@ class ProactiveTaskManager:
         if "task_id" not in schedule_info:
             schedule_info["task_id"] = str(uuid.uuid4())
         if "created_at" not in schedule_info:
-            schedule_info["created_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            schedule_info["created_at"] = self._get_now().strftime("%Y-%m-%d %H:%M:%S")
 
         # 获取或初始化列表
         if session not in runtime_data.session_ai_scheduled:
@@ -798,7 +882,8 @@ class ProactiveTaskManager:
         """检查当前是否在睡眠时间段内"""
         from ..utils.time_utils import is_sleep_time as check_sleep_time
 
-        return check_sleep_time(self.config)
+        astrbot_config = self._get_astrbot_config()
+        return check_sleep_time(self.config, astrbot_config)
 
     # ==================== 间隔计算方法 ====================
 
@@ -877,7 +962,7 @@ class ProactiveTaskManager:
                 minutes = remaining_minutes % 60
                 return f"约{hours}小时{minutes}分钟后"
 
-        now = datetime.now()
+        now = self._get_now()
 
         # 检查是否是 AI 调度任务
         is_ai_task = False

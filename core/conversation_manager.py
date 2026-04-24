@@ -9,6 +9,7 @@ import json
 from astrbot.api import logger
 from .runtime_data import runtime_data
 from ..llm.placeholder_utils import replace_placeholders
+from ..utils.time_utils import get_now
 
 
 class ConversationManager:
@@ -25,6 +26,13 @@ class ConversationManager:
         self.config = config
         self.context = context
         self.persistence_manager = persistence_manager
+
+    def _get_astrbot_config(self):
+        """安全获取 AstrBot 全局配置"""
+        try:
+            return self.context.get_config()
+        except Exception:
+            return None
 
     def _build_history_user_prompt(
         self,
@@ -45,7 +53,7 @@ class ConversationManager:
         proactive_config = self.config.get("proactive_reply", {})
         history_save_mode = proactive_config.get("history_save_mode", "default")
 
-        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        current_time = get_now(self.config, self._get_astrbot_config()).strftime("%Y-%m-%d %H:%M:%S")
         unreplied_count = runtime_data.session_unreplied_count.get(session, 0)
 
         if history_save_mode == "proactive_prompt":
@@ -67,7 +75,8 @@ class ConversationManager:
             )
             if build_user_context_func:
                 return replace_placeholders(
-                    custom_template, session, self.config, build_user_context_func
+                    custom_template, session, self.config, build_user_context_func,
+                    self._get_astrbot_config()
                 )
             else:
                 # 简单替换基础占位符

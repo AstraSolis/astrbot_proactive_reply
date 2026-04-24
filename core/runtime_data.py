@@ -44,6 +44,8 @@ class RuntimeDataStore:
         self.session_consecutive_failures: dict = {}  # session -> int
         # AI 自主调度信息
         self.session_ai_scheduled: dict = {}
+        # 时区签名，用于检测时区配置变化
+        self.timezone_signature: str = ""
 
         logger.debug("心念 | RuntimeDataStore 初始化完成")
 
@@ -73,6 +75,8 @@ class RuntimeDataStore:
             self.session_consecutive_failures = data["session_consecutive_failures"]
         if "session_ai_scheduled" in data:
             self.session_ai_scheduled = data["session_ai_scheduled"]
+        if "timezone_signature" in data:
+            self.timezone_signature = data["timezone_signature"]
 
     def to_dict(self) -> dict:
         """导出为字典
@@ -91,6 +95,7 @@ class RuntimeDataStore:
             "session_unreplied_count": self.session_unreplied_count,
             "session_consecutive_failures": self.session_consecutive_failures,
             "session_ai_scheduled": self.session_ai_scheduled,
+            "timezone_signature": self.timezone_signature,
         }
 
     def clear_all(self):

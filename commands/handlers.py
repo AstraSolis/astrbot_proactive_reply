@@ -307,6 +307,7 @@ class CommandHandlers:
                 session_id,
                 self.config,
                 self.plugin.user_info_manager.build_user_context_for_proactive,
+                self.context.get_config() if self.context else None,
             )
 
             # 3. 获取人格系统提示词
@@ -437,14 +438,22 @@ class CommandHandlers:
 - 用户连续未回复次数: {unreplied_count}"""
 
             from ..llm.placeholder_utils import replace_placeholders
+            from ..utils.time_utils import get_tz
+            import datetime
+
+            astrbot_cfg = self.context.get_config() if self.context else None
+            resolved_tz = get_tz(self.config, astrbot_cfg)
+            tz_display = str(resolved_tz) if resolved_tz is not None else "系统本地时区"
+            tz_now = datetime.datetime.now(tz=resolved_tz).strftime("%Y-%m-%d %H:%M:%S") if resolved_tz else datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
             result = replace_placeholders(
                 test_prompt,
                 session_id,
                 self.config,
                 self.plugin.user_info_manager.build_user_context_for_proactive,
+                astrbot_cfg,
             )
-            yield event.plain_result(f"✅ 占位符替换测试:\n{result}")
+            yield event.plain_result(f"✅ 占位符替换测试:\n[有效时区: {tz_display} | 当前时区时间: {tz_now}]\n{result}")
         except Exception as e:
             yield event.plain_result(f"❌ 测试失败: {e}")
 
@@ -496,7 +505,8 @@ class CommandHandlers:
         yield event.plain_result("⏳ 正在测试对话保存功能...")
         try:
             session_id = event.unified_msg_origin
-            test_msg = f"测试消息 {datetime.datetime.now().strftime('%H:%M:%S')}"
+            from ..utils.time_utils import get_now
+            test_msg = f"测试消息 {get_now(self.config, self.context.get_config() if self.context else None).strftime('%H:%M:%S')}"
             await self.plugin.conversation_manager.add_message_to_conversation_history(
                 session_id, test_msg
             )
@@ -507,19 +517,21 @@ class CommandHandlers:
     async def _test_schedule(self, event: AstrMessageEvent):
         """测试 AI 调度任务——注入一个 1 分钟后到期的任务并显示当前状态"""
         import uuid
-        from datetime import datetime, timedelta
+        from datetime import timedelta
+        from ..utils.time_utils import get_now
 
         session_id = event.unified_msg_origin
         try:
             # 1. 注入一个 1 分钟后到期的测试任务
-            fire_dt = datetime.now() + timedelta(minutes=1)
+            _now = get_now(self.config, self.context.get_config() if self.context else None).replace(tzinfo=None)
+            fire_dt = _now + timedelta(minutes=1)
             fire_time_str = fire_dt.strftime("%Y-%m-%d %H:%M:%S")
             task = {
                 "task_id": str(uuid.uuid4()),
                 "delay_minutes": 1,
                 "fire_time": fire_time_str,
                 "follow_up_prompt": "[测试] 这是通过 /proactive test schedule 注入的测试跟进消息，请据此发送一条简短的问候。",
-                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "created_at": _now.strftime("%Y-%m-%d %H:%M:%S"),
             }
             self.plugin.task_manager.apply_ai_schedule(session_id, task)
 

@@ -127,6 +127,7 @@ async def analyze_for_schedule(
     current_time_str: str = "",
     schedule_provider_id: str = "",
     existing_tasks: list | None = None,
+    tz=None,
 ) -> Optional[dict]:
     """发起二次 LLM 调用，分析 AI 是否约定了下次联系时间
 
@@ -219,10 +220,11 @@ async def analyze_for_schedule(
             return None
 
         # 计算绝对触发时间
-        fire_time = datetime.now() + timedelta(minutes=result["delay_minutes"])
+        _now = datetime.now(tz=tz) if tz is not None else datetime.now()
+        fire_time = _now + timedelta(minutes=result["delay_minutes"])
         result["fire_time"] = fire_time.strftime("%Y-%m-%d %H:%M:%S")
         result["task_id"] = str(uuid.uuid4())
-        result["created_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        result["created_at"] = _now.strftime("%Y-%m-%d %H:%M:%S")
 
         logger.info(
             f"心念 | 🕐 AI 调度分析结果: {result['delay_minutes']}分钟后"

@@ -185,10 +185,22 @@ async def api_session_stats():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+def _get_astrbot_config_from_managers(managers):
+    """从 managers 中安全获取 AstrBot 全局配置"""
+    try:
+        mgr = managers.get('conversation_manager') or managers.get('user_info_manager')
+        if mgr and hasattr(mgr, 'context') and mgr.context:
+            return mgr.context.get_config()
+    except Exception:
+        pass
+    return None
+
+
 async def get_sessions_data(managers):
     """获取会话数据"""
     from ...core.runtime_data import runtime_data
     from datetime import datetime
+    from ...utils.time_utils import get_now
 
     config_manager = managers.get('config_manager')
     if not config_manager:
@@ -205,7 +217,8 @@ async def get_sessions_data(managers):
             elif isinstance(s, str) and s.strip():
                 safe_sessions.append(s.strip())
 
-    now = datetime.now()
+    astrbot_config = _get_astrbot_config_from_managers(managers)
+    now = get_now(config, astrbot_config).replace(tzinfo=None)
     enhanced_sessions = []
     for session_id in safe_sessions:
         parts = session_id.split(':')

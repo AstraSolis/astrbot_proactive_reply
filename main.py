@@ -49,7 +49,7 @@ class ProactiveReplyPlugin(Star):
         self.persistence_manager = PersistenceManager(self.config, self.context)
         self.config_manager = ConfigManager(self.config, self.persistence_manager)
         self.user_info_manager = UserInfoManager(
-            self.config, self.config_manager, self.persistence_manager
+            self.config, self.config_manager, self.persistence_manager, self.context
         )
         self.conversation_manager = ConversationManager(
             self.config, self.context, self.persistence_manager

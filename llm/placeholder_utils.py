@@ -7,10 +7,11 @@
 import datetime
 from astrbot.api import logger
 from ..core.runtime_data import runtime_data
+from ..utils.time_utils import get_now, get_tz
 
 
 def replace_placeholders(
-    prompt: str, session: str, config: dict, build_user_context_func
+    prompt: str, session: str, config: dict, build_user_context_func, astrbot_config=None
 ) -> str:
     """替换提示词中的占位符
 
@@ -19,6 +20,7 @@ def replace_placeholders(
         session: 会话ID
         config: 配置字典
         build_user_context_func: 构建用户上下文的函数
+        astrbot_config: AstrBot 全局配置对象（可选），用于时区解析
 
     Returns:
         替换后的提示词
@@ -28,16 +30,18 @@ def replace_placeholders(
         last_sent_time = runtime_data.ai_last_sent_times.get(session, "从未发送过")
 
         user_last_time = user_info.get("last_active_time", "未知")
+        tz = get_tz(config, astrbot_config)
+        now = get_now(config, astrbot_config)
 
         placeholders = {
             "{user_context}": build_user_context_func(session),
             "{user_last_message_time}": user_last_time,
-            "{user_last_message_time_ago}": format_time_ago(user_last_time),
+            "{user_last_message_time_ago}": format_time_ago(user_last_time, tz=tz),
             "{username}": user_info.get("username", "未知用户"),
             "{platform}": user_info.get("platform", "未知平台"),
             "{chat_type}": user_info.get("chat_type", "未知"),
             "{ai_last_sent_time}": str(last_sent_time),
-            "{current_time}": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "{current_time}": now.strftime("%Y-%m-%d %H:%M:%S"),
             "{weekday}": [
                 "星期一",
                 "星期二",
@@ -46,7 +50,7 @@ def replace_placeholders(
                 "星期五",
                 "星期六",
                 "星期日",
-            ][datetime.datetime.now().weekday()],
+            ][now.weekday()],
             "{unreplied_count}": str(
                 runtime_data.session_unreplied_count.get(session, 0)
             ),
@@ -71,11 +75,12 @@ def replace_placeholders(
         return prompt  # 如果替换失败，返回原始提示词
 
 
-def format_time_ago(time_str: str) -> str:
+def format_time_ago(time_str: str, tz=None) -> str:
     """将时间字符串转换为相对时间描述（如"5分钟前"）
 
     Args:
         time_str: 时间字符串
+        tz: 时区对象（可选，None 使用系统本地时区）
 
     Returns:
         相对时间描述
@@ -86,7 +91,9 @@ def format_time_ago(time_str: str) -> str:
 
         # 解析时间字符串
         last_time = datetime.datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
-        current_time = datetime.datetime.now()
+        if tz is not None:
+            last_time = last_time.replace(tzinfo=tz)
+        current_time = datetime.datetime.now(tz=tz) if tz is not None else datetime.datetime.now()
 
         # 计算时间差
         time_diff = current_time - last_time

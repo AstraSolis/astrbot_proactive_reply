@@ -27,7 +27,15 @@ class PromptBuilder:
         self, prompt: str, session: str, config: dict, build_user_context_func
     ) -> str:
         """替换提示词中的占位符（包装方法）"""
-        return replace_placeholders(prompt, session, config, build_user_context_func)
+        astrbot_config = self._get_astrbot_config()
+        return replace_placeholders(prompt, session, config, build_user_context_func, astrbot_config)
+
+    def _get_astrbot_config(self):
+        """安全获取 AstrBot 全局配置"""
+        try:
+            return self.context.get_config()
+        except Exception:
+            return None
 
     def _get_persona_name(self, persona) -> str:
         """获取人格名称（支持 dict/Personality 和 Persona SQLModel 两种形式）"""
@@ -74,7 +82,8 @@ class PromptBuilder:
 
         # 替换提示词中的占位符
         final_prompt = replace_placeholders(
-            selected_prompt, session, self.config, build_user_context_func
+            selected_prompt, session, self.config, build_user_context_func,
+            self._get_astrbot_config()
         )
         return final_prompt
 
@@ -293,6 +302,7 @@ class PromptBuilder:
                         session,
                         self.config,
                         build_user_context_func,
+                        self._get_astrbot_config(),
                     )
                 except Exception as e:
                     logger.warning(f"心念 | ⚠️ 时间感知提示词占位符替换失败: {e}")

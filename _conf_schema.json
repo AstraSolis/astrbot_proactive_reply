@@ -11,6 +11,24 @@
             }
         }
     },
+    "basic_settings": {
+        "description": "基础设置",
+        "type": "object",
+        "items": {
+            "timezone": {
+                "description": "时区",
+                "type": "string",
+                "default": "",
+                "hint": "IANA 时区名称，如 Asia/Shanghai、America/New_York。留空使用系统本地时区。启用下方「跟随 AstrBot 时区」后此项将被忽略"
+            },
+            "use_astrbot_timezone": {
+                "description": "跟随 AstrBot 时区",
+                "type": "bool",
+                "default": false,
+                "hint": "启用后，自动使用 AstrBot 全局设置中的时区，无需在上方重复填写。AstrBot 未配置时区时回退到上方的时区字段"
+            }
+        }
+    },
     "user_info": {
         "description": "聊天附带用户信息设置",
         "type": "object",
