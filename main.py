@@ -4,6 +4,8 @@ AstrBot 主动回复插件(心念)
 支持聊天附带用户信息、定时主动发送消息和 AI 自主调度
 """
 
+import os
+
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.provider import ProviderRequest
@@ -27,6 +29,9 @@ class ProactiveReplyPlugin(Star):
     该类整合了各个功能模块，提供统一的插件接口
     """
 
+    TEMP_UPLOAD_PREFIX = "plugin_upload_"
+    PLUGIN_DIR_NAME = "astrbot_proactive_reply"
+
     def __init__(self, context: Context, config: AstrBotConfig = None):
         """初始化插件
 
@@ -34,6 +39,18 @@ class ProactiveReplyPlugin(Star):
             context: AstrBot上下文对象
             config: AstrBot配置对象
         """
+        # 检测是否从 AstrBot zip 安装残留的临时目录加载
+        # 当 zip 安装失败（目标目录已存在）时，AstrBot 不会清理提取出的临时目录，
+        # 导致下次重启时该目录被当作独立插件实例再次加载，产生重复。
+        # 主动抛错可让该目录进入"加载失败"列表，用户可通过 WebUI 一键卸载清理。
+        _current_dir_name = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
+        if _current_dir_name.startswith(self.TEMP_UPLOAD_PREFIX):
+            raise RuntimeError(
+                f"心念 | 检测到从 AstrBot zip 安装残留目录加载（目录名: {_current_dir_name}）。"
+                "请在 AstrBot WebUI 插件页面的「加载失败插件」中找到此条目并点击「卸载」删除该目录，"
+                "然后通过「重载」按钮重新加载正式安装目录中的插件。"
+            )
+
         super().__init__(context)
         self.config = config or {}
         self._is_terminating = False
@@ -103,6 +120,10 @@ class ProactiveReplyPlugin(Star):
 
     async def initialize(self):
         """插件初始化方法"""
+        # 自动清理 AstrBot zip 安装产生的残留临时目录（plugin_upload_* 前缀）
+        # 这些目录由 AstrBot 安装 bug 产生，会在重启时被误加载为重复实例
+        await self._cleanup_orphaned_upload_dirs()
+
         # 确保配置结构完整（包括加载持久化数据）
         self.config_manager.ensure_config_structure()
 
@@ -332,6 +353,55 @@ class ProactiveReplyPlugin(Star):
         """
         async for result in self.command_handlers.restart(event):
             yield result
+
+    # ==================== 残留目录清理 ====================
+
+    async def _cleanup_orphaned_upload_dirs(self):
+        """清理 AstrBot zip 安装残留的 plugin_upload_* 临时目录
+
+        AstrBot 在通过 zip 文件安装插件时，若目标目录已存在，会抛出"目录已存在"异常，
+        但不清理已解压的临时目录（plugin_upload_*），导致重启后被误加载为重复实例。
+        此方法在正式实例初始化时自动扫描并删除这些残留目录。
+        """
+        try:
+            import shutil
+            import yaml
+
+            plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            if not os.path.isdir(plugin_root):
+                return
+
+            removed_dirs = []
+            for dir_name in os.listdir(plugin_root):
+                if not dir_name.startswith(self.TEMP_UPLOAD_PREFIX):
+                    continue
+                dir_path = os.path.join(plugin_root, dir_name)
+                if not os.path.isdir(dir_path):
+                    continue
+                metadata_path = os.path.join(dir_path, "metadata.yaml")
+                if not os.path.exists(metadata_path):
+                    continue
+                try:
+                    with open(metadata_path, encoding="utf-8") as f:
+                        meta = yaml.safe_load(f)
+                    if isinstance(meta, dict) and meta.get("name") == self.PLUGIN_DIR_NAME:
+                        shutil.rmtree(dir_path)
+                        removed_dirs.append(dir_name)
+                        logger.info(f"心念 | ✅ 已自动清理 zip 安装残留目录: {dir_name}")
+                except Exception as e:
+                    logger.warning(f"心念 | 清理残留目录 {dir_name} 失败: {e}")
+
+            if removed_dirs:
+                star_manager = getattr(self.context, "_star_manager", None)
+                failed_plugin_dict = getattr(star_manager, "failed_plugin_dict", None)
+                if isinstance(failed_plugin_dict, dict):
+                    for dir_name in removed_dirs:
+                        failed_plugin_dict.pop(dir_name, None)
+                    rebuild_failed_info = getattr(star_manager, "_rebuild_failed_plugin_info", None)
+                    if callable(rebuild_failed_info):
+                        rebuild_failed_info()
+        except Exception as e:
+            logger.warning(f"心念 | 残留目录扫描过程出错（不影响插件运行）: {e}")
 
     # ==================== 插件终止 ====================
 
