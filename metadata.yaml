@@ -1,7 +1,7 @@
 name: astrbot_proactive_reply
 display_name: 心念
 desc: 一个支持聊天增强、时间感知和智能主动对话的AstrBot插件
-version: v2.0.1
+version: v2.1.0
 author: AstraSolis
 astrbot_version: ">=4.16.0"
 tags: [ "主动回复", "时间感知", "聊天增强","用户信息"]
