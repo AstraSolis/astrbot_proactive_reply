@@ -7,7 +7,7 @@
 import asyncio
 import random
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as _utc_tz
 from typing import Optional
 from astrbot.api import logger
 from astrbot.api.event import MessageChain
@@ -85,6 +85,31 @@ class ProactiveTaskManager:
         tz = get_tz(self.config, self._get_astrbot_config())
         return str(tz) if tz is not None else "system_local"
 
+    def _utc_timestamp_to_local_naive(self, utc_ts: float) -> datetime:
+        """将 UTC 时间戳转换为本地配置时区的 naive datetime（与 _get_now() 同源）"""
+        from ..utils.time_utils import get_tz
+        utc_dt = datetime.fromtimestamp(utc_ts, tz=_utc_tz.utc)
+        tz = get_tz(self.config, self._get_astrbot_config())
+        if tz is not None:
+            return utc_dt.astimezone(tz).replace(tzinfo=None)
+        return utc_dt.astimezone().replace(tzinfo=None)
+
+    def _get_task_fire_datetime(self, task: dict) -> Optional[datetime]:
+        """从任务字典中提取触发时间（优先使用 UTC 时间戳，降级到字符串解析）"""
+        utc_ts = task.get("fire_time_utc")
+        if utc_ts is not None:
+            try:
+                return self._utc_timestamp_to_local_naive(float(utc_ts))
+            except Exception:
+                pass
+        fire_time_str = task.get("fire_time")
+        if fire_time_str:
+            try:
+                return datetime.strptime(fire_time_str, "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                pass
+        return None
+
     def _recalculate_ai_schedule_fire_times(self, old_tz_sig: str, new_tz_sig: str):
         """时区变化后重算 AI 调度任务的 fire_time
 
@@ -105,6 +130,21 @@ class ProactiveTaskManager:
             if not isinstance(tasks, list):
                 continue
             for task in tasks:
+                utc_ts = task.get("fire_time_utc")
+                if utc_ts is not None:
+                    # 新数据：从 UTC 时间戳直接生成新时区的显示字符串
+                    try:
+                        utc_dt = datetime.fromtimestamp(float(utc_ts), tz=_utc_tz.utc)
+                        converted = utc_dt.astimezone(new_tz) if new_tz else utc_dt.astimezone()
+                        new_str = converted.strftime("%Y-%m-%d %H:%M:%S")
+                        if new_str != task.get("fire_time"):
+                            task["fire_time"] = new_str
+                            recalc_count += 1
+                    except Exception as e:
+                        logger.debug(f"心念 | AI 调度任务 fire_time_utc 重算跳过: {e}")
+                    continue
+
+                # 旧数据（无 fire_time_utc）：保留原有 wall-clock 转换逻辑
                 fire_time_str = task.get("fire_time")
                 if not fire_time_str:
                     continue
@@ -211,14 +251,12 @@ class ProactiveTaskManager:
         next_fire = regular_next_fire
         ai_tasks = runtime_data.session_ai_scheduled.get(session, [])
         if ai_tasks:
-            # 过滤掉无效的时间字符串
+            # 过滤掉无效的时间
             valid_times = []
             for task in ai_tasks:
-                try:
-                    t = datetime.strptime(task["fire_time"], "%Y-%m-%d %H:%M:%S")
+                t = self._get_task_fire_datetime(task)
+                if t is not None:
                     valid_times.append(t)
-                except ValueError:
-                    continue
 
             if valid_times:
                 min_ai_time = min(valid_times)
@@ -419,12 +457,9 @@ class ProactiveTaskManager:
         for session in sessions:
             ai_tasks = runtime_data.session_ai_scheduled.get(session, [])
             for task in ai_tasks:
-                try:
-                    fire_time = datetime.strptime(task["fire_time"], "%Y-%m-%d %H:%M:%S")
-                    if fire_time > now:  # 只考虑未来的任务
-                        next_events.append(fire_time)
-                except (ValueError, KeyError):
-                    continue
+                fire_time = self._get_task_fire_datetime(task)
+                if fire_time is not None and fire_time > now:
+                    next_events.append(fire_time)
 
         # 2. 添加睡眠结束时间
         seconds_until_sleep_end = get_seconds_until_sleep_end(self.config, self._get_astrbot_config())
@@ -670,11 +705,9 @@ class ProactiveTaskManager:
                 # 按时间排序找到最早的到期任务
                 sorted_tasks = []
                 for task in ai_tasks:
-                    try:
-                        t = datetime.strptime(task["fire_time"], "%Y-%m-%d %H:%M:%S")
+                    t = self._get_task_fire_datetime(task)
+                    if t is not None:
                         sorted_tasks.append((t, task))
-                    except Exception:
-                        continue
                 sorted_tasks.sort(key=lambda x: x[0])
 
                 # 查找已到期的任务
@@ -1019,14 +1052,11 @@ class ProactiveTaskManager:
         is_ai_task = False
         ai_tasks = runtime_data.session_ai_scheduled.get(session, [])
         for task in ai_tasks:
-            try:
-                tf = datetime.strptime(task["fire_time"], "%Y-%m-%d %H:%M:%S")
-                # 允许 1 秒误差
-                if abs((tf - fire_time).total_seconds()) < 2:
-                    is_ai_task = True
-                    break
-            except ValueError:
-                continue
+            tf = self._get_task_fire_datetime(task)
+            # 允许 1 秒误差
+            if tf is not None and abs((tf - fire_time).total_seconds()) < 2:
+                is_ai_task = True
+                break
 
         suffix = " [AI调度]" if is_ai_task else ""
 

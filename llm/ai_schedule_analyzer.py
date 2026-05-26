@@ -223,6 +223,11 @@ async def analyze_for_schedule(
         _now = datetime.now(tz=tz) if tz is not None else datetime.now()
         fire_time = _now + timedelta(minutes=result["delay_minutes"])
         result["fire_time"] = fire_time.strftime("%Y-%m-%d %H:%M:%S")
+        # UTC 时间戳：用于精确比较，彻底规避时区转换问题
+        result["fire_time_utc"] = (
+            fire_time.timestamp() if tz is not None
+            else fire_time.astimezone().timestamp()
+        )
         result["task_id"] = str(uuid.uuid4())
         result["created_at"] = _now.strftime("%Y-%m-%d %H:%M:%S")
 

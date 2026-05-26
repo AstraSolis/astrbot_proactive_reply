@@ -1,6 +1,7 @@
 import sys
 import unittest
 import importlib.util
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 # Mock astrbot module before anything else
@@ -81,6 +82,54 @@ class TestAIScheduleAnalyzer(unittest.TestCase):
         api_response = "not a json"
         result = parse_schedule_response(api_response)
         self.assertIsNone(result)
+
+
+class TestFireTimeUtc(unittest.TestCase):
+    """验证 fire_time_utc 与 fire_time 的一致性"""
+
+    def test_utc_timestamp_roundtrip_with_timezone(self):
+        """有时区时：从 UTC 时间戳可以还原出相同的本地时间字符串"""
+        try:
+            from zoneinfo import ZoneInfo
+        except ImportError:
+            self.skipTest("zoneinfo 不可用")
+
+        tz = ZoneInfo("Asia/Shanghai")
+        now_aware = datetime.now(tz=tz)
+        fire_time = now_aware + timedelta(minutes=40)
+
+        fire_time_str = fire_time.strftime("%Y-%m-%d %H:%M:%S")
+        fire_time_utc = fire_time.timestamp()
+
+        recovered = datetime.fromtimestamp(fire_time_utc, tz=timezone.utc).astimezone(tz)
+        self.assertEqual(recovered.strftime("%Y-%m-%d %H:%M:%S"), fire_time_str)
+
+    def test_utc_timestamp_roundtrip_without_timezone(self):
+        """无时区时：naive datetime 经 astimezone() 转为 UTC 时间戳后可还原"""
+        now_naive = datetime.now()
+        fire_time = now_naive + timedelta(minutes=40)
+
+        fire_time_str = fire_time.strftime("%Y-%m-%d %H:%M:%S")
+        fire_time_utc = fire_time.astimezone().timestamp()
+
+        recovered = datetime.fromtimestamp(fire_time_utc, tz=timezone.utc).astimezone()
+        self.assertEqual(recovered.strftime("%Y-%m-%d %H:%M:%S"), fire_time_str)
+
+    def test_utc_timestamp_is_float(self):
+        """fire_time_utc 应该是 float 类型"""
+        now = datetime.now()
+        fire_time = now + timedelta(minutes=10)
+        utc_ts = fire_time.astimezone().timestamp()
+        self.assertIsInstance(utc_ts, float)
+
+    def test_utc_timestamps_preserve_ordering(self):
+        """UTC 时间戳保留时间顺序"""
+        base = datetime.now()
+        t1 = (base + timedelta(minutes=10)).astimezone().timestamp()
+        t2 = (base + timedelta(minutes=20)).astimezone().timestamp()
+        t3 = (base + timedelta(minutes=30)).astimezone().timestamp()
+        self.assertLess(t1, t2)
+        self.assertLess(t2, t3)
 
 
 if __name__ == "__main__":
