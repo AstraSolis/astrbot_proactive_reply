@@ -1,0 +1,389 @@
+"""
+插件 Web API
+
+向 AstrBot 注册所有插件 REST API，供 Plugin Pages 调用
+"""
+
+from datetime import datetime
+
+from quart import jsonify, request
+
+from astrbot.api import logger
+
+from .core.runtime_data import runtime_data
+from .utils.time_utils import get_now
+
+PLUGIN_NAME = "astrbot_proactive_reply"
+
+
+def register_web_apis(context, managers: dict) -> None:
+    """向 AstrBot 注册所有插件 Web API
+
+    Args:
+        context: AstrBot 上下文
+        managers: 插件管理器字典
+    """
+
+    async def get_dashboard_stats():
+        """获取仪表板统计信息"""
+        try:
+            stats = _build_dashboard_stats(managers)
+            return jsonify({"success": True, "stats": stats})
+        except Exception as e:
+            logger.error(f"心念 Web API | 获取仪表板统计失败: {e}")
+            return jsonify({"success": False, "error": str(e)}), 500
+
+    async def get_sessions_list():
+        """获取会话列表"""
+        try:
+            sessions = _build_sessions_data(managers)
+            return jsonify({"success": True, "sessions": sessions, "total": len(sessions)})
+        except Exception as e:
+            logger.error(f"心念 Web API | 获取会话列表失败: {e}")
+            return jsonify({"success": False, "error": str(e)}), 500
+
+    async def add_session():
+        """添加会话"""
+        try:
+            config_manager = managers.get("config_manager")
+            if not config_manager:
+                return jsonify({"success": False, "error": "配置管理器未找到"}), 500
+
+            data = await request.get_json()
+            session_id = (data or {}).get("session_id", "").strip()
+            if not session_id:
+                return jsonify({"success": False, "error": "会话 ID 不能为空"}), 400
+
+            parts = session_id.split(":")
+            if len(parts) < 3:
+                return jsonify({"success": False, "error": "会话 ID 格式不正确，应为 platform:type:id"}), 400
+
+            config = config_manager.config if hasattr(config_manager, "config") else {}
+            existing = _safe_sessions_list(config)
+
+            if session_id in existing:
+                return jsonify({"success": False, "error": "该会话已存在"}), 400
+
+            existing.append(session_id)
+            config.setdefault("proactive_reply", {})["sessions"] = existing
+            if not config_manager.save_config_safely():
+                return jsonify({"success": False, "error": "配置保存失败"}), 500
+
+            logger.info(f"心念 Web API | 已添加会话: {session_id}")
+            return jsonify({"success": True, "message": f"已添加会话: {session_id}"})
+        except Exception as e:
+            logger.error(f"心念 Web API | 添加会话失败: {e}")
+            return jsonify({"success": False, "error": str(e)}), 500
+
+    async def remove_session():
+        """移除会话"""
+        try:
+            config_manager = managers.get("config_manager")
+            if not config_manager:
+                return jsonify({"success": False, "error": "配置管理器未找到"}), 500
+
+            data = await request.get_json()
+            session_id = (data or {}).get("session_id", "").strip()
+            if not session_id:
+                return jsonify({"success": False, "error": "会话 ID 不能为空"}), 400
+
+            config = config_manager.config if hasattr(config_manager, "config") else {}
+            existing = _safe_sessions_list(config)
+            original_count = len(existing)
+            updated = [s for s in existing if s != session_id]
+
+            if len(updated) == original_count:
+                return jsonify({"success": False, "error": "未找到该会话"}), 404
+
+            config.setdefault("proactive_reply", {})["sessions"] = updated
+            if not config_manager.save_config_safely():
+                return jsonify({"success": False, "error": "配置保存失败"}), 500
+
+            task_manager = managers.get("task_manager")
+            if task_manager and hasattr(task_manager, "clear_session_timer"):
+                task_manager.clear_session_timer(session_id)
+
+            logger.info(f"心念 Web API | 已移除会话: {session_id}")
+            return jsonify({"success": True, "message": f"已移除会话: {session_id}"})
+        except Exception as e:
+            logger.error(f"心念 Web API | 移除会话失败: {e}")
+            return jsonify({"success": False, "error": str(e)}), 500
+
+    context.register_web_api(
+        f"/{PLUGIN_NAME}/dashboard/stats",
+        get_dashboard_stats,
+        ["GET"],
+        "获取仪表板统计信息",
+    )
+    context.register_web_api(
+        f"/{PLUGIN_NAME}/sessions/list",
+        get_sessions_list,
+        ["GET"],
+        "获取会话列表",
+    )
+    context.register_web_api(
+        f"/{PLUGIN_NAME}/sessions/add",
+        add_session,
+        ["POST"],
+        "添加会话",
+    )
+    context.register_web_api(
+        f"/{PLUGIN_NAME}/sessions/remove",
+        remove_session,
+        ["POST"],
+        "移除会话",
+    )
+
+    logger.info("心念 Web API | 所有 API 已注册")
+
+
+def _safe_sessions_list(config: dict) -> list:
+    """从配置中安全提取会话 ID 列表"""
+    sessions = config.get("proactive_reply", {}).get("sessions", [])
+    result = []
+    if isinstance(sessions, list):
+        for s in sessions:
+            if isinstance(s, dict) and "session_id" in s:
+                result.append(s["session_id"])
+            elif isinstance(s, str) and s.strip():
+                result.append(s.strip())
+    return result
+
+
+def _get_astrbot_config(managers: dict):
+    """从 managers 中安全获取 AstrBot 全局配置"""
+    try:
+        mgr = managers.get("conversation_manager") or managers.get("user_info_manager")
+        if mgr and hasattr(mgr, "context") and mgr.context:
+            return mgr.context.get_config()
+    except Exception:
+        pass
+    return None
+
+
+def _build_dashboard_stats(managers: dict) -> dict:
+    """构建仪表板统计数据"""
+    config_manager = managers.get("config_manager")
+    config = config_manager.config if config_manager and hasattr(config_manager, "config") else {}
+    astrbot_config = _get_astrbot_config(managers)
+
+    sessions = _safe_sessions_list(config)
+
+    task_manager = managers.get("task_manager")
+    proactive_running = False
+    ai_schedules_count = 0
+    if task_manager:
+        proactive_task = getattr(task_manager, "proactive_task", None)
+        proactive_running = (
+            proactive_task is not None and not proactive_task.done()
+            if proactive_task
+            else False
+        )
+        for tasks in runtime_data.session_ai_scheduled.values():
+            if isinstance(tasks, list):
+                ai_schedules_count += len(tasks)
+            elif isinstance(tasks, dict):
+                ai_schedules_count += 1
+
+    return {
+        "session_count": len(sessions),
+        "user_count": len(runtime_data.session_user_info),
+        "ai_schedules_count": ai_schedules_count,
+        "proactive_running": proactive_running,
+        "proactive_enabled": config.get("proactive_reply", {}).get("enabled", False),
+        "ai_schedule_enabled": config.get("ai_schedule", {}).get("enabled", False),
+        "recent_activities": _build_recent_activities(config, astrbot_config),
+    }
+
+
+def _build_recent_activities(config: dict, astrbot_config) -> list:
+    """构建最近活动时间线（最多10条，按时间倒序）"""
+    now = get_now(config, astrbot_config).replace(tzinfo=None)
+    activities = []
+
+    for session, time_str in runtime_data.last_sent_times.items():
+        try:
+            sent_time = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+            user_info = runtime_data.session_user_info.get(session, {})
+            username = user_info.get("username", "")
+            label = f"向 {username}" if username else "向会话"
+            activities.append(
+                {
+                    "type": "send",
+                    "icon": "send",
+                    "color": "success",
+                    "title": f"{label} 发送了主动消息",
+                    "desc": _truncate_session(session),
+                    "time": time_str,
+                    "sort_key": sent_time,
+                }
+            )
+        except ValueError:
+            continue
+
+    for session, tasks in runtime_data.session_ai_scheduled.items():
+        task_list = (
+            tasks if isinstance(tasks, list) else [tasks] if isinstance(tasks, dict) else []
+        )
+        for task in task_list:
+            created_at = task.get("created_at", "")
+            fire_time = task.get("fire_time", "")
+            if created_at:
+                try:
+                    created = datetime.strptime(created_at, "%Y-%m-%d %H:%M:%S")
+                    activities.append(
+                        {
+                            "type": "schedule",
+                            "icon": "robot",
+                            "color": "warning",
+                            "title": "AI 调度了新任务",
+                            "desc": f"计划于 {fire_time} 发送 · {_truncate_session(session)}",
+                            "time": created_at,
+                            "sort_key": created,
+                        }
+                    )
+                except ValueError:
+                    continue
+
+    for session, info in runtime_data.session_user_info.items():
+        last_active = info.get("last_active_time", "")
+        username = info.get("username", "未知用户")
+        if last_active:
+            try:
+                active_time = datetime.strptime(last_active, "%Y-%m-%d %H:%M:%S")
+                activities.append(
+                    {
+                        "type": "user_active",
+                        "icon": "user",
+                        "color": "info",
+                        "title": f"{username} 最后活跃",
+                        "desc": _truncate_session(session),
+                        "time": last_active,
+                        "sort_key": active_time,
+                    }
+                )
+            except ValueError:
+                continue
+
+    activities.sort(key=lambda x: x["sort_key"], reverse=True)
+    activities = activities[:10]
+
+    for activity in activities:
+        activity["time_display"] = _format_relative_time(activity.pop("sort_key"), now)
+
+    return activities
+
+
+def _truncate_session(session_id: str) -> str:
+    """截断会话 ID 以便展示"""
+    parts = session_id.split(":")
+    if len(parts) >= 3:
+        platform = parts[0]
+        chat_type = parts[1]
+        raw_id = ":".join(parts[2:])
+        if len(raw_id) > 12:
+            raw_id = raw_id[:12] + "…"
+        return f"{platform}:{chat_type}:{raw_id}"
+    if len(session_id) > 30:
+        return session_id[:30] + "…"
+    return session_id
+
+
+def _format_relative_time(dt: datetime, now: datetime) -> str:
+    """格式化为相对时间描述"""
+    delta = now - dt
+    seconds = int(delta.total_seconds())
+
+    if seconds < 0:
+        future = abs(seconds)
+        if future < 60:
+            return "即将"
+        if future < 3600:
+            return f"{future // 60} 分钟后"
+        if future < 86400:
+            return f"{future // 3600} 小时后"
+        return dt.strftime("%m-%d %H:%M")
+
+    if seconds < 60:
+        return "刚刚"
+    if seconds < 3600:
+        return f"{seconds // 60} 分钟前"
+    if seconds < 86400:
+        return f"{seconds // 3600} 小时前"
+    if seconds < 172800:
+        return "昨天"
+    return dt.strftime("%m-%d %H:%M")
+
+
+def _build_sessions_data(managers: dict) -> list:
+    """构建会话列表数据"""
+    config_manager = managers.get("config_manager")
+    if not config_manager:
+        return []
+
+    config = config_manager.config if hasattr(config_manager, "config") else {}
+    astrbot_config = _get_astrbot_config(managers)
+    now = get_now(config, astrbot_config).replace(tzinfo=None)
+
+    sessions = []
+    for session_id in _safe_sessions_list(config):
+        session = _build_session_entry(session_id, now)
+        sessions.append(session)
+
+    return sessions
+
+
+def _build_session_entry(session_id: str, now: datetime) -> dict:
+    """构建单个会话条目的数据"""
+    parts = session_id.split(":")
+    entry = {
+        "session_id": session_id,
+        "platform": parts[0] if len(parts) >= 3 else "unknown",
+        "chat_type": parts[1] if len(parts) >= 3 else "unknown",
+        "raw_id": ":".join(parts[2:]) if len(parts) >= 3 else session_id,
+    }
+
+    next_fire_str = runtime_data.session_next_fire_times.get(session_id, "")
+    if next_fire_str:
+        try:
+            next_fire = datetime.strptime(next_fire_str, "%Y-%m-%d %H:%M:%S")
+            delta = next_fire - now
+            total_minutes = int(delta.total_seconds() / 60)
+            if total_minutes <= 0:
+                entry["next_fire_display"] = "即将发送"
+            elif total_minutes < 60:
+                entry["next_fire_display"] = f"{total_minutes} 分钟后"
+            else:
+                hours = total_minutes // 60
+                minutes = total_minutes % 60
+                entry["next_fire_display"] = f"{hours} 小时 {minutes} 分钟后"
+        except ValueError:
+            entry["next_fire_display"] = "—"
+    else:
+        entry["next_fire_display"] = "等待初始化"
+
+    last_sent = runtime_data.last_sent_times.get(session_id, "")
+    entry["last_sent_time"] = last_sent or "—"
+
+    entry["unreplied_count"] = runtime_data.session_unreplied_count.get(session_id, 0)
+
+    user_info = runtime_data.session_user_info.get(session_id, {})
+    entry["username"] = user_info.get("username", "")
+    entry["user_last_active"] = user_info.get("last_active_time", "")
+
+    ai_tasks = runtime_data.session_ai_scheduled.get(session_id, [])
+    if isinstance(ai_tasks, list):
+        entry["ai_task_count"] = len(ai_tasks)
+    elif isinstance(ai_tasks, dict):
+        entry["ai_task_count"] = 1
+    else:
+        entry["ai_task_count"] = 0
+
+    if next_fire_str:
+        entry["status"] = "active"
+        entry["status_display"] = "活跃"
+    else:
+        entry["status"] = "inactive"
+        entry["status_display"] = "等待中"
+
+    return entry
