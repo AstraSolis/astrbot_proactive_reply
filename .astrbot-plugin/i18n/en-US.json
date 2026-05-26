@@ -1,8 +1,312 @@
 {
+  "metadata": {
+    "display_name": "Proactive Mind",
+    "short_desc": "Chat enhancement, time awareness, and smart proactive messaging.",
+    "desc": "An AstrBot plugin with chat enhancement, time awareness, and intelligent proactive conversations."
+  },
+  "config": {
+    "support_author": {
+      "description": "⭐ Support the author",
+      "github_link": {
+        "description": "GitHub repository URL",
+        "hint": "If this plugin helps you, please star the repo!"
+      }
+    },
+    "basic_settings": {
+      "description": "Basic settings",
+      "timezone": {
+        "description": "Timezone",
+        "hint": "IANA name, e.g. Asia/Shanghai. Empty = system local. Ignored when following AstrBot timezone"
+      },
+      "use_astrbot_timezone": {
+        "description": "Follow AstrBot timezone",
+        "hint": "Use global AstrBot timezone; falls back to the field above if unset"
+      }
+    },
+    "user_info": {
+      "description": "User context in chat",
+      "enabled": {
+        "description": "Append user info to chat",
+        "hint": "Appends user info to the system prompt before each LLM request"
+      },
+      "time_format": {
+        "description": "Time format",
+        "hint": "Python datetime format, e.g. %Y-%m-%d %H:%M:%S"
+      },
+      "template": {
+        "description": "User info template",
+        "hint": "Appended to system prompt; supports {username}, {user_id}, {time}, etc."
+      }
+    },
+    "time_awareness": {
+      "description": "Time awareness",
+      "time_guidance_enabled": {
+        "description": "Enable time-awareness prompt",
+        "hint": "Adds time guidance for normal and proactive chat"
+      },
+      "time_guidance_prompt": {
+        "description": "Time-awareness prompt text",
+        "hint": "Custom guidance; supports \\n"
+      },
+      "sleep_mode_enabled": {
+        "description": "Enable sleep hours",
+        "hint": "No proactive messages during sleep; sleep hint on user messages"
+      },
+      "sleep_hours": {
+        "description": "Sleep time range",
+        "hint": "start-end (24h), overnight supported"
+      },
+      "sleep_prompt": {
+        "description": "Sleep-time prompt",
+        "hint": "Appended during sleep hours"
+      },
+      "send_on_wake_enabled": {
+        "description": "Send when sleep ends",
+        "hint": "One proactive message after sleep ends"
+      },
+      "wake_send_mode": {
+        "description": "Wake send mode",
+        "hint": "immediate or delayed",
+        "labels": [
+          "Send immediately",
+          "Send delayed"
+        ]
+      }
+    },
+    "proactive_reply": {
+      "description": "Scheduled proactive messages",
+      "enabled": {
+        "description": "Enable scheduled proactive messages",
+        "hint": "Sends messages to configured sessions on a schedule"
+      },
+      "sessions": {
+        "description": "Target sessions",
+        "hint": "platform:type:id — use /proactive add_session in chat"
+      },
+      "timing_mode": {
+        "description": "Timing mode",
+        "hint": "Fixed or random interval",
+        "labels": [
+          "Fixed interval",
+          "Random interval"
+        ]
+      },
+      "interval_minutes": {
+        "description": "Send interval (minutes)",
+        "hint": "Fixed-interval mode only"
+      },
+      "random_delay_enabled": {
+        "description": "Enable random delay",
+        "hint": "Fixed-interval mode only"
+      },
+      "min_random_minutes": {
+        "description": "Min random delay (minutes)",
+        "hint": "Fixed-interval mode only"
+      },
+      "max_random_minutes": {
+        "description": "Max random delay (minutes)",
+        "hint": "Fixed-interval mode only"
+      },
+      "random_min_minutes": {
+        "description": "Min random interval (minutes)",
+        "hint": "Random-interval mode only"
+      },
+      "random_max_minutes": {
+        "description": "Max random interval (minutes)",
+        "hint": "Random-interval mode only"
+      },
+      "proactive_default_persona": {
+        "description": "Default proactive persona",
+        "hint": "Base system prompt when no AstrBot persona"
+      },
+      "proactive_prompt_list": {
+        "description": "Proactive prompt list",
+        "hint": "Random selection; supports placeholders"
+      },
+      "duplicate_detection_enabled": {
+        "description": "Enable duplicate detection",
+        "hint": "Retry up to 3 times if duplicate of last message"
+      },
+      "include_history_enabled": {
+        "description": "Include chat history",
+        "hint": "Use recent history when generating proactive messages"
+      },
+      "history_message_count": {
+        "description": "History message count",
+        "hint": "Recommended 5–20"
+      },
+      "history_save_mode": {
+        "description": "History save mode",
+        "hint": "User-side history entry content",
+        "labels": [
+          "Default trigger",
+          "Proactive prompt",
+          "Custom content"
+        ]
+      },
+      "custom_history_prompt": {
+        "description": "Custom history prompt",
+        "hint": "Custom mode only"
+      },
+      "use_database_fallback": {
+        "description": "Database fallback status (info)",
+        "hint": "Informational only"
+      }
+    },
+    "message_split": {
+      "description": "Message splitting",
+      "enabled": {
+        "description": "Enable message splitting",
+        "hint": "Send parts with delay between them"
+      },
+      "mode": {
+        "description": "Split mode",
+        "hint": "Preset or official-style",
+        "labels": [
+          "Backslash",
+          "Newline",
+          "Comma",
+          "Semicolon",
+          "Punctuation",
+          "Custom regex",
+          "Word list",
+          "Regex (official)"
+        ]
+      },
+      "custom_pattern": {
+        "description": "Custom split regex",
+        "hint": "Custom mode only"
+      },
+      "regex": {
+        "description": "Regex (official style)",
+        "hint": "Regex mode only"
+      },
+      "split_words": {
+        "description": "Split word list",
+        "hint": "Words mode only"
+      },
+      "delay_ms": {
+        "description": "Delay between parts (ms)",
+        "hint": "Recommended 300–1000 ms"
+      }
+    },
+    "ai_schedule": {
+      "description": "AI self-scheduling",
+      "enabled": {
+        "description": "Enable AI self-scheduling",
+        "hint": "Schedules one-shot tasks from time mentions (extra LLM call)"
+      },
+      "provider_id": {
+        "description": "Schedule analysis provider (empty = main)",
+        "hint": "Optional cheaper/faster model"
+      },
+      "analysis_prompt": {
+        "description": "Schedule analysis prompt",
+        "hint": "System prompt for analysis"
+      }
+    }
+  },
   "pages": {
     "webui": {
-      "title": "Proactive Reply Console",
-      "description": "Dashboard and session management"
+      "title": "Proactive Mind Console",
+      "description": "Dashboard and session management",
+      "heading": "Proactive Mind",
+      "tab_dashboard": "Dashboard",
+      "tab_sessions": "Sessions",
+      "btn_refresh": "Refresh",
+      "btn_add_session": "Add session",
+      "loading": "Loading…",
+      "plugin_status": "Plugin status",
+      "recent_activity": "Recent activity",
+      "stat_total_sessions": "Total sessions",
+      "stat_active": "Active",
+      "stat_inactive": "Inactive",
+      "session_list": "Proactive sessions",
+      "dialog_add_title": "Add proactive session",
+      "label_session_id": "Session ID",
+      "session_id_placeholder": "e.g. aiocqhttp:GroupMessage:123456789",
+      "session_id_format_hint": "Format:",
+      "session_id_example": "Example:",
+      "btn_cancel": "Cancel",
+      "btn_add": "Add",
+      "btn_adding": "Adding…",
+      "btn_add_first": "Add first session",
+      "stat_session_count": "Total sessions",
+      "stat_ai_schedules": "AI schedules",
+      "stat_users": "Users tracked",
+      "stat_run_status": "Run status",
+      "status_running": "Running",
+      "status_stopped": "Stopped",
+      "label_plugin_name": "Plugin name",
+      "label_feature_status": "Features",
+      "tag_proactive": "Proactive",
+      "tag_ai_schedule": "AI schedule",
+      "tag_timer": "Timer",
+      "empty_activity_title": "No activity yet",
+      "empty_activity_desc": "Activity will appear here once the plugin starts working",
+      "empty_sessions_title": "No proactive sessions yet",
+      "empty_sessions_desc": "Use the button above or run",
+      "load_sessions_failed": "Load failed — switch tabs and try again",
+      "th_session_id": "Session ID",
+      "th_platform": "Platform",
+      "th_user": "User",
+      "th_next_send": "Next send",
+      "th_last_send": "Last sent",
+      "th_unreplied": "Unreplied",
+      "th_status": "Status",
+      "th_actions": "Actions",
+      "remove_title": "Remove",
+      "err_unknown": "Unknown error",
+      "err_dashboard_load": "Failed to load dashboard:",
+      "err_sessions_load": "Failed to load sessions:",
+      "toast_enter_session_id": "Please enter a session ID",
+      "toast_invalid_format": "Invalid format — use platform:type:id",
+      "toast_add_failed": "Add failed",
+      "toast_session_added": "Session added",
+      "toast_remove_failed": "Remove failed",
+      "toast_session_removed": "Session removed",
+      "confirm_remove": "Remove session \"{session_id}\"?"
+    }
+  },
+  "api": {
+    "errors": {
+      "config_manager_not_found": "Config manager not found",
+      "session_id_empty": "Session ID cannot be empty",
+      "session_id_invalid": "Invalid session ID — use platform:type:id",
+      "session_exists": "Session already exists",
+      "config_save_failed": "Failed to save config",
+      "session_not_found": "Session not found",
+      "add_failed": "Add failed",
+      "remove_failed": "Remove failed"
+    },
+    "messages": {
+      "session_added": "Session added: {session_id}",
+      "session_removed": "Session removed: {session_id}"
+    },
+    "activity": {
+      "proactive_send_user": "Sent proactive message to {username}",
+      "proactive_send_session": "Sent proactive message to session",
+      "schedule_created": "AI scheduled a new task",
+      "schedule_desc": "Planned at {fire_time} · {session}",
+      "user_active": "{username} last active",
+      "unknown_user": "Unknown user"
+    },
+    "time": {
+      "soon": "Soon",
+      "in_minutes": "in {n} min",
+      "in_hours": "in {n} h",
+      "just_now": "Just now",
+      "minutes_ago": "{n} min ago",
+      "hours_ago": "{n} h ago",
+      "yesterday": "Yesterday"
+    },
+    "session": {
+      "next_soon": "Sending soon",
+      "next_in_minutes": "in {n} min",
+      "next_in_hours_minutes": "in {hours} h {minutes} min",
+      "waiting_init": "Waiting to initialize",
+      "status_active": "Active",
+      "status_waiting": "Waiting"
     }
   }
 }

@@ -101,6 +101,7 @@
                     "immediate",
                     "delayed"
                 ],
+                "labels": ["立即发送", "延后发送"],
                 "hint": "仅在启用'睡眠结束时发送消息'时生效。immediate=立即发送（睡眠结束后立即发送，即使计时器已过期），delayed=延后发送（恢复睡眠前的剩余计时，如果进入睡眠前计时器已过期则立即发送）。注意：无论哪种模式，睡眠期间累积的多次主动消息只会在睡眠结束后发送一次"
             }
         }
@@ -130,6 +131,7 @@
                     "fixed_interval",
                     "random_interval"
                 ],
+                "labels": ["固定间隔", "随机间隔"],
                 "hint": "选择时间模式：fixed_interval=固定间隔（可选随机延迟），random_interval=完全随机间隔"
             },
             "interval_minutes": {
@@ -216,6 +218,7 @@
                     "proactive_prompt",
                     "custom"
                 ],
+                "labels": ["默认触发标记", "主动对话提示词", "自定义内容"],
                 "hint": "选择保存到对话历史的用户端内容：default=默认系统触发标记，proactive_prompt=当次使用的主动对话提示词（替换占位符后），custom=自定义内容（支持占位符）"
             },
             "custom_history_prompt": {
@@ -257,6 +260,7 @@
                     "words",
                     "regex"
                 ],
+                "labels": ["反斜线", "换行符", "逗号", "分号", "多种标点", "自定义正则", "分段词", "正则（官方风格）"],
                 "hint": "消息分割模式。预设模式: backslash(反斜线\\),newline(换行符),comma(逗号),semicolon(分号),punctuation(多种标点),custom(自定义正则)。官方风格模式: words(分段词列表),regex(正则表达式-官方风格)"
             },
             "custom_pattern": {

@@ -465,16 +465,16 @@
   </head>
   <body>
     <div class="header">
-      <h1>🧠 心念</h1>
+      <h1 id="page-heading">🧠</h1>
       <div class="header-actions" id="header-actions">
-        <button class="btn btn-outline" id="btn-refresh" onclick="refreshDashboard()">🔄 刷新</button>
-        <button class="btn btn-primary" id="btn-add-session" style="display:none;" onclick="showAddDialog()">＋ 添加会话</button>
+        <button class="btn btn-outline" id="btn-refresh" onclick="refreshDashboard()">🔄</button>
+        <button class="btn btn-primary" id="btn-add-session" style="display:none;" onclick="showAddDialog()">＋</button>
       </div>
     </div>
 
     <nav class="tab-bar" role="tablist">
-      <button class="tab-btn active" role="tab" data-tab="dashboard" aria-selected="true">仪表板</button>
-      <button class="tab-btn" role="tab" data-tab="sessions" aria-selected="false">会话管理</button>
+      <button class="tab-btn active" role="tab" data-tab="dashboard" aria-selected="true" id="tab-dashboard"></button>
+      <button class="tab-btn" role="tab" data-tab="sessions" aria-selected="false" id="tab-sessions"></button>
     </nav>
 
     <div id="global-error" class="error-banner" style="display:none;"></div>
@@ -486,7 +486,7 @@
       </div>
 
       <div class="card">
-        <div class="card-header"><span class="dot"></span>插件状态</div>
+        <div class="card-header"><span class="dot"></span><span id="hdr-plugin-status"></span></div>
         <div class="card-body">
           <div class="info-rows" id="plugin-status-rows">
             <div class="loading"><div class="spinner"></div>加载中…</div>
@@ -495,7 +495,7 @@
       </div>
 
       <div class="card">
-        <div class="card-header"><span class="dot"></span>最近活动</div>
+        <div class="card-header"><span class="dot"></span><span id="hdr-recent-activity"></span></div>
         <div class="card-body" style="padding: 0 20px;">
           <div class="timeline" id="timeline">
             <div class="loading"><div class="spinner"></div>加载中…</div>
@@ -509,20 +509,20 @@
       <div class="stats-grid cols-3" id="sess-stats-grid">
         <div class="stat-card">
           <div class="stat-icon blue">💬</div>
-          <div><div class="stat-label">总会话</div><div class="stat-value" id="count-total">—</div></div>
+          <div><div class="stat-label" id="lbl-stat-total"></div><div class="stat-value" id="count-total">—</div></div>
         </div>
         <div class="stat-card">
           <div class="stat-icon green">⚡</div>
-          <div><div class="stat-label">活跃</div><div class="stat-value" id="count-active">—</div></div>
+          <div><div class="stat-label" id="lbl-stat-active"></div><div class="stat-value" id="count-active">—</div></div>
         </div>
         <div class="stat-card">
           <div class="stat-icon yellow">⏸</div>
-          <div><div class="stat-label">非活跃</div><div class="stat-value" id="count-inactive">—</div></div>
+          <div><div class="stat-label" id="lbl-stat-inactive"></div><div class="stat-value" id="count-inactive">—</div></div>
         </div>
       </div>
 
       <div class="card">
-        <div class="card-header"><span class="dot"></span>主动会话列表</div>
+        <div class="card-header"><span class="dot"></span><span id="hdr-session-list"></span></div>
         <div id="sessions-container">
           <div class="loading"><div class="spinner"></div>加载中…</div>
         </div>
@@ -532,30 +532,83 @@
     <!-- 添加会话对话框 -->
     <div class="dialog-overlay" id="add-dialog" style="display:none;">
       <div class="dialog">
-        <div class="dialog-header">添加主动会话</div>
+        <div class="dialog-header" id="dialog-add-title"></div>
         <div class="dialog-body">
-          <label for="input-session-id">会话 ID</label>
-          <input type="text" id="input-session-id"
-            placeholder="例如：aiocqhttp:GroupMessage:123456789" />
-          <div class="form-hint">
-            格式：<code>platform_name:message_type:session_id</code><br />
-            示例：<code>aiocqhttp:GroupMessage:123456789</code>
-          </div>
+          <label for="input-session-id" id="label-session-id"></label>
+          <input type="text" id="input-session-id" />
+          <div class="form-hint" id="session-id-hint"></div>
         </div>
         <div class="dialog-footer">
-          <button class="btn btn-outline" onclick="hideAddDialog()">取消</button>
-          <button class="btn btn-primary" onclick="submitAdd()" id="submit-btn">＋ 添加</button>
+          <button class="btn btn-outline" id="btn-dialog-cancel" onclick="hideAddDialog()"></button>
+          <button class="btn btn-primary" onclick="submitAdd()" id="submit-btn">＋</button>
         </div>
       </div>
     </div>
 
     <script type="module">
       const bridge = window.AstrBotPluginPage;
+      const I18N = "pages.webui.";
 
       let activeTab = "dashboard";
       let sessionsLoaded = false;
       let sessions = [];
       let refreshTimer = null;
+
+      function t(key, fallback) {
+        return bridge.t(I18N + key, fallback);
+      }
+
+      function apiLocale() {
+        return { locale: bridge.getLocale() };
+      }
+
+      function renderStatic() {
+        const locale = bridge.getLocale();
+        document.documentElement.lang = locale;
+        document.title = t("title", "心念管理");
+
+        document.getElementById("page-heading").textContent =
+          "🧠 " + t("heading", "心念");
+        document.getElementById("btn-refresh").textContent =
+          "🔄 " + t("btn_refresh", "刷新");
+        document.getElementById("btn-add-session").textContent =
+          "＋ " + t("btn_add_session", "添加会话");
+        document.getElementById("tab-dashboard").textContent =
+          t("tab_dashboard", "仪表板");
+        document.getElementById("tab-sessions").textContent =
+          t("tab_sessions", "会话管理");
+        document.getElementById("hdr-plugin-status").textContent =
+          t("plugin_status", "插件状态");
+        document.getElementById("hdr-recent-activity").textContent =
+          t("recent_activity", "最近活动");
+        document.getElementById("lbl-stat-total").textContent =
+          t("stat_total_sessions", "总会话");
+        document.getElementById("lbl-stat-active").textContent =
+          t("stat_active", "活跃");
+        document.getElementById("lbl-stat-inactive").textContent =
+          t("stat_inactive", "非活跃");
+        document.getElementById("hdr-session-list").textContent =
+          t("session_list", "主动会话列表");
+        document.getElementById("dialog-add-title").textContent =
+          t("dialog_add_title", "添加主动会话");
+        document.getElementById("label-session-id").textContent =
+          t("label_session_id", "会话 ID");
+        document.getElementById("input-session-id").placeholder =
+          t("session_id_placeholder", "例如：aiocqhttp:GroupMessage:123456789");
+        document.getElementById("session-id-hint").innerHTML =
+          t("session_id_format_hint", "格式：") +
+          "<code>platform_name:message_type:session_id</code><br />" +
+          t("session_id_example", "示例：") +
+          "<code>aiocqhttp:GroupMessage:123456789</code>";
+        document.getElementById("btn-dialog-cancel").textContent =
+          t("btn_cancel", "取消");
+        document.getElementById("submit-btn").textContent =
+          "＋ " + t("btn_add", "添加");
+      }
+
+      function loadingHtml() {
+        return `<div class="loading"><div class="spinner"></div>${escHtml(t("loading", "加载中…"))}</div>`;
+      }
 
       // ── Tab 切换 ──────────────────────────────────────────
 
@@ -590,12 +643,12 @@
 
       async function loadDashboard() {
         try {
-          const data = await bridge.apiGet("dashboard/stats");
-          if (!data.success) throw new Error(data.error || "未知错误");
+          const data = await bridge.apiGet("dashboard/stats", apiLocale());
+          if (!data.success) throw new Error(data.error || t("err_unknown", "未知错误"));
           renderDashboard(data.stats);
           hideGlobalError();
         } catch (err) {
-          showGlobalError("仪表板加载失败：" + err.message);
+          showGlobalError(t("err_dashboard_load", "仪表板加载失败：") + err.message);
           console.error(err);
         }
       }
@@ -605,55 +658,61 @@
       };
 
       function renderDashboard(s) {
+        const ctx = bridge.getContext();
+        const pluginName = ctx?.displayName || t("heading", "心念");
+        const runLabel = s.proactive_running
+          ? t("status_running", "运行中")
+          : t("status_stopped", "已停止");
+
         document.getElementById("dash-stats-grid").innerHTML = `
           <div class="stat-card">
             <div class="stat-icon blue">💬</div>
             <div>
-              <div class="stat-label">总会话数</div>
+              <div class="stat-label">${escHtml(t("stat_session_count", "总会话数"))}</div>
               <div class="stat-value">${s.session_count}</div>
             </div>
           </div>
           <div class="stat-card">
             <div class="stat-icon yellow">🤖</div>
             <div>
-              <div class="stat-label">AI 调度任务</div>
+              <div class="stat-label">${escHtml(t("stat_ai_schedules", "AI 调度任务"))}</div>
               <div class="stat-value">${s.ai_schedules_count}</div>
             </div>
           </div>
           <div class="stat-card">
             <div class="stat-icon green">👥</div>
             <div>
-              <div class="stat-label">记录用户</div>
+              <div class="stat-label">${escHtml(t("stat_users", "记录用户"))}</div>
               <div class="stat-value">${s.user_count}</div>
             </div>
           </div>
           <div class="stat-card">
             <div class="stat-icon purple">❤️</div>
             <div>
-              <div class="stat-label">运行状态</div>
+              <div class="stat-label">${escHtml(t("stat_run_status", "运行状态"))}</div>
               <div class="stat-value status-text">
                 <span class="status-dot ${s.proactive_running ? "running" : "stopped"}"></span>
-                ${s.proactive_running ? "运行中" : "已停止"}
+                ${escHtml(runLabel)}
               </div>
             </div>
           </div>`;
 
         document.getElementById("plugin-status-rows").innerHTML = `
           <div class="info-row">
-            <span class="info-label">插件名称</span>
-            <span class="info-value">心念</span>
+            <span class="info-label">${escHtml(t("label_plugin_name", "插件名称"))}</span>
+            <span class="info-value">${escHtml(pluginName)}</span>
           </div>
           <div class="info-row">
-            <span class="info-label">功能状态</span>
+            <span class="info-label">${escHtml(t("label_feature_status", "功能状态"))}</span>
             <div class="tags">
               <span class="tag ${s.proactive_enabled ? "on" : "off"}">
-                <span class="tag-dot"></span>主动消息
+                <span class="tag-dot"></span>${escHtml(t("tag_proactive", "主动消息"))}
               </span>
               <span class="tag ${s.ai_schedule_enabled ? "on" : "off"}">
-                <span class="tag-dot"></span>AI 调度
+                <span class="tag-dot"></span>${escHtml(t("tag_ai_schedule", "AI 调度"))}
               </span>
               <span class="tag ${s.proactive_running ? "on" : "off"}">
-                <span class="tag-dot"></span>定时任务
+                <span class="tag-dot"></span>${escHtml(t("tag_timer", "定时任务"))}
               </span>
             </div>
           </div>`;
@@ -663,8 +722,8 @@
           document.getElementById("timeline").innerHTML = `
             <div class="empty-state">
               <div class="empty-icon">📭</div>
-              <div>暂无活动记录</div>
-              <div style="margin-top:4px;font-size:0.75rem;">当插件开始工作后，活动记录将在此显示</div>
+              <div>${escHtml(t("empty_activity_title", "暂无活动记录"))}</div>
+              <div style="margin-top:4px;font-size:0.75rem;">${escHtml(t("empty_activity_desc", "当插件开始工作后，活动记录将在此显示"))}</div>
             </div>`;
           return;
         }
@@ -686,22 +745,21 @@
       // ── 会话管理 ──────────────────────────────────────────
 
       async function loadSessions() {
-        document.getElementById("sessions-container").innerHTML =
-          `<div class="loading"><div class="spinner"></div>加载中…</div>`;
+        document.getElementById("sessions-container").innerHTML = loadingHtml();
         try {
-          const data = await bridge.apiGet("sessions/list");
-          if (!data.success) throw new Error(data.error || "未知错误");
+          const data = await bridge.apiGet("sessions/list", apiLocale());
+          if (!data.success) throw new Error(data.error || t("err_unknown", "未知错误"));
           sessions = data.sessions || [];
           sessionsLoaded = true;
           renderSessions(sessions);
           updateSessionStats(sessions);
           hideGlobalError();
         } catch (err) {
-          showGlobalError("会话列表加载失败：" + err.message);
+          showGlobalError(t("err_sessions_load", "会话列表加载失败：") + err.message);
           document.getElementById("sessions-container").innerHTML = `
             <div class="empty-state">
               <div class="empty-icon">⚠️</div>
-              <p>加载失败，请切换 Tab 后重试</p>
+              <p>${escHtml(t("load_sessions_failed", "加载失败，请切换 Tab 后重试"))}</p>
             </div>`;
         }
       }
@@ -719,9 +777,9 @@
           document.getElementById("sessions-container").innerHTML = `
             <div class="empty-state">
               <div class="empty-icon">💬</div>
-              <h5>还没有主动会话</h5>
-              <p>通过右上角按钮添加，或在聊天中使用 <code>/proactive add_session</code> 指令</p>
-              <button class="btn btn-primary" onclick="showAddDialog()">＋ 添加第一个会话</button>
+              <h5>${escHtml(t("empty_sessions_title", "还没有主动会话"))}</h5>
+              <p>${escHtml(t("empty_sessions_desc", "通过右上角按钮添加，或在聊天中使用"))} <code>/proactive add_session</code></p>
+              <button class="btn btn-primary" onclick="showAddDialog()">＋ ${escHtml(t("btn_add_first", "添加第一个会话"))}</button>
             </div>`;
           return;
         }
@@ -739,7 +797,7 @@
             <td><span class="badge badge-secondary">${escHtml(platformLabel(s.platform))}</span></td>
             <td>${s.username ? escHtml(s.username) : '<span class="text-muted">—</span>'}</td>
             <td>
-              ${s.next_fire_display === "即将发送"
+              ${s.next_fire_soon
                 ? `<span class="text-success">⏱ ${escHtml(s.next_fire_display)}</span>`
                 : `<span class="text-muted">${escHtml(s.next_fire_display)}</span>`}
             </td>
@@ -758,7 +816,7 @@
                 : ""}
             </td>
             <td>
-              <button class="btn btn-danger-outline" onclick="confirmRemove('${escAttr(s.session_id)}')" title="移除">🗑</button>
+              <button class="btn btn-danger-outline" onclick="confirmRemove('${escAttr(s.session_id)}')" title="${escAttr(t("remove_title", "移除"))}">🗑</button>
             </td>
           </tr>`).join("");
 
@@ -767,14 +825,14 @@
             <table>
               <thead>
                 <tr>
-                  <th>会话 ID</th>
-                  <th>平台</th>
-                  <th>用户</th>
-                  <th>下次发送</th>
-                  <th>最后发送</th>
-                  <th>未回复</th>
-                  <th>状态</th>
-                  <th>操作</th>
+                  <th>${escHtml(t("th_session_id", "会话 ID"))}</th>
+                  <th>${escHtml(t("th_platform", "平台"))}</th>
+                  <th>${escHtml(t("th_user", "用户"))}</th>
+                  <th>${escHtml(t("th_next_send", "下次发送"))}</th>
+                  <th>${escHtml(t("th_last_send", "最后发送"))}</th>
+                  <th>${escHtml(t("th_unreplied", "未回复"))}</th>
+                  <th>${escHtml(t("th_status", "状态"))}</th>
+                  <th>${escHtml(t("th_actions", "操作"))}</th>
                 </tr>
               </thead>
               <tbody>${rows}</tbody>
@@ -794,19 +852,25 @@
 
       window.submitAdd = async function () {
         const sessionId = document.getElementById("input-session-id").value.trim();
-        if (!sessionId) { toast("请输入会话 ID", "error"); return; }
+        if (!sessionId) {
+          toast(t("toast_enter_session_id", "请输入会话 ID"), "error");
+          return;
+        }
         if (sessionId.split(":").length < 3) {
-          toast("格式不正确，应为 platform:type:id", "error");
+          toast(t("toast_invalid_format", "格式不正确，应为 platform:type:id"), "error");
           return;
         }
 
         const btn = document.getElementById("submit-btn");
         btn.disabled = true;
-        btn.textContent = "添加中…";
+        btn.textContent = t("btn_adding", "添加中…");
         try {
-          const data = await bridge.apiPost("sessions/add", { session_id: sessionId });
-          if (!data.success) throw new Error(data.error || "添加失败");
-          toast(data.message || "会话已添加", "success");
+          const data = await bridge.apiPost("sessions/add", {
+            session_id: sessionId,
+            locale: bridge.getLocale(),
+          });
+          if (!data.success) throw new Error(data.error || t("toast_add_failed", "添加失败"));
+          toast(data.message || t("toast_session_added", "会话已添加"), "success");
           hideAddDialog();
           await loadSessions();
           if (activeTab === "dashboard") await loadDashboard();
@@ -814,7 +878,7 @@
           toast(err.message, "error");
         } finally {
           btn.disabled = false;
-          btn.textContent = "＋ 添加";
+          btn.textContent = "＋ " + t("btn_add", "添加");
         }
       };
 
@@ -824,11 +888,18 @@
       });
 
       window.confirmRemove = async function (sessionId) {
-        if (!confirm(`确定要移除会话 "${sessionId}" 吗？`)) return;
+        const msg = t("confirm_remove", '确定要移除会话 "{session_id}" 吗？').replace(
+          "{session_id}",
+          sessionId,
+        );
+        if (!confirm(msg)) return;
         try {
-          const data = await bridge.apiPost("sessions/remove", { session_id: sessionId });
-          if (!data.success) throw new Error(data.error || "移除失败");
-          toast(data.message || "会话已移除", "success");
+          const data = await bridge.apiPost("sessions/remove", {
+            session_id: sessionId,
+            locale: bridge.getLocale(),
+          });
+          if (!data.success) throw new Error(data.error || t("toast_remove_failed", "移除失败"));
+          toast(data.message || t("toast_session_removed", "会话已移除"), "success");
           await loadSessions();
           if (activeTab === "dashboard") await loadDashboard();
         } catch (err) {
@@ -876,6 +947,16 @@
       // ── 初始化 ────────────────────────────────────────────
 
       await bridge.ready();
+      renderStatic();
+      bridge.onContext(() => {
+        renderStatic();
+        if (activeTab === "dashboard") {
+          loadDashboard();
+        } else if (sessionsLoaded) {
+          loadSessions();
+        }
+      });
+
       await loadDashboard();
 
       refreshTimer = setInterval(() => {
