@@ -8,6 +8,7 @@
 
 import json
 import os
+from typing import Callable, Optional
 from astrbot.api import logger
 from .runtime_data import runtime_data
 
@@ -95,6 +96,11 @@ class ConfigManager:
         """
         self.config = config
         self.persistence_manager = persistence_manager
+        self._wakeup_notifier: Optional[Callable[[], None]] = None
+
+    def set_wakeup_notifier(self, notifier: Optional[Callable[[], None]]):
+        """注册配置保存后的主循环唤醒回调"""
+        self._wakeup_notifier = notifier
 
     def verify_config_loading(self):
         """验证配置文件加载状态"""
@@ -260,6 +266,8 @@ class ConfigManager:
         """
         try:
             self.config.save_config()
+            if self._wakeup_notifier:
+                self._wakeup_notifier()
             return True
         except PermissionError as e:
             logger.error(f"心念 | ❌ 配置文件权限不足: {e}")

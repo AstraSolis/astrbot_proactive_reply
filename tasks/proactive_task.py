@@ -46,6 +46,21 @@ class ProactiveTaskManager:
         self.proactive_task = None
         # 配置签名追踪，用于自动检测配置变化
         self._last_timing_config_signature: Optional[str] = None
+        # 主循环可中断睡眠的唤醒事件（在 proactive_message_loop 启动时创建）
+        self._wakeup_event: Optional[asyncio.Event] = None
+
+    def notify_wakeup(self):
+        """有新任务或配置变化时唤醒主循环，使其立即重新调度"""
+        if self._wakeup_event is not None and not self._wakeup_event.is_set():
+            self._wakeup_event.set()
+
+    def _should_abort_sleep(self, check_sleep_time: bool = True) -> bool:
+        """是否应中断当前睡眠并回到主循环"""
+        if self.should_terminate() or not self.is_proactive_enabled():
+            return True
+        if check_sleep_time and self.is_sleep_time():
+            return True
+        return False
 
     # ==================== 计时器管理方法 ====================
 
@@ -130,6 +145,7 @@ class ProactiveTaskManager:
             runtime_data.timezone_signature = current_tz_sig
             if self.persistence_manager:
                 self.persistence_manager.save_persistent_data()
+            self.notify_wakeup()
 
     def get_session_next_fire_time(self, session: str) -> Optional[datetime]:
         """获取会话的下次发送时间
@@ -217,6 +233,7 @@ class ProactiveTaskManager:
         logger.debug(
             f"心念 | 会话 {session} 计时器已刷新，下次发送：{next_fire.strftime('%H:%M:%S')}"
         )
+        self.notify_wakeup()
 
     def ensure_all_sessions_scheduled(self):
         """确保所有目标会话都有下次发送时间"""
@@ -268,6 +285,7 @@ class ProactiveTaskManager:
             # 触发持久化
             if self.persistence_manager:
                 self.persistence_manager.save_persistent_data()
+            self.notify_wakeup()
 
     def clear_all_session_timers(self):
         """清除所有会话的计时器
@@ -280,6 +298,7 @@ class ProactiveTaskManager:
         # 触发持久化
         if self.persistence_manager:
             self.persistence_manager.save_persistent_data()
+        self.notify_wakeup()
 
     def _get_timing_config_signature(self) -> str:
         """生成当前计时相关配置的签名
@@ -345,6 +364,7 @@ class ProactiveTaskManager:
 
             runtime_data.timing_config_signature = current_signature
             self._last_timing_config_signature = current_signature
+            self.notify_wakeup()
 
     # ==================== 智能睡眠计算 ====================
 
@@ -446,6 +466,7 @@ class ProactiveTaskManager:
         # 持久化保存
         if self.persistence_manager:
             self.persistence_manager.save_persistent_data()
+        self.notify_wakeup()
 
     def handle_exit_sleep(self):
         """退出睡眠时处理计时器
@@ -490,6 +511,7 @@ class ProactiveTaskManager:
         runtime_data.session_sleep_remaining.clear()
         if self.persistence_manager:
             self.persistence_manager.save_persistent_data()
+        self.notify_wakeup()
 
     # ==================== 主循环 ====================
 
@@ -499,6 +521,8 @@ class ProactiveTaskManager:
         核心逻辑：预计算下次发送时间 + 智能睡眠
         """
         logger.info("心念 | 定时主动发送消息循环已启动（混合计时器模式）")
+
+        self._wakeup_event = asyncio.Event()
 
         # 追踪睡眠状态
         was_sleeping = False
@@ -537,7 +561,9 @@ class ProactiveTaskManager:
                     # 智能睡眠：只关心AI调度任务，忽略常规计时器
                     sleep_duration = self.calculate_sleep_mode_smart_sleep()
                     logger.debug(f"心念 | 睡眠模式智能睡眠 {sleep_duration} 秒")
-                    await asyncio.sleep(sleep_duration)
+                    await self.interruptible_sleep(
+                        sleep_duration, check_sleep_time=False
+                    )
                     continue
 
                 if was_sleeping and not is_sleeping:
@@ -571,30 +597,55 @@ class ProactiveTaskManager:
                 logger.error(f"心念 | ❌ 定时主动发送消息循环发生错误: {e}")
                 await asyncio.sleep(60)
 
-    async def interruptible_sleep(self, total_seconds: int) -> bool:
+    async def interruptible_sleep(
+        self, total_seconds: int, *, check_sleep_time: bool = True
+    ) -> bool:
         """可中断的睡眠
 
-        每 10 秒检查状态，允许提前退出
+        通过 Event 即时响应 AI 调度/配置变化；每段等待最长 10 秒以便检查终止等状态。
 
         Args:
             total_seconds: 总睡眠秒数
+            check_sleep_time: 是否在进入睡眠时段时中断（睡眠模式主循环应传 False）
 
         Returns:
-            True 如果正常完成睡眠，False 如果被中断
+            True 如果正常完成睡眠，False 如果被提前唤醒或状态变化
         """
-        remaining = total_seconds
-        while remaining > 0:
-            if self.should_terminate() or not self.is_proactive_enabled():
-                return False
-            # 检查是否进入睡眠时间
-            if self.is_sleep_time():
+        if total_seconds <= 0:
+            return not self._should_abort_sleep(check_sleep_time)
+
+        if self._wakeup_event is None:
+            self._wakeup_event = asyncio.Event()
+
+        if self._wakeup_event.is_set():
+            self._wakeup_event.clear()
+            return False
+
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + total_seconds
+
+        while True:
+            if self._wakeup_event.is_set():
+                self._wakeup_event.clear()
                 return False
 
-            chunk = min(10, remaining)
-            await asyncio.sleep(chunk)
-            remaining -= chunk
+            if self._should_abort_sleep(check_sleep_time):
+                return False
 
-        return True
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                return True
+
+            chunk = min(10.0, remaining)
+            try:
+                await asyncio.wait_for(self._wakeup_event.wait(), timeout=chunk)
+            except asyncio.TimeoutError:
+                continue
+
+            self._wakeup_event.clear()
+            if self._should_abort_sleep(check_sleep_time):
+                return False
+            return False
 
     async def process_due_sessions(self, sleep_mode: bool = False):
         """处理所有到期的会话
@@ -1025,6 +1076,9 @@ class ProactiveTaskManager:
             logger.error(f"心念 | ❌ 任务运行时错误: {e}")
         finally:
             self.proactive_task = None
+            if self._wakeup_event is not None:
+                self._wakeup_event.set()
+            self._wakeup_event = None
 
     async def start_proactive_task(self):
         """启动定时主动发送任务"""

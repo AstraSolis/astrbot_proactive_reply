@@ -91,6 +91,7 @@ class ProactiveReplyPlugin(Star):
             lambda: self._is_terminating,
             self.persistence_manager,
         )
+        self.config_manager.set_wakeup_notifier(self.task_manager.notify_wakeup)
 
         # 命令处理器
         self.command_handlers = CommandHandlers(self)

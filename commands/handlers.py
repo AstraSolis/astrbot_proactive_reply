@@ -664,6 +664,7 @@ class CommandHandlers:
 
             # 保存清空后的持久化数据
             self.plugin.persistence_manager.save_persistent_data()
+            self.plugin.task_manager.notify_wakeup()
             yield event.plain_result("✅ 已清除所有用户信息和发送时间记录")
         except Exception as e:
             yield event.plain_result(f"❌ 清除失败: {e}")
