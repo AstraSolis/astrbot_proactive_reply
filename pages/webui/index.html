@@ -1,967 +1,165 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>心念管理</title>
-    <style>
-      * { box-sizing: border-box; margin: 0; padding: 0; }
-
-      body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        background: #f5f7fa;
-        color: #1a1a2e;
-        padding: 20px;
-        min-height: 100vh;
-      }
-
-      .header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 16px;
-        flex-wrap: wrap;
-        gap: 12px;
-      }
-
-      .header h1 {
-        font-size: 1.5rem;
-        font-weight: 700;
-        color: #1a1a2e;
-      }
-
-      .header-actions { display: flex; gap: 8px; }
-
-      /* Tab 栏 */
-      .tab-bar {
-        display: flex;
-        gap: 4px;
-        background: #fff;
-        padding: 4px;
-        border-radius: 10px;
-        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
-        margin-bottom: 20px;
-        width: fit-content;
-      }
-
-      .tab-btn {
-        padding: 8px 20px;
-        border: none;
-        border-radius: 8px;
-        font-size: 0.875rem;
-        font-weight: 500;
-        color: #6b7280;
-        background: transparent;
-        cursor: pointer;
-        transition: all 0.2s;
-      }
-
-      .tab-btn:hover { color: #374151; background: #f9fafb; }
-
-      .tab-btn.active {
-        background: #6366f1;
-        color: #fff;
-        box-shadow: 0 1px 3px rgba(99, 102, 241, 0.35);
-      }
-
-      .tab-panel { display: none; }
-      .tab-panel.active { display: block; }
-
-      .btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 8px 16px;
-        border-radius: 8px;
-        font-size: 0.875rem;
-        font-weight: 500;
-        cursor: pointer;
-        border: none;
-        transition: all 0.2s;
-      }
-
-      .btn-primary { background: #6366f1; color: #fff; }
-      .btn-primary:hover { background: #4f46e5; }
-
-      .btn-outline {
-        background: transparent;
-        border: 1.5px solid #6366f1;
-        color: #6366f1;
-      }
-
-      .btn-outline:hover { background: #6366f1; color: #fff; }
-
-      .btn-danger-outline {
-        background: transparent;
-        border: 1.5px solid #ef4444;
-        color: #ef4444;
-        padding: 5px 10px;
-        font-size: 0.8125rem;
-      }
-
-      .btn-danger-outline:hover { background: #ef4444; color: #fff; }
-
-      .btn:disabled { opacity: 0.6; cursor: not-allowed; }
-
-      .stats-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-        gap: 16px;
-        margin-bottom: 24px;
-      }
-
-      .stats-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
-
-      @media (max-width: 640px) {
-        .stats-grid.cols-3 { grid-template-columns: 1fr; }
-      }
-
-      .stat-card {
-        background: #fff;
-        border-radius: 12px;
-        padding: 20px;
-        display: flex;
-        align-items: center;
-        gap: 16px;
-        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
-      }
-
-      .stat-icon {
-        width: 48px;
-        height: 48px;
-        border-radius: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.25rem;
-        flex-shrink: 0;
-      }
-
-      .stat-icon.blue   { background: #eff6ff; }
-      .stat-icon.green  { background: #f0fdf4; }
-      .stat-icon.yellow { background: #fefce8; }
-      .stat-icon.purple { background: #f5f3ff; }
-
-      .stat-label { font-size: 0.8125rem; color: #6b7280; margin-bottom: 4px; }
-      .stat-value { font-size: 1.5rem; font-weight: 700; color: #1a1a2e; line-height: 1; }
-      .stat-value.status-text { font-size: 1rem; font-weight: 600; }
-
-      .status-dot {
-        display: inline-block;
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        margin-right: 6px;
-      }
-
-      .status-dot.running {
-        background: #22c55e;
-        box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
-        animation: pulse 2s infinite;
-      }
-
-      .status-dot.stopped { background: #d1d5db; }
-
-      @keyframes pulse {
-        0%, 100% { box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2); }
-        50% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.05); }
-      }
-
-      .card {
-        background: #fff;
-        border-radius: 12px;
-        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
-        margin-bottom: 20px;
-        overflow: hidden;
-      }
-
-      .card-header {
-        padding: 16px 20px;
-        border-bottom: 1px solid #f3f4f6;
-        font-size: 0.9375rem;
-        font-weight: 600;
-        color: #374151;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-
-      .card-header .dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: #6366f1;
-      }
-
-      .card-body { padding: 20px; }
-
-      .info-rows { display: flex; flex-direction: column; gap: 12px; }
-
-      .info-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding-bottom: 12px;
-        border-bottom: 1px solid #f3f4f6;
-      }
-
-      .info-row:last-child { border-bottom: none; padding-bottom: 0; }
-
-      .info-label { font-size: 0.875rem; color: #6b7280; }
-      .info-value { font-size: 0.875rem; font-weight: 500; color: #1a1a2e; }
-
-      .tags { display: flex; gap: 8px; flex-wrap: wrap; }
-
-      .tag {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        padding: 4px 10px;
-        border-radius: 20px;
-        font-size: 0.8rem;
-        font-weight: 500;
-      }
-
-      .tag.on  { background: #f0fdf4; color: #16a34a; }
-      .tag.off { background: #f9fafb; color: #9ca3af; }
-
-      .tag .tag-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: currentColor;
-      }
-
-      .timeline { display: flex; flex-direction: column; }
-
-      .timeline-item {
-        display: flex;
-        align-items: flex-start;
-        gap: 12px;
-        padding: 12px 0;
-        border-bottom: 1px solid #f3f4f6;
-      }
-
-      .timeline-item:last-child { border-bottom: none; }
-
-      .tl-icon {
-        width: 36px;
-        height: 36px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 0.9rem;
-        flex-shrink: 0;
-      }
-
-      .tl-icon.success { background: #f0fdf4; }
-      .tl-icon.warning { background: #fefce8; }
-      .tl-icon.info    { background: #eff6ff; }
-
-      .tl-content { flex: 1; min-width: 0; }
-
-      .tl-title {
-        font-size: 0.875rem;
-        font-weight: 500;
-        color: #374151;
-        margin-bottom: 2px;
-      }
-
-      .tl-desc {
-        font-size: 0.8125rem;
-        color: #9ca3af;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      .tl-time {
-        font-size: 0.75rem;
-        color: #9ca3af;
-        white-space: nowrap;
-        flex-shrink: 0;
-      }
-
-      .table-wrap { overflow-x: auto; }
-
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 0.875rem;
-      }
-
-      thead th {
-        padding: 12px 16px;
-        text-align: left;
-        font-weight: 600;
-        color: #6b7280;
-        font-size: 0.8125rem;
-        white-space: nowrap;
-        border-bottom: 1px solid #f3f4f6;
-      }
-
-      tbody tr { border-bottom: 1px solid #f9fafb; }
-      tbody tr:last-child { border-bottom: none; }
-      tbody tr:hover { background: #fafafa; }
-
-      td {
-        padding: 12px 16px;
-        color: #374151;
-        vertical-align: middle;
-      }
-
-      .badge {
-        display: inline-block;
-        padding: 3px 8px;
-        border-radius: 20px;
-        font-size: 0.75rem;
-        font-weight: 500;
-      }
-
-      .badge-secondary { background: #f3f4f6; color: #6b7280; }
-      .badge-success   { background: #f0fdf4; color: #16a34a; }
-      .badge-warning   { background: #fefce8; color: #d97706; }
-      .badge-info      { background: #eff6ff; color: #2563eb; }
-
-      code {
-        font-size: 0.8125rem;
-        background: #f3f4f6;
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-family: "SFMono-Regular", Consolas, monospace;
-      }
-
-      .text-muted { color: #9ca3af; }
-      .text-success { color: #22c55e; }
-
-      .empty-state {
-        text-align: center;
-        padding: 48px 20px;
-        color: #9ca3af;
-      }
-
-      .empty-state .empty-icon { font-size: 2.5rem; margin-bottom: 12px; }
-      .empty-state h5 { font-size: 1rem; color: #6b7280; margin-bottom: 8px; }
-      .empty-state p { font-size: 0.875rem; margin-bottom: 16px; }
-
-      .loading {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 32px;
-        color: #9ca3af;
-        gap: 8px;
-      }
-
-      .spinner {
-        width: 18px;
-        height: 18px;
-        border: 2px solid #e5e7eb;
-        border-top-color: #6366f1;
-        border-radius: 50%;
-        animation: spin 0.6s linear infinite;
-      }
-
-      @keyframes spin { to { transform: rotate(360deg); } }
-
-      .error-banner {
-        background: #fef2f2;
-        border: 1px solid #fecaca;
-        color: #b91c1c;
-        padding: 12px 16px;
-        border-radius: 8px;
-        margin-bottom: 16px;
-        font-size: 0.875rem;
-      }
-
-      .toast-banner {
-        position: fixed;
-        top: 16px;
-        right: 16px;
-        padding: 12px 20px;
-        border-radius: 8px;
-        font-size: 0.875rem;
-        font-weight: 500;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        z-index: 9999;
-        animation: slide-in 0.2s ease;
-        max-width: 320px;
-      }
-
-      .toast-success { background: #16a34a; color: #fff; }
-      .toast-error   { background: #dc2626; color: #fff; }
-
-      @keyframes slide-in {
-        from { opacity: 0; transform: translateY(-8px); }
-        to { opacity: 1; transform: translateY(0); }
-      }
-
-      .dialog-overlay {
-        position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.4);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 1000;
-        padding: 20px;
-      }
-
-      .dialog {
-        background: #fff;
-        border-radius: 16px;
-        width: 100%;
-        max-width: 440px;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
-        overflow: hidden;
-      }
-
-      .dialog-header {
-        padding: 20px 24px 16px;
-        border-bottom: 1px solid #f3f4f6;
-        font-size: 1.0625rem;
-        font-weight: 600;
-        color: #1a1a2e;
-      }
-
-      .dialog-body { padding: 20px 24px; }
-
-      .dialog-footer {
-        padding: 16px 24px 20px;
-        display: flex;
-        justify-content: flex-end;
-        gap: 10px;
-      }
-
-      label {
-        display: block;
-        font-size: 0.875rem;
-        font-weight: 500;
-        color: #374151;
-        margin-bottom: 6px;
-      }
-
-      input[type="text"] {
-        width: 100%;
-        padding: 10px 12px;
-        border: 1.5px solid #d1d5db;
-        border-radius: 8px;
-        font-size: 0.875rem;
-        color: #1a1a2e;
-        outline: none;
-        transition: border-color 0.2s;
-      }
-
-      input[type="text"]:focus { border-color: #6366f1; }
-
-      .form-hint {
-        font-size: 0.8125rem;
-        color: #9ca3af;
-        margin-top: 6px;
-        line-height: 1.5;
-      }
-    </style>
+    <title></title>
+    <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <div class="header">
-      <h1 id="page-heading">🧠</h1>
-      <div class="header-actions" id="header-actions">
-        <button class="btn btn-outline" id="btn-refresh" onclick="refreshDashboard()">🔄</button>
-        <button class="btn btn-primary" id="btn-add-session" style="display:none;" onclick="showAddDialog()">＋</button>
+    <div class="app">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-user">
+          <div class="avatar" id="sidebar-avatar" aria-hidden="true"></div>
+          <div class="user-meta">
+            <div class="user-name" id="sidebar-plugin-name"></div>
+            <div class="user-role" id="sidebar-plugin-role"></div>
+          </div>
+        </div>
+
+        <nav class="sidebar-nav" id="sidebar-nav" aria-label="">
+          <div class="nav-section-label" id="nav-section-main"></div>
+          <button type="button" class="nav-item active" data-view="dashboard" id="nav-dashboard">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            </span>
+            <span class="nav-label" id="nav-label-dashboard"></span>
+          </button>
+          <button type="button" class="nav-item" data-view="sessions" id="nav-sessions">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </span>
+            <span class="nav-label" id="nav-label-sessions"></span>
+          </button>
+        </nav>
+
+        <div class="sidebar-footer">
+          <span id="sidebar-version"></span>
+        </div>
+      </aside>
+
+      <div class="app-main">
+        <header class="topbar">
+          <button type="button" class="menu-toggle" id="menu-toggle" aria-label="">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
+
+          <div class="search-box">
+            <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="search" id="search-input" autocomplete="off" />
+            <kbd class="search-kbd" id="search-kbd" hidden></kbd>
+          </div>
+
+          <div class="topbar-tools">
+            <button type="button" class="tool-btn" id="btn-refresh" title="">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            </button>
+            <button type="button" class="tool-btn tool-btn-primary" id="btn-add-session" style="display:none;">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+          </div>
+        </header>
+
+        <main class="content">
+          <div id="global-error" class="alert alert-error" style="display:none;" role="alert"></div>
+
+          <div class="view view-active" id="view-dashboard" data-view="dashboard">
+            <header class="page-header">
+              <h1 class="page-title" id="page-title-dashboard"></h1>
+            </header>
+
+            <section class="content-section">
+              <h2 class="section-title" id="section-today"></h2>
+              <div class="metrics-grid" id="dash-stats-grid">
+                <div class="loading"><div class="spinner"></div><span class="loading-text"></span></div>
+              </div>
+            </section>
+
+            <section class="content-section">
+              <h2 class="section-title" id="section-recent"></h2>
+              <div class="panel-grid">
+                <article class="panel">
+                  <header class="panel-head">
+                    <h3 class="panel-title" id="hdr-plugin-status"></h3>
+                    <button type="button" class="panel-action" id="btn-refresh-panel" title="">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    </button>
+                  </header>
+                  <div class="panel-body" id="plugin-status-rows">
+                    <div class="loading"><div class="spinner"></div><span class="loading-text"></span></div>
+                  </div>
+                </article>
+
+                <article class="panel">
+                  <header class="panel-head">
+                    <h3 class="panel-title" id="hdr-recent-activity"></h3>
+                  </header>
+                  <div class="panel-body panel-body-flush" id="timeline">
+                    <div class="loading"><div class="spinner"></div><span class="loading-text"></span></div>
+                  </div>
+                </article>
+              </div>
+            </section>
+          </div>
+
+          <div class="view" id="view-sessions" data-view="sessions">
+            <header class="page-header">
+              <h1 class="page-title" id="page-title-sessions"></h1>
+            </header>
+
+            <section class="content-section">
+              <div class="metrics-grid metrics-grid-3" id="sess-stats-grid">
+                <div class="metric-card">
+                  <div class="metric-card-top">
+                    <span class="metric-label" id="lbl-stat-total"></span>
+                  </div>
+                  <div class="metric-value" id="count-total">—</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-card-top">
+                    <span class="metric-label" id="lbl-stat-active"></span>
+                  </div>
+                  <div class="metric-value metric-value--success" id="count-active">—</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-card-top">
+                    <span class="metric-label" id="lbl-stat-inactive"></span>
+                  </div>
+                  <div class="metric-value" id="count-inactive">—</div>
+                </div>
+              </div>
+            </section>
+
+            <article class="panel panel-table">
+              <header class="panel-head">
+                <h3 class="panel-title" id="hdr-session-list"></h3>
+              </header>
+              <div class="panel-body panel-body-flush" id="sessions-container">
+                <div class="loading"><div class="spinner"></div><span class="loading-text"></span></div>
+              </div>
+            </article>
+          </div>
+        </main>
       </div>
     </div>
 
-    <nav class="tab-bar" role="tablist">
-      <button class="tab-btn active" role="tab" data-tab="dashboard" aria-selected="true" id="tab-dashboard"></button>
-      <button class="tab-btn" role="tab" data-tab="sessions" aria-selected="false" id="tab-sessions"></button>
-    </nav>
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
 
-    <div id="global-error" class="error-banner" style="display:none;"></div>
-
-    <!-- 仪表板 -->
-    <section class="tab-panel active" id="panel-dashboard" role="tabpanel">
-      <div class="stats-grid" id="dash-stats-grid">
-        <div class="loading"><div class="spinner"></div>加载中…</div>
-      </div>
-
-      <div class="card">
-        <div class="card-header"><span class="dot"></span><span id="hdr-plugin-status"></span></div>
-        <div class="card-body">
-          <div class="info-rows" id="plugin-status-rows">
-            <div class="loading"><div class="spinner"></div>加载中…</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-header"><span class="dot"></span><span id="hdr-recent-activity"></span></div>
-        <div class="card-body" style="padding: 0 20px;">
-          <div class="timeline" id="timeline">
-            <div class="loading"><div class="spinner"></div>加载中…</div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- 会话管理 -->
-    <section class="tab-panel" id="panel-sessions" role="tabpanel">
-      <div class="stats-grid cols-3" id="sess-stats-grid">
-        <div class="stat-card">
-          <div class="stat-icon blue">💬</div>
-          <div><div class="stat-label" id="lbl-stat-total"></div><div class="stat-value" id="count-total">—</div></div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon green">⚡</div>
-          <div><div class="stat-label" id="lbl-stat-active"></div><div class="stat-value" id="count-active">—</div></div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon yellow">⏸</div>
-          <div><div class="stat-label" id="lbl-stat-inactive"></div><div class="stat-value" id="count-inactive">—</div></div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-header"><span class="dot"></span><span id="hdr-session-list"></span></div>
-        <div id="sessions-container">
-          <div class="loading"><div class="spinner"></div>加载中…</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- 添加会话对话框 -->
-    <div class="dialog-overlay" id="add-dialog" style="display:none;">
+    <div class="dialog-overlay" id="add-dialog" style="display:none;" role="dialog" aria-modal="true">
       <div class="dialog">
-        <div class="dialog-header" id="dialog-add-title"></div>
+        <header class="dialog-header" id="dialog-add-title"></header>
         <div class="dialog-body">
           <label for="input-session-id" id="label-session-id"></label>
           <input type="text" id="input-session-id" />
           <div class="form-hint" id="session-id-hint"></div>
         </div>
-        <div class="dialog-footer">
-          <button class="btn btn-outline" id="btn-dialog-cancel" onclick="hideAddDialog()"></button>
-          <button class="btn btn-primary" onclick="submitAdd()" id="submit-btn">＋</button>
-        </div>
+        <footer class="dialog-footer">
+          <button type="button" class="btn btn-ghost" id="btn-dialog-cancel"></button>
+          <button type="button" class="btn btn-primary" id="submit-btn"></button>
+        </footer>
       </div>
     </div>
 
-    <script type="module">
-      const bridge = window.AstrBotPluginPage;
-      const I18N = "pages.webui.";
-
-      let activeTab = "dashboard";
-      let sessionsLoaded = false;
-      let sessions = [];
-      let refreshTimer = null;
-
-      function t(key, fallback) {
-        return bridge.t(I18N + key, fallback);
-      }
-
-      function apiLocale() {
-        return { locale: bridge.getLocale() };
-      }
-
-      function renderStatic() {
-        const locale = bridge.getLocale();
-        document.documentElement.lang = locale;
-        document.title = t("title", "心念管理");
-
-        document.getElementById("page-heading").textContent =
-          "🧠 " + t("heading", "心念");
-        document.getElementById("btn-refresh").textContent =
-          "🔄 " + t("btn_refresh", "刷新");
-        document.getElementById("btn-add-session").textContent =
-          "＋ " + t("btn_add_session", "添加会话");
-        document.getElementById("tab-dashboard").textContent =
-          t("tab_dashboard", "仪表板");
-        document.getElementById("tab-sessions").textContent =
-          t("tab_sessions", "会话管理");
-        document.getElementById("hdr-plugin-status").textContent =
-          t("plugin_status", "插件状态");
-        document.getElementById("hdr-recent-activity").textContent =
-          t("recent_activity", "最近活动");
-        document.getElementById("lbl-stat-total").textContent =
-          t("stat_total_sessions", "总会话");
-        document.getElementById("lbl-stat-active").textContent =
-          t("stat_active", "活跃");
-        document.getElementById("lbl-stat-inactive").textContent =
-          t("stat_inactive", "非活跃");
-        document.getElementById("hdr-session-list").textContent =
-          t("session_list", "主动会话列表");
-        document.getElementById("dialog-add-title").textContent =
-          t("dialog_add_title", "添加主动会话");
-        document.getElementById("label-session-id").textContent =
-          t("label_session_id", "会话 ID");
-        document.getElementById("input-session-id").placeholder =
-          t("session_id_placeholder", "例如：aiocqhttp:GroupMessage:123456789");
-        document.getElementById("session-id-hint").innerHTML =
-          t("session_id_format_hint", "格式：") +
-          "<code>platform_name:message_type:session_id</code><br />" +
-          t("session_id_example", "示例：") +
-          "<code>aiocqhttp:GroupMessage:123456789</code>";
-        document.getElementById("btn-dialog-cancel").textContent =
-          t("btn_cancel", "取消");
-        document.getElementById("submit-btn").textContent =
-          "＋ " + t("btn_add", "添加");
-      }
-
-      function loadingHtml() {
-        return `<div class="loading"><div class="spinner"></div>${escHtml(t("loading", "加载中…"))}</div>`;
-      }
-
-      // ── Tab 切换 ──────────────────────────────────────────
-
-      function switchTab(tab) {
-        activeTab = tab;
-        document.querySelectorAll(".tab-btn").forEach(btn => {
-          const isActive = btn.dataset.tab === tab;
-          btn.classList.toggle("active", isActive);
-          btn.setAttribute("aria-selected", isActive ? "true" : "false");
-        });
-        document.querySelectorAll(".tab-panel").forEach(panel => {
-          panel.classList.toggle("active", panel.id === `panel-${tab}`);
-        });
-
-        document.getElementById("btn-refresh").style.display =
-          tab === "dashboard" ? "inline-flex" : "none";
-        document.getElementById("btn-add-session").style.display =
-          tab === "sessions" ? "inline-flex" : "none";
-
-        hideGlobalError();
-
-        if (tab === "sessions" && !sessionsLoaded) {
-          loadSessions();
-        }
-      }
-
-      document.querySelectorAll(".tab-btn").forEach(btn => {
-        btn.addEventListener("click", () => switchTab(btn.dataset.tab));
-      });
-
-      // ── 仪表板 ────────────────────────────────────────────
-
-      async function loadDashboard() {
-        try {
-          const data = await bridge.apiGet("dashboard/stats", apiLocale());
-          if (!data.success) throw new Error(data.error || t("err_unknown", "未知错误"));
-          renderDashboard(data.stats);
-          hideGlobalError();
-        } catch (err) {
-          showGlobalError(t("err_dashboard_load", "仪表板加载失败：") + err.message);
-          console.error(err);
-        }
-      }
-
-      window.refreshDashboard = function () {
-        loadDashboard();
-      };
-
-      function renderDashboard(s) {
-        const ctx = bridge.getContext();
-        const pluginName = ctx?.displayName || t("heading", "心念");
-        const runLabel = s.proactive_running
-          ? t("status_running", "运行中")
-          : t("status_stopped", "已停止");
-
-        document.getElementById("dash-stats-grid").innerHTML = `
-          <div class="stat-card">
-            <div class="stat-icon blue">💬</div>
-            <div>
-              <div class="stat-label">${escHtml(t("stat_session_count", "总会话数"))}</div>
-              <div class="stat-value">${s.session_count}</div>
-            </div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-icon yellow">🤖</div>
-            <div>
-              <div class="stat-label">${escHtml(t("stat_ai_schedules", "AI 调度任务"))}</div>
-              <div class="stat-value">${s.ai_schedules_count}</div>
-            </div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-icon green">👥</div>
-            <div>
-              <div class="stat-label">${escHtml(t("stat_users", "记录用户"))}</div>
-              <div class="stat-value">${s.user_count}</div>
-            </div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-icon purple">❤️</div>
-            <div>
-              <div class="stat-label">${escHtml(t("stat_run_status", "运行状态"))}</div>
-              <div class="stat-value status-text">
-                <span class="status-dot ${s.proactive_running ? "running" : "stopped"}"></span>
-                ${escHtml(runLabel)}
-              </div>
-            </div>
-          </div>`;
-
-        document.getElementById("plugin-status-rows").innerHTML = `
-          <div class="info-row">
-            <span class="info-label">${escHtml(t("label_plugin_name", "插件名称"))}</span>
-            <span class="info-value">${escHtml(pluginName)}</span>
-          </div>
-          <div class="info-row">
-            <span class="info-label">${escHtml(t("label_feature_status", "功能状态"))}</span>
-            <div class="tags">
-              <span class="tag ${s.proactive_enabled ? "on" : "off"}">
-                <span class="tag-dot"></span>${escHtml(t("tag_proactive", "主动消息"))}
-              </span>
-              <span class="tag ${s.ai_schedule_enabled ? "on" : "off"}">
-                <span class="tag-dot"></span>${escHtml(t("tag_ai_schedule", "AI 调度"))}
-              </span>
-              <span class="tag ${s.proactive_running ? "on" : "off"}">
-                <span class="tag-dot"></span>${escHtml(t("tag_timer", "定时任务"))}
-              </span>
-            </div>
-          </div>`;
-
-        const activities = s.recent_activities || [];
-        if (activities.length === 0) {
-          document.getElementById("timeline").innerHTML = `
-            <div class="empty-state">
-              <div class="empty-icon">📭</div>
-              <div>${escHtml(t("empty_activity_title", "暂无活动记录"))}</div>
-              <div style="margin-top:4px;font-size:0.75rem;">${escHtml(t("empty_activity_desc", "当插件开始工作后，活动记录将在此显示"))}</div>
-            </div>`;
-          return;
-        }
-
-        const colorMap = { success: "success", warning: "warning", info: "info" };
-        const iconMap = { send: "📨", robot: "🤖", user: "👤" };
-
-        document.getElementById("timeline").innerHTML = activities.map(a => `
-          <div class="timeline-item">
-            <div class="tl-icon ${colorMap[a.color] || "info"}">${iconMap[a.icon] || "•"}</div>
-            <div class="tl-content">
-              <div class="tl-title">${escHtml(a.title)}</div>
-              <div class="tl-desc">${escHtml(a.desc)}</div>
-            </div>
-            <div class="tl-time">${escHtml(a.time_display)}</div>
-          </div>`).join("");
-      }
-
-      // ── 会话管理 ──────────────────────────────────────────
-
-      async function loadSessions() {
-        document.getElementById("sessions-container").innerHTML = loadingHtml();
-        try {
-          const data = await bridge.apiGet("sessions/list", apiLocale());
-          if (!data.success) throw new Error(data.error || t("err_unknown", "未知错误"));
-          sessions = data.sessions || [];
-          sessionsLoaded = true;
-          renderSessions(sessions);
-          updateSessionStats(sessions);
-          hideGlobalError();
-        } catch (err) {
-          showGlobalError(t("err_sessions_load", "会话列表加载失败：") + err.message);
-          document.getElementById("sessions-container").innerHTML = `
-            <div class="empty-state">
-              <div class="empty-icon">⚠️</div>
-              <p>${escHtml(t("load_sessions_failed", "加载失败，请切换 Tab 后重试"))}</p>
-            </div>`;
-        }
-      }
-
-      function updateSessionStats(list) {
-        document.getElementById("count-total").textContent = list.length;
-        document.getElementById("count-active").textContent =
-          list.filter(s => s.status === "active").length;
-        document.getElementById("count-inactive").textContent =
-          list.filter(s => s.status !== "active").length;
-      }
-
-      function renderSessions(list) {
-        if (list.length === 0) {
-          document.getElementById("sessions-container").innerHTML = `
-            <div class="empty-state">
-              <div class="empty-icon">💬</div>
-              <h5>${escHtml(t("empty_sessions_title", "还没有主动会话"))}</h5>
-              <p>${escHtml(t("empty_sessions_desc", "通过右上角按钮添加，或在聊天中使用"))} <code>/proactive add_session</code></p>
-              <button class="btn btn-primary" onclick="showAddDialog()">＋ ${escHtml(t("btn_add_first", "添加第一个会话"))}</button>
-            </div>`;
-          return;
-        }
-
-        const platformLabel = p => {
-          if (p === "qq" || p === "aiocqhttp") return "QQ";
-          if (p === "wechat") return "微信";
-          if (p === "telegram") return "TG";
-          return p;
-        };
-
-        const rows = list.map(s => `
-          <tr>
-            <td><code>${escHtml(s.session_id)}</code></td>
-            <td><span class="badge badge-secondary">${escHtml(platformLabel(s.platform))}</span></td>
-            <td>${s.username ? escHtml(s.username) : '<span class="text-muted">—</span>'}</td>
-            <td>
-              ${s.next_fire_soon
-                ? `<span class="text-success">⏱ ${escHtml(s.next_fire_display)}</span>`
-                : `<span class="text-muted">${escHtml(s.next_fire_display)}</span>`}
-            </td>
-            <td><span style="font-size:0.8125rem;">${escHtml(s.last_sent_time)}</span></td>
-            <td>
-              ${s.unreplied_count > 0
-                ? `<span class="badge badge-warning">${s.unreplied_count}</span>`
-                : `<span class="text-muted">0</span>`}
-            </td>
-            <td>
-              <span class="badge ${s.status === "active" ? "badge-success" : "badge-warning"}">
-                ${escHtml(s.status_display)}
-              </span>
-              ${s.ai_task_count > 0
-                ? `<span class="badge badge-info" style="margin-left:4px;">AI ×${s.ai_task_count}</span>`
-                : ""}
-            </td>
-            <td>
-              <button class="btn btn-danger-outline" onclick="confirmRemove('${escAttr(s.session_id)}')" title="${escAttr(t("remove_title", "移除"))}">🗑</button>
-            </td>
-          </tr>`).join("");
-
-        document.getElementById("sessions-container").innerHTML = `
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>${escHtml(t("th_session_id", "会话 ID"))}</th>
-                  <th>${escHtml(t("th_platform", "平台"))}</th>
-                  <th>${escHtml(t("th_user", "用户"))}</th>
-                  <th>${escHtml(t("th_next_send", "下次发送"))}</th>
-                  <th>${escHtml(t("th_last_send", "最后发送"))}</th>
-                  <th>${escHtml(t("th_unreplied", "未回复"))}</th>
-                  <th>${escHtml(t("th_status", "状态"))}</th>
-                  <th>${escHtml(t("th_actions", "操作"))}</th>
-                </tr>
-              </thead>
-              <tbody>${rows}</tbody>
-            </table>
-          </div>`;
-      }
-
-      window.showAddDialog = function () {
-        document.getElementById("input-session-id").value = "";
-        document.getElementById("add-dialog").style.display = "flex";
-        setTimeout(() => document.getElementById("input-session-id").focus(), 50);
-      };
-
-      window.hideAddDialog = function () {
-        document.getElementById("add-dialog").style.display = "none";
-      };
-
-      window.submitAdd = async function () {
-        const sessionId = document.getElementById("input-session-id").value.trim();
-        if (!sessionId) {
-          toast(t("toast_enter_session_id", "请输入会话 ID"), "error");
-          return;
-        }
-        if (sessionId.split(":").length < 3) {
-          toast(t("toast_invalid_format", "格式不正确，应为 platform:type:id"), "error");
-          return;
-        }
-
-        const btn = document.getElementById("submit-btn");
-        btn.disabled = true;
-        btn.textContent = t("btn_adding", "添加中…");
-        try {
-          const data = await bridge.apiPost("sessions/add", {
-            session_id: sessionId,
-            locale: bridge.getLocale(),
-          });
-          if (!data.success) throw new Error(data.error || t("toast_add_failed", "添加失败"));
-          toast(data.message || t("toast_session_added", "会话已添加"), "success");
-          hideAddDialog();
-          await loadSessions();
-          if (activeTab === "dashboard") await loadDashboard();
-        } catch (err) {
-          toast(err.message, "error");
-        } finally {
-          btn.disabled = false;
-          btn.textContent = "＋ " + t("btn_add", "添加");
-        }
-      };
-
-      document.getElementById("input-session-id").addEventListener("keydown", e => {
-        if (e.key === "Enter") window.submitAdd();
-        if (e.key === "Escape") window.hideAddDialog();
-      });
-
-      window.confirmRemove = async function (sessionId) {
-        const msg = t("confirm_remove", '确定要移除会话 "{session_id}" 吗？').replace(
-          "{session_id}",
-          sessionId,
-        );
-        if (!confirm(msg)) return;
-        try {
-          const data = await bridge.apiPost("sessions/remove", {
-            session_id: sessionId,
-            locale: bridge.getLocale(),
-          });
-          if (!data.success) throw new Error(data.error || t("toast_remove_failed", "移除失败"));
-          toast(data.message || t("toast_session_removed", "会话已移除"), "success");
-          await loadSessions();
-          if (activeTab === "dashboard") await loadDashboard();
-        } catch (err) {
-          toast(err.message, "error");
-        }
-      };
-
-      // ── 工具函数 ──────────────────────────────────────────
-
-      function showGlobalError(msg) {
-        const el = document.getElementById("global-error");
-        el.textContent = msg;
-        el.style.display = "block";
-      }
-
-      function hideGlobalError() {
-        document.getElementById("global-error").style.display = "none";
-      }
-
-      let toastTimer = null;
-      function toast(msg, type) {
-        if (toastTimer) {
-          clearTimeout(toastTimer);
-          document.querySelector(".toast-banner")?.remove();
-        }
-        const el = document.createElement("div");
-        el.className = `toast-banner toast-${type}`;
-        el.textContent = msg;
-        document.body.appendChild(el);
-        toastTimer = setTimeout(() => el.remove(), 3000);
-      }
-
-      function escHtml(str) {
-        return String(str)
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;");
-      }
-
-      function escAttr(str) {
-        return String(str).replace(/'/g, "&#39;").replace(/"/g, "&quot;");
-      }
-
-      // ── 初始化 ────────────────────────────────────────────
-
-      await bridge.ready();
-      renderStatic();
-      bridge.onContext(() => {
-        renderStatic();
-        if (activeTab === "dashboard") {
-          loadDashboard();
-        } else if (sessionsLoaded) {
-          loadSessions();
-        }
-      });
-
-      await loadDashboard();
-
-      refreshTimer = setInterval(() => {
-        if (activeTab === "dashboard") loadDashboard();
-      }, 30000);
-    </script>
+    <script type="module" src="./app.js"></script>
   </body>
 </html>
