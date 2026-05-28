@@ -183,6 +183,84 @@ def register_web_apis(context, managers: dict) -> None:
             logger.error(f"心念 Web API | 移除会话失败: {e}")
             return jsonify({"success": False, "error": str(e)}), 500
 
+    async def get_ai_schedules():
+        """获取 AI 约定任务列表"""
+        try:
+            locale = normalize_locale(request.args.get("locale"))
+            config_manager = managers.get("config_manager")
+            config = config_manager.config if config_manager and hasattr(config_manager, "config") else {}
+            astrbot_config = _get_astrbot_config(managers)
+            now = get_now(config, astrbot_config).replace(tzinfo=None)
+            schedules = _build_ai_schedules_data(now, locale)
+            return jsonify({"success": True, "schedules": schedules, "total": len(schedules)})
+        except Exception as e:
+            logger.error(f"心念 Web API | 获取 AI 约定任务失败: {e}")
+            return jsonify({"success": False, "error": str(e)}), 500
+
+    async def cancel_ai_schedule():
+        """取消 AI 约定任务"""
+        try:
+            locale = request_locale()
+            data = await request.get_json()
+            session_id = (data or {}).get("session_id", "").strip()
+            task_id = (data or {}).get("task_id", "").strip()
+            fire_time = (data or {}).get("fire_time", "").strip()
+
+            if not session_id:
+                return jsonify(
+                    {"success": False, "error": t(locale, "api.errors.session_id_empty", "会话 ID 不能为空")}
+                ), 400
+            if not task_id and not fire_time:
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": t(locale, "api.errors.schedule_not_found", "未找到该约定任务"),
+                    }
+                ), 400
+
+            tasks = runtime_data.session_ai_scheduled.get(session_id)
+            if not tasks:
+                return jsonify(
+                    {"success": False, "error": t(locale, "api.errors.schedule_not_found", "未找到该约定任务")}
+                ), 404
+
+            task_list = (
+                tasks if isinstance(tasks, list) else [tasks] if isinstance(tasks, dict) else []
+            )
+            if task_id:
+                updated = [task for task in task_list if task.get("task_id") != task_id]
+            else:
+                updated = [task for task in task_list if task.get("fire_time", "") != fire_time]
+
+            if len(updated) == len(task_list):
+                return jsonify(
+                    {"success": False, "error": t(locale, "api.errors.schedule_not_found", "未找到该约定任务")}
+                ), 404
+
+            if updated:
+                runtime_data.session_ai_scheduled[session_id] = updated
+            else:
+                del runtime_data.session_ai_scheduled[session_id]
+
+            persistence_manager = managers.get("persistence_manager")
+            if persistence_manager:
+                persistence_manager.save_persistent_data()
+
+            task_manager = managers.get("task_manager")
+            if task_manager and hasattr(task_manager, "refresh_session_timer"):
+                task_manager.refresh_session_timer(session_id)
+
+            logger.info(
+                f"心念 Web API | 已取消 AI 约定任务: {session_id} "
+                f"task_id={task_id or '-'} fire_time={fire_time or '-'}"
+            )
+            return jsonify(
+                {"success": True, "message": t(locale, "api.messages.schedule_cancelled", "已取消约定任务")}
+            )
+        except Exception as e:
+            logger.error(f"心念 Web API | 取消 AI 约定任务失败: {e}")
+            return jsonify({"success": False, "error": str(e)}), 500
+
     context.register_web_api(
         f"/{PLUGIN_NAME}/dashboard/stats",
         get_dashboard_stats,
@@ -206,6 +284,18 @@ def register_web_apis(context, managers: dict) -> None:
         remove_session,
         ["POST"],
         "移除会话",
+    )
+    context.register_web_api(
+        f"/{PLUGIN_NAME}/ai-schedules/list",
+        get_ai_schedules,
+        ["GET"],
+        "获取 AI 约定任务列表",
+    )
+    context.register_web_api(
+        f"/{PLUGIN_NAME}/ai-schedules/cancel",
+        cancel_ai_schedule,
+        ["POST"],
+        "取消 AI 约定任务",
     )
 
     logger.info("心念 Web API | 所有 API 已注册")
@@ -459,6 +549,61 @@ def _build_sessions_data(managers: dict, locale: str = "zh-CN") -> list:
     return sessions
 
 
+def _build_ai_schedules_data(now: datetime, locale: str = "zh-CN") -> list:
+    """构建所有 AI 约定任务列表（按执行时间升序）"""
+    schedules = []
+    for session_id, tasks in runtime_data.session_ai_scheduled.items():
+        task_list = (
+            tasks if isinstance(tasks, list) else [tasks] if isinstance(tasks, dict) else []
+        )
+        parts = session_id.split(":")
+        platform = parts[0] if len(parts) >= 3 else "unknown"
+
+        for task in task_list:
+            fire_time = task.get("fire_time", "")
+            created_at = task.get("created_at", "")
+            follow_up_prompt = task.get("follow_up_prompt", "")
+
+            time_display = "—"
+            fire_soon = False
+            if fire_time:
+                try:
+                    ft = datetime.strptime(fire_time, "%Y-%m-%d %H:%M:%S")
+                    delta = ft - now
+                    total_seconds = int(delta.total_seconds())
+                    if total_seconds <= 60:
+                        time_display = t(locale, "api.time.soon", "即将")
+                        fire_soon = True
+                    elif total_seconds < 3600:
+                        time_display = t(
+                            locale, "api.time.in_minutes", "{n} 分钟后", n=total_seconds // 60
+                        )
+                    elif total_seconds < 86400:
+                        time_display = t(
+                            locale, "api.time.in_hours", "{n} 小时后", n=total_seconds // 3600
+                        )
+                    else:
+                        time_display = fire_time
+                except ValueError:
+                    time_display = fire_time
+
+            schedules.append(
+                {
+                    "session_id": session_id,
+                    "platform": platform,
+                    "task_id": task.get("task_id", ""),
+                    "fire_time": fire_time,
+                    "created_at": created_at,
+                    "follow_up_prompt": follow_up_prompt,
+                    "time_display": time_display,
+                    "fire_soon": fire_soon,
+                }
+            )
+
+    schedules.sort(key=lambda x: x["fire_time"] or "9999-99-99")
+    return schedules
+
+
 def _build_session_entry(session_id: str, now: datetime, locale: str = "zh-CN") -> dict:
     """构建单个会话条目的数据"""
     parts = session_id.split(":")
@@ -512,6 +657,8 @@ def _build_session_entry(session_id: str, now: datetime, locale: str = "zh-CN") 
     entry["last_sent_time"] = last_sent or "—"
 
     entry["unreplied_count"] = runtime_data.session_unreplied_count.get(session_id, 0)
+    entry["consecutive_failures"] = runtime_data.session_consecutive_failures.get(session_id, 0)
+    entry["last_proactive_message"] = runtime_data.session_last_proactive_message.get(session_id, "")
 
     user_info = runtime_data.session_user_info.get(session_id, {})
     entry["username"] = user_info.get("username", "")

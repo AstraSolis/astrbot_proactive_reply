@@ -31,6 +31,12 @@
             </span>
             <span class="nav-label" id="nav-label-sessions"></span>
           </button>
+          <button type="button" class="nav-item" data-view="schedules" id="nav-schedules">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </span>
+            <span class="nav-label" id="nav-label-schedules"></span>
+          </button>
         </nav>
 
         <div class="sidebar-footer">
@@ -102,6 +108,20 @@
             </section>
           </div>
 
+          <div class="view" id="view-schedules" data-view="schedules">
+            <header class="page-header">
+              <h1 class="page-title" id="page-title-schedules"></h1>
+            </header>
+            <article class="panel panel-table">
+              <header class="panel-head">
+                <h3 class="panel-title" id="hdr-schedule-list"></h3>
+              </header>
+              <div class="panel-body panel-body-flush" id="schedules-container">
+                <div class="loading"><div class="spinner"></div><span class="loading-text"></span></div>
+              </div>
+            </article>
+          </div>
+
           <div class="view" id="view-sessions" data-view="sessions">
             <header class="page-header">
               <h1 class="page-title" id="page-title-sessions"></h1>
@@ -156,6 +176,16 @@
         <footer class="dialog-footer">
           <button type="button" class="btn btn-ghost" id="btn-dialog-cancel"></button>
           <button type="button" class="btn btn-primary" id="submit-btn"></button>
+        </footer>
+      </div>
+    </div>
+
+    <div class="dialog-overlay" id="session-detail-dialog" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="detail-title">
+      <div class="dialog dialog-lg">
+        <header class="dialog-header" id="detail-title"></header>
+        <div class="dialog-body dialog-body-scroll" id="detail-body"></div>
+        <footer class="dialog-footer">
+          <button type="button" class="btn btn-ghost" id="btn-detail-close"></button>
         </footer>
       </div>
     </div>

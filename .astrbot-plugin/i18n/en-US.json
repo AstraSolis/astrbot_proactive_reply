@@ -278,7 +278,36 @@
       "toast_session_added": "Session added",
       "toast_remove_failed": "Remove failed",
       "toast_session_removed": "Session removed",
-      "confirm_remove": "Remove session \"{session_id}\"?"
+      "confirm_remove": "Remove session \"{session_id}\"?",
+      "tab_schedules": "AI Tasks",
+      "schedule_list": "Scheduled tasks",
+      "btn_close": "Close",
+      "search_hint_schedules": "Search not available on this page",
+      "empty_schedules_title": "No AI scheduled tasks",
+      "empty_schedules_desc": "When AI makes a time commitment in chat, the task will appear here automatically",
+      "load_schedules_failed": "Load failed — please refresh",
+      "err_schedules_load": "Failed to load scheduled tasks: ",
+      "th_session": "Session",
+      "th_time_left": "Countdown",
+      "th_fire_time": "Fire time",
+      "th_prompt": "Trigger prompt",
+      "th_created": "Created",
+      "cancel_title": "Cancel",
+      "confirm_cancel_schedule": "Cancel this scheduled task?",
+      "toast_cancel_failed": "Cancel failed",
+      "toast_schedule_cancelled": "Scheduled task cancelled",
+      "detail_title": "Session details",
+      "detail_basic_info": "Basic info",
+      "detail_run_status": "Status",
+      "detail_last_send": "Last sent",
+      "label_failures": "Consecutive failures",
+      "label_failure_count": "failures",
+      "label_ai_tasks": "AI tasks",
+      "label_task_unit": "",
+      "label_last_message": "Message content",
+      "no_message_preview": "No record",
+      "prompt_detail_title": "Trigger prompt",
+      "prompt_full_content": "Full content"
     }
   },
   "api": {
@@ -289,12 +318,14 @@
       "session_exists": "Session already exists",
       "config_save_failed": "Failed to save config",
       "session_not_found": "Session not found",
+      "schedule_not_found": "Scheduled task not found",
       "add_failed": "Add failed",
       "remove_failed": "Remove failed"
     },
     "messages": {
       "session_added": "Session added: {session_id}",
-      "session_removed": "Session removed: {session_id}"
+      "session_removed": "Session removed: {session_id}",
+      "schedule_cancelled": "Scheduled task cancelled"
     },
     "activity": {
       "proactive_send_user": "Sent proactive message to {username}",
