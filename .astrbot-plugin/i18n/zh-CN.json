@@ -272,6 +272,7 @@
       "err_unknown": "未知错误",
       "err_dashboard_load": "概览加载失败：",
       "err_sessions_load": "会话列表加载失败：",
+      "err_bridge_missing": "WebUI 桥接环境未就绪，请从 AstrBot 插件页面打开。",
       "toast_enter_session_id": "请输入会话 ID",
       "toast_invalid_format": "格式不正确，应为 platform:type:id",
       "toast_add_failed": "添加失败",
@@ -319,6 +320,7 @@
       "config_save_failed": "配置保存失败",
       "session_not_found": "未找到该会话",
       "schedule_not_found": "未找到该约定任务",
+      "internal_error": "服务器内部错误，请稍后重试",
       "add_failed": "添加失败",
       "remove_failed": "移除失败"
     },

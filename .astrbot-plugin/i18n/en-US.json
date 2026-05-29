@@ -272,6 +272,7 @@
       "err_unknown": "Unknown error",
       "err_dashboard_load": "Failed to load overview:",
       "err_sessions_load": "Failed to load sessions:",
+      "err_bridge_missing": "WebUI bridge is not ready. Open this page from AstrBot plugin pages.",
       "toast_enter_session_id": "Please enter a session ID",
       "toast_invalid_format": "Invalid format — use platform:type:id",
       "toast_add_failed": "Add failed",
@@ -319,6 +320,7 @@
       "config_save_failed": "Failed to save config",
       "session_not_found": "Session not found",
       "schedule_not_found": "Scheduled task not found",
+      "internal_error": "Internal server error. Please try again later.",
       "add_failed": "Add failed",
       "remove_failed": "Remove failed"
     },

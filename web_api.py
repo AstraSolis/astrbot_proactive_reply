@@ -17,6 +17,15 @@ from .utils.time_utils import get_now
 PLUGIN_NAME = "astrbot_proactive_reply"
 
 
+def _internal_error_response(locale: str):
+    return jsonify(
+        {
+            "success": False,
+            "error": t(locale, "api.errors.internal_error", "服务器内部错误，请稍后重试"),
+        }
+    ), 500
+
+
 def register_web_apis(context, managers: dict) -> None:
     """向 AstrBot 注册所有插件 Web API
 
@@ -33,7 +42,7 @@ def register_web_apis(context, managers: dict) -> None:
             return jsonify({"success": True, "stats": stats})
         except Exception as e:
             logger.error(f"心念 Web API | 获取仪表板统计失败: {e}")
-            return jsonify({"success": False, "error": str(e)}), 500
+            return _internal_error_response(normalize_locale(request.args.get("locale")))
 
     async def get_sessions_list():
         """获取会话列表"""
@@ -43,7 +52,7 @@ def register_web_apis(context, managers: dict) -> None:
             return jsonify({"success": True, "sessions": sessions, "total": len(sessions)})
         except Exception as e:
             logger.error(f"心念 Web API | 获取会话列表失败: {e}")
-            return jsonify({"success": False, "error": str(e)}), 500
+            return _internal_error_response(normalize_locale(request.args.get("locale")))
 
     async def add_session():
         """添加会话"""
@@ -116,7 +125,7 @@ def register_web_apis(context, managers: dict) -> None:
             )
         except Exception as e:
             logger.error(f"心念 Web API | 添加会话失败: {e}")
-            return jsonify({"success": False, "error": str(e)}), 500
+            return _internal_error_response(request_locale())
 
     async def remove_session():
         """移除会话"""
@@ -181,7 +190,7 @@ def register_web_apis(context, managers: dict) -> None:
             )
         except Exception as e:
             logger.error(f"心念 Web API | 移除会话失败: {e}")
-            return jsonify({"success": False, "error": str(e)}), 500
+            return _internal_error_response(request_locale())
 
     async def get_ai_schedules():
         """获取 AI 约定任务列表"""
@@ -195,7 +204,7 @@ def register_web_apis(context, managers: dict) -> None:
             return jsonify({"success": True, "schedules": schedules, "total": len(schedules)})
         except Exception as e:
             logger.error(f"心念 Web API | 获取 AI 约定任务失败: {e}")
-            return jsonify({"success": False, "error": str(e)}), 500
+            return _internal_error_response(normalize_locale(request.args.get("locale")))
 
     async def cancel_ai_schedule():
         """取消 AI 约定任务"""
@@ -259,7 +268,7 @@ def register_web_apis(context, managers: dict) -> None:
             )
         except Exception as e:
             logger.error(f"心念 Web API | 取消 AI 约定任务失败: {e}")
-            return jsonify({"success": False, "error": str(e)}), 500
+            return _internal_error_response(request_locale())
 
     context.register_web_api(
         f"/{PLUGIN_NAME}/dashboard/stats",

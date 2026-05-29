@@ -1,4 +1,4 @@
-const bridge = window.AstrBotPluginPage;
+const bridge = window.AstrBotPluginPage || null;
 const I18N = "pages.webui.";
 const VISIT_KEY = "astrbot-proactive-webui-seen";
 
@@ -16,11 +16,15 @@ let sessionsPromise = null;
 applyVisitState();
 
 function t(key, fallback) {
-  return bridge.t(I18N + key, fallback);
+  return bridge?.t?.(I18N + key, fallback) || fallback;
+}
+
+function getLocale() {
+  return bridge?.getLocale?.() || document.documentElement.lang || "zh-CN";
 }
 
 function apiLocale() {
-  return { locale: bridge.getLocale() };
+  return { locale: getLocale() };
 }
 
 function applyVisitState() {
@@ -41,8 +45,8 @@ function getInitials(name) {
 }
 
 function renderStatic() {
-  const locale = bridge.getLocale();
-  const ctx = bridge.getContext();
+  const locale = getLocale();
+  const ctx = bridge?.getContext?.() || {};
   const pluginName = ctx?.displayName || t("heading", "心念");
 
   document.documentElement.lang = locale;
@@ -402,7 +406,7 @@ function renderSessions(list) {
         : `${escHtml(t("empty_sessions_desc", "点击顶部 + 添加，或在聊天中使用"))} <code>/proactive add_session</code>`,
       isFiltered
         ? ""
-        : `<button type="button" class="btn btn-primary" onclick="showAddDialog()">${escHtml(t("btn_add_first", "添加第一个会话"))}</button>`,
+        : `<button type="button" class="btn btn-primary" data-action="add-session">${escHtml(t("btn_add_first", "添加第一个会话"))}</button>`,
     );
     return;
   }
@@ -490,7 +494,7 @@ window.submitAdd = async function () {
   try {
     const data = await bridge.apiPost("sessions/add", {
       session_id: sessionId,
-      locale: bridge.getLocale(),
+      locale: getLocale(),
     });
     if (!data.success) throw new Error(data.error || t("toast_add_failed", "添加失败"));
     toast(data.message || t("toast_session_added", "会话已添加"), "success");
@@ -517,6 +521,11 @@ document.getElementById("input-session-id").addEventListener("keydown", e => {
 });
 
 document.getElementById("sessions-container").addEventListener("click", e => {
+  const addBtn = e.target.closest('[data-action="add-session"]');
+  if (addBtn) {
+    showAddDialog();
+    return;
+  }
   const removeBtn = e.target.closest("[data-session-id]");
   if (removeBtn) {
     confirmRemove(removeBtn.dataset.sessionId);
@@ -645,7 +654,7 @@ async function cancelSchedule(sessionId, fireTime, taskId) {
   try {
     const payload = {
       session_id: sessionId,
-      locale: bridge.getLocale(),
+      locale: getLocale(),
     };
     if (taskId) payload.task_id = taskId;
     else payload.fire_time = fireTime;
@@ -768,7 +777,7 @@ async function confirmRemove(sessionId) {
   try {
     const data = await bridge.apiPost("sessions/remove", {
       session_id: sessionId,
-      locale: bridge.getLocale(),
+      locale: getLocale(),
     });
     if (!data.success) throw new Error(data.error || t("toast_remove_failed", "移除失败"));
     toast(data.message || t("toast_session_removed", "会话已移除"), "success");
@@ -825,21 +834,29 @@ async function reloadActiveView() {
   }
 }
 
-await bridge.ready();
-renderStatic();
-bridge.onContext(() => {
+if (!bridge) {
   renderStatic();
-  reloadActiveView();
-});
+  showGlobalError(t("err_bridge_missing", "WebUI 桥接环境未就绪，请从 AstrBot 插件页面打开。"));
+  document.getElementById("btn-refresh").disabled = true;
+  document.getElementById("btn-refresh-panel").disabled = true;
+  document.getElementById("btn-add-session").disabled = true;
+} else {
+  await bridge.ready();
+  renderStatic();
+  bridge.onContext(() => {
+    renderStatic();
+    reloadActiveView();
+  });
 
-await reloadActiveView();
+  await reloadActiveView();
 
-refreshTimer = setInterval(() => {
-  if (activeView === "dashboard") loadDashboard();
-  else if (activeView === "sessions" && sessionsLoaded) loadSessions();
-  else if (activeView === "schedules" && schedulesLoaded) loadAiSchedules();
-}, 30000);
+  refreshTimer = setInterval(() => {
+    if (activeView === "dashboard") loadDashboard();
+    else if (activeView === "sessions" && sessionsLoaded) loadSessions();
+    else if (activeView === "schedules" && schedulesLoaded) loadAiSchedules();
+  }, 30000);
 
-window.addEventListener("beforeunload", () => {
-  if (refreshTimer) clearInterval(refreshTimer);
-});
+  window.addEventListener("beforeunload", () => {
+    if (refreshTimer) clearInterval(refreshTimer);
+  });
+}
