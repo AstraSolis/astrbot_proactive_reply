@@ -404,7 +404,7 @@ def _zh_config() -> dict:
             "items": {
                 "enabled": {
                     "description": "启用聊天附带用户信息",
-                    "hint": "在每次 LLM 请求前将用户信息追加到系统提示词",
+                    "hint": "在每次 LLM 请求前将用户信息追加到用户消息后，不修改 system_prompt",
                 },
                 "time_format": {
                     "description": "时间格式",
@@ -412,7 +412,7 @@ def _zh_config() -> dict:
                 },
                 "template": {
                     "description": "用户信息模板",
-                    "hint": "追加到系统提示末尾，支持 {username}、{user_id}、{time} 等占位符",
+                    "hint": "追加到用户消息后，支持 {username}、{user_id}、{time} 等占位符",
                 },
             },
         },
@@ -421,7 +421,7 @@ def _zh_config() -> dict:
             "items": {
                 "time_guidance_enabled": {
                     "description": "启用时间感知增强提示词",
-                    "hint": "在系统提示中添加时间使用指南，影响正常聊天与主动对话",
+                    "hint": "用户正常聊天时追加到用户消息后；主动对话使用独立提示词",
                 },
                 "time_guidance_prompt": {
                     "description": "时间感知增强提示词",
@@ -437,7 +437,7 @@ def _zh_config() -> dict:
                 },
                 "sleep_prompt": {
                     "description": "睡眠时间提示内容",
-                    "hint": "睡眠时段内附加到系统提示词",
+                    "hint": "睡眠时段内追加到用户消息后",
                 },
                 "send_on_wake_enabled": {
                     "description": "睡眠结束时发送消息",
@@ -613,7 +613,7 @@ def _en_config() -> dict:
             "items": {
                 "enabled": {
                     "description": "Append user info to chat",
-                    "hint": "Appends user info to the system prompt before each LLM request",
+                    "hint": "Appends user info after the user message on each LLM request without modifying system_prompt",
                 },
                 "time_format": {
                     "description": "Time format",
@@ -621,7 +621,7 @@ def _en_config() -> dict:
                 },
                 "template": {
                     "description": "User info template",
-                    "hint": "Appended to system prompt; supports {username}, {user_id}, {time}, etc.",
+                    "hint": "Appended after the user message; supports {username}, {user_id}, {time}, etc.",
                 },
             },
         },
@@ -630,7 +630,7 @@ def _en_config() -> dict:
             "items": {
                 "time_guidance_enabled": {
                     "description": "Enable time-awareness prompt",
-                    "hint": "Adds time guidance for normal and proactive chat",
+                    "hint": "Appends time guidance after the user message in normal chat; proactive uses separate prompts",
                 },
                 "time_guidance_prompt": {
                     "description": "Time-awareness prompt text",

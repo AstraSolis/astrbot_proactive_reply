@@ -27,7 +27,7 @@
       "description": "User context in chat",
       "enabled": {
         "description": "Append user info to chat",
-        "hint": "Appends user info to the system prompt before each LLM request"
+        "hint": "Appends user info after the user message on each LLM request without modifying system_prompt"
       },
       "time_format": {
         "description": "Time format",
@@ -35,14 +35,14 @@
       },
       "template": {
         "description": "User info template",
-        "hint": "Appended to system prompt; supports {username}, {user_id}, {time}, etc."
+        "hint": "Appended after the user message; supports {username}, {user_id}, {time}, etc."
       }
     },
     "time_awareness": {
       "description": "Time awareness",
       "time_guidance_enabled": {
         "description": "Enable time-awareness prompt",
-        "hint": "Adds time guidance for normal and proactive chat"
+        "hint": "Appends time guidance after the user message in normal chat; proactive uses separate prompts"
       },
       "time_guidance_prompt": {
         "description": "Time-awareness prompt text",

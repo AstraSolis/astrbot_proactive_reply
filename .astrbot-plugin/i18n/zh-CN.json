@@ -27,7 +27,7 @@
       "description": "聊天附带用户信息设置",
       "enabled": {
         "description": "启用聊天附带用户信息",
-        "hint": "在每次 LLM 请求前将用户信息追加到系统提示词"
+        "hint": "在每次 LLM 请求前将用户信息追加到用户消息后，不修改 system_prompt"
       },
       "time_format": {
         "description": "时间格式",
@@ -35,14 +35,14 @@
       },
       "template": {
         "description": "用户信息模板",
-        "hint": "追加到系统提示末尾，支持 {username}、{user_id}、{time} 等占位符"
+        "hint": "追加到用户消息后，支持 {username}、{user_id}、{time} 等占位符"
       }
     },
     "time_awareness": {
       "description": "时间感知设置",
       "time_guidance_enabled": {
         "description": "启用时间感知增强提示词",
-        "hint": "在系统提示中添加时间使用指南，影响正常聊天与主动对话"
+        "hint": "用户正常聊天时追加到用户消息后；主动对话使用独立提示词"
       },
       "time_guidance_prompt": {
         "description": "时间感知增强提示词",
@@ -58,7 +58,7 @@
       },
       "sleep_prompt": {
         "description": "睡眠时间提示内容",
-        "hint": "睡眠时段内附加到系统提示词"
+        "hint": "睡眠时段内追加到用户消息后"
       },
       "send_on_wake_enabled": {
         "description": "睡眠结束时发送消息",

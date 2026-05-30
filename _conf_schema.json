@@ -37,7 +37,7 @@
                 "description": "启用聊天附带用户信息",
                 "type": "bool",
                 "default": true,
-                "hint": "启用后，在每次LLM请求前会自动将用户信息（用户名、时间等）追加到系统提示词中"
+                "hint": "启用后，在每次LLM请求前会自动将用户信息（用户名、时间等）追加到用户消息后，不会修改人格 system_prompt"
             },
             "time_format": {
                 "description": "时间格式",
@@ -49,7 +49,7 @@
                 "description": "用户信息模板",
                 "type": "text",
                 "default": "[对话信息] 用户名称:{username},时间:{time},上次聊天时间:{user_last_message_time}",
-                "hint": "用户信息会追加到现有系统提示的末尾，不会覆盖人格设置。可使用占位符：{username}（用户名）、{user_id}（用户ID）、{time}（消息时间）、{current_time}（当前时间）、{weekday}（星期，如星期一）、{platform}（平台名）、{chat_type}（聊天类型）、{user_last_message_time}（用户上次发消息时间）、{user_last_message_time_ago}（相对时间，如5分钟前）、{ai_last_sent_time}（AI上次发送时间）。建议保持简洁，避免与人格设置冲突"
+                "hint": "用户信息会追加到用户消息后，不会覆盖人格设置。可使用占位符：{username}（用户名）、{user_id}（用户ID）、{time}（消息时间）、{current_time}（当前时间）、{weekday}（星期，如星期一）、{platform}（平台名）、{chat_type}（聊天类型）、{user_last_message_time}（用户上次发消息时间）、{user_last_message_time_ago}（相对时间，如5分钟前）、{ai_last_sent_time}（AI上次发送时间）。建议保持简洁"
             }
         }
     },
@@ -61,7 +61,7 @@
                 "description": "启用时间感知增强提示词",
                 "type": "bool",
                 "default": true,
-                "hint": "启用后，会在系统提示中添加时间信息使用指南，指导AI正确处理时间相关的表述。此设置同时影响用户正常聊天和AI主动对话"
+                "hint": "启用后，会在用户正常聊天时追加时间信息使用指南（用户消息后），指导AI正确处理时间相关的表述。主动对话仍使用独立提示词构建"
             },
             "time_guidance_prompt": {
                 "description": "时间感知增强提示词",
@@ -73,7 +73,7 @@
                 "description": "启用睡眠时间功能",
                 "type": "bool",
                 "default": false,
-                "hint": "启用后，在睡眠时间段内：1) 不发送主动消息；2) 用户发消息时会附加睡眠提示到系统提示词"
+                "hint": "启用后，在睡眠时间段内：1) 不发送主动消息；2) 用户发消息时会追加睡眠提示到用户消息后"
             },
             "sleep_hours": {
                 "description": "睡眠时间段",
@@ -85,7 +85,7 @@
                 "description": "睡眠时间提示内容",
                 "type": "text",
                 "default": "<SLEEP_MODE: 当前处于睡眠时间段，你正处于休眠状态。若用户此时发送消息，请以符合人设的自然方式回应，可表现出困倦、迷糊等状态>",
-                "hint": "在睡眠时间段内，此提示会附加到系统提示词中，让AI感知当前处于睡眠时间"
+                "hint": "在睡眠时间段内，此提示会追加到用户消息后，让AI感知当前处于睡眠时间"
             },
             "send_on_wake_enabled": {
                 "description": "睡眠结束时发送消息",

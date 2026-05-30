@@ -135,9 +135,9 @@ class ProactiveReplyPlugin(Star):
 
     @filter.on_llm_request()
     async def add_user_info(self, event: AstrMessageEvent, req: ProviderRequest):
-        """在LLM请求前添加用户信息和时间
+        """在 LLM 请求前通过 extra_user_content_parts 追加动态附带信息
 
-        自动触发,在每次LLM请求前自动添加用户相关信息
+        自动触发，不修改 system_prompt，避免破坏 LLM 前缀缓存
         """
         await self.user_info_manager.add_user_info_to_request(event, req)
 

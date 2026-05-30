@@ -38,7 +38,7 @@ class UserInfoManager:
         return None
 
     async def add_user_info_to_request(self, event: AstrMessageEvent, req):
-        """在LLM请求前添加用户信息和时间
+        """在 LLM 请求前通过 extra_user_content_parts 追加动态附带信息
 
         Args:
             event: 消息事件
@@ -158,7 +158,7 @@ class UserInfoManager:
             except Exception as e:
                 logger.warning(f"心念 | ⚠️ 时间感知提示词占位符替换失败: {e}")
 
-        # 追加用户信息和时间增强提示词到系统提示
+        # 通过 extra_user_content_parts 追加动态信息，避免修改 system_prompt 导致前缀缓存失效
         additional_prompt = user_info
         if time_guidance:
             additional_prompt = f"{time_guidance}\n\n{user_info}"
@@ -168,10 +168,7 @@ class UserInfoManager:
         if sleep_prompt:
             additional_prompt = f"{sleep_prompt}\n\n{additional_prompt}"
 
-        if req.system_prompt:
-            req.system_prompt = req.system_prompt.rstrip() + f"\n\n{additional_prompt}"
-        else:
-            req.system_prompt = additional_prompt
+        self._append_dynamic_user_content(req, additional_prompt)
 
         # 记录用户信息
         self.record_user_info(event, username, user_id, platform_name, message_type)
@@ -366,6 +363,30 @@ class UserInfoManager:
         except Exception as e:
             logger.error(f"心念 | ❌ 计算距离AI最后消息的分钟数失败: {e}")
             return -1
+
+    def _append_dynamic_user_content(self, req, additional_prompt: str) -> None:
+        """将动态附带信息追加到 extra_user_content_parts，不修改 system_prompt
+
+        遵循 AstrBot 官方推荐：动态上下文放在本轮用户输入之后，并标记为临时内容。
+        """
+        try:
+            from astrbot.core.agent.message import TextPart
+        except ImportError:
+            logger.warning("心念 | ⚠️ 无法导入 TextPart，跳过附带信息注入")
+            return
+
+        req.extra_user_content_parts.append(
+            self._make_temp_text_part(TextPart, additional_prompt)
+        )
+
+    @staticmethod
+    def _make_temp_text_part(text_part_cls, text: str):
+        """创建临时 TextPart，兼容 mark_as_temp 尚未可用的旧版 AstrBot"""
+        part = text_part_cls(text=text)
+        mark_as_temp = getattr(part, "mark_as_temp", None)
+        if callable(mark_as_temp):
+            return mark_as_temp()
+        return part
 
     def _safe_format_template(self, template: str, placeholders: dict) -> str:
         """安全地替换模板中的占位符
