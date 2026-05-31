@@ -4,7 +4,6 @@
 负责对话历史的获取和保存
 """
 
-import datetime
 import json
 from astrbot.api import logger
 from .runtime_data import runtime_data
