@@ -9,8 +9,12 @@ import json
 import os
 import shutil
 from astrbot.api import logger
+from astrbot.api.star import StarTools
 from ..utils.validators import validate_persistent_data
 from .runtime_data import runtime_data
+
+# 插件数据目录名(与 metadata.yaml 中的 name 保持一致)
+PLUGIN_DATA_DIR_NAME = "astrbot_proactive_reply"
 
 
 class PersistenceManager:
@@ -29,9 +33,25 @@ class PersistenceManager:
     def get_plugin_data_dir(self) -> str:
         """获取插件专用的数据目录路径
 
+        优先使用 AstrBot 官方 API ``StarTools.get_data_dir()`` 获取标准插件数据
+        目录(``data/plugin_data/astrbot_proactive_reply``)。该接口不依赖进程工作
+        目录,可在非常规启动方式(工作目录非项目根)下正确定位。若官方接口不可用,
+        则回退到基于配置 / 进程工作目录的手工拼接逻辑。
+
         Returns:
             数据目录路径
         """
+        # 优先使用官方 API(AstrBot >=4.24.0),由其负责创建并返回标准数据目录
+        try:
+            plugin_data_dir = str(StarTools.get_data_dir(PLUGIN_DATA_DIR_NAME))
+            logger.info(f"心念 | ✅ 插件数据目录: {plugin_data_dir}")
+            return plugin_data_dir
+        except Exception as e:
+            logger.warning(
+                f"心念 | ⚠️ StarTools.get_data_dir() 不可用,回退到手工路径拼接: {e}"
+            )
+
+        # 回退逻辑:基于 AstrBot 配置或进程工作目录手工拼接
         try:
             # 尝试从AstrBot配置中获取数据目录
             try:
@@ -47,7 +67,7 @@ class PersistenceManager:
             # 创建插件专用的数据子目录（在 data/plugin_data 目录下）
             # 这符合AstrBot规范，避免插件更新时数据被覆盖
             plugin_data_dir = os.path.join(
-                base_data_dir, "plugin_data", "astrbot_proactive_reply"
+                base_data_dir, "plugin_data", PLUGIN_DATA_DIR_NAME
             )
 
             # 确保目录存在
@@ -59,7 +79,7 @@ class PersistenceManager:
         except OSError as e:
             logger.error(f"心念 | ❌ 文件系统错误: {e}")
             fallback_dir = os.path.join(
-                os.getcwd(), "data", "plugin_data", "astrbot_proactive_reply"
+                os.getcwd(), "data", "plugin_data", PLUGIN_DATA_DIR_NAME
             )
             try:
                 os.makedirs(fallback_dir, exist_ok=True)
