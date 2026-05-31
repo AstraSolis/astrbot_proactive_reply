@@ -5,27 +5,19 @@
 """
 
 import asyncio
-import re
 from datetime import datetime
 from astrbot.api import logger
 from astrbot.api.event import MessageChain
 
+from ..constants import MAX_HISTORY_MESSAGE_COUNT, MIN_HISTORY_MESSAGE_COUNT
 from ..core.runtime_data import runtime_data
 from ..utils.time_utils import get_tz
 from .ai_schedule_analyzer import analyze_for_schedule
+from .message_splitter import MessageSplitter
 
 
 class MessageGenerator:
     """消息生成器类"""
-
-    # 分割模式正则表达式
-    SPLIT_MODE_PATTERNS = {
-        "backslash": r"\\",
-        "newline": r"\n",
-        "comma": r",",
-        "semicolon": r";",
-        "punctuation": r"[,;。!?]",
-    }
 
     def __init__(
         self,
@@ -50,51 +42,8 @@ class MessageGenerator:
         self.conversation_manager = conversation_manager
         self.user_info_manager = user_info_manager
 
-        # 预编译分段模式（官方风格）
-        self._initialize_split_patterns()
-
-    def _initialize_split_patterns(self):
-        """初始化分段模式（预编译正则表达式）"""
-        split_config = self.config.get("message_split", {})
-        split_mode = split_config.get("mode", "backslash")
-
-        # 初始化分段词模式（words 模式 - 官方风格）
-        self.split_words_pattern = None
-        self.split_words = []
-        if split_mode == "words":
-            split_words = split_config.get("split_words", ["。", "？", "！", "~", "…"])
-            if split_words:
-                try:
-                    # 按长度倒序排序，避免短词误匹配（官方实现）
-                    escaped_words = sorted(
-                        [re.escape(word) for word in split_words],
-                        key=len,
-                        reverse=True,
-                    )
-                    # 官方正则格式：(.*?(分段词1|分段词2|...)|.+$)
-                    self.split_words_pattern = re.compile(
-                        f"(.*?({'|'.join(escaped_words)})|.+$)", re.DOTALL
-                    )
-                    self.split_words = split_words
-                    logger.debug(f"心念 | 初始化 words 模式，分段词: {split_words}")
-                except re.error as e:
-                    logger.error(f"心念 | ❌ 分段词模式初始化失败: {e}")
-                    self.split_words_pattern = None
-
-        # 初始化正则模式（regex 模式 - 官方风格）
-        self.split_regex_pattern = None
-        if split_mode == "regex":
-            regex = split_config.get("regex", "")
-            if regex:
-                try:
-                    # 使用 DOTALL 和 MULTILINE 标志（官方实现）
-                    self.split_regex_pattern = re.compile(
-                        regex, re.DOTALL | re.MULTILINE
-                    )
-                    logger.debug(f"心念 | 初始化 regex 模式，正则: {regex}")
-                except re.error as e:
-                    logger.error(f"心念 | ❌ 正则表达式编译失败: {e}, 表达式: {regex}")
-                    self.split_regex_pattern = None
+        # 消息分割器（封装分段模式与正则保护）
+        self.message_splitter = MessageSplitter(config)
 
     def _get_astrbot_config(self):
         """安全获取 AstrBot 全局配置"""
@@ -246,7 +195,10 @@ class MessageGenerator:
 
             if proactive_config.get("include_history_enabled", False):
                 history_count = proactive_config.get("history_message_count", 10)
-                history_count = max(1, min(50, history_count))
+                history_count = max(
+                    MIN_HISTORY_MESSAGE_COUNT,
+                    min(MAX_HISTORY_MESSAGE_COUNT, history_count),
+                )
                 contexts = await self.conversation_manager.get_conversation_history(
                     session, history_count
                 )
@@ -379,7 +331,10 @@ class MessageGenerator:
         contexts = []
         if proactive_config.get("include_history_enabled", False):
             history_count = proactive_config.get("history_message_count", 10)
-            history_count = max(1, min(50, history_count))
+            history_count = max(
+                MIN_HISTORY_MESSAGE_COUNT,
+                min(MAX_HISTORY_MESSAGE_COUNT, history_count),
+            )
             contexts = await self.conversation_manager.get_conversation_history(
                 session, history_count
             )
@@ -415,106 +370,6 @@ class MessageGenerator:
             existing_tasks=existing_tasks,
             tz=tz,
         )
-
-    def _split_text_by_words(self, text: str) -> list[str]:
-        """使用分段词列表分段文本（官方风格）
-
-        Args:
-            text: 待分割的文本
-
-        Returns:
-            分割后的文本片段列表
-        """
-        if not self.split_words_pattern:
-            return [text]
-
-        segments = self.split_words_pattern.findall(text)
-        result = []
-
-        for seg in segments:
-            if isinstance(seg, tuple):
-                # findall 返回的是元组（捕获组）
-                content = seg[0]
-                if not isinstance(content, str):
-                    continue
-
-                # 去掉末尾的分段词（官方实现）
-                for word in self.split_words:
-                    if content.endswith(word):
-                        content = content[: -len(word)]
-                        break
-
-                if content.strip():
-                    result.append(content.strip())
-            elif seg and seg.strip():
-                result.append(seg.strip())
-
-        return result if result else [text]
-
-    def _split_text_by_regex(self, text: str) -> list[str]:
-        """使用正则表达式分段文本（官方风格）
-
-        Args:
-            text: 待分割的文本
-
-        Returns:
-            分割后的文本片段列表
-        """
-        if not self.split_regex_pattern:
-            return [text]
-
-        segments = self.split_regex_pattern.findall(text)
-        result = []
-
-        for seg in segments:
-            if isinstance(seg, tuple):
-                # 如果正则有多个捕获组，取第一个
-                content = seg[0] if seg else ""
-            else:
-                content = seg
-
-            if content and content.strip():
-                result.append(content.strip())
-
-        return result if result else [text]
-
-    def _split_text_legacy(
-        self, text: str, split_mode: str, split_config: dict
-    ) -> list[str]:
-        """使用旧的 re.split 方式分割（向后兼容）
-
-        Args:
-            text: 待分割的文本
-            split_mode: 分割模式
-            split_config: 分割配置
-
-        Returns:
-            分割后的文本片段列表
-        """
-        # 确定使用的正则表达式
-        if split_mode == "custom":
-            split_pattern = split_config.get("custom_pattern", "")
-            if not split_pattern:
-                logger.warning(
-                    "心念 | ⚠️ custom 模式下未配置正则表达式，使用默认 backslash 模式"
-                )
-                split_pattern = self.SPLIT_MODE_PATTERNS["backslash"]
-                split_mode = "backslash"
-        else:
-            split_pattern = self.SPLIT_MODE_PATTERNS.get(
-                split_mode, self.SPLIT_MODE_PATTERNS["backslash"]
-            )
-
-        try:
-            # 使用 re.split 分割
-            message_parts = re.split(split_pattern, text)
-            message_parts = [part.strip() for part in message_parts if part.strip()]
-            return message_parts if message_parts else [text]
-        except re.error as e:
-            logger.error(
-                f"心念 | ❌ 正则表达式错误: {e}, 模式: {split_mode}, 表达式: {split_pattern}"
-            )
-            return [text]
 
     async def _send_message_with_split(
         self,
@@ -564,30 +419,10 @@ class MessageGenerator:
             proactive_prompt_used: 本次使用的主动对话提示词
         """
         split_config = self.config.get("message_split", {})
-        split_mode = split_config.get("mode", "backslash")
 
         try:
-            # 根据模式选择分割方法
-            if split_mode == "words":
-                # 官方风格：分段词列表模式
-                message_parts = self._split_text_by_words(message)
-                split_words_count = len(split_config.get("split_words", []))
-                mode_display = f"分段词模式({split_words_count}个词)"
-            elif split_mode == "regex":
-                # 官方风格：正则表达式模式
-                message_parts = self._split_text_by_regex(message)
-                regex_preview = split_config.get("regex", "")[:30]
-                mode_display = f"正则模式(/{regex_preview}{'...' if len(split_config.get('regex', '')) > 30 else ''}/)"
-            else:
-                # 向后兼容：使用旧的 re.split 逻辑
-                message_parts = self._split_text_legacy(
-                    message, split_mode, split_config
-                )
-                if split_mode == "custom":
-                    split_pattern = split_config.get("custom_pattern", "")
-                    mode_display = f"自定义模式(/{split_pattern}/)"
-                else:
-                    mode_display = f"{split_mode}模式"
+            # 委托消息分割器按配置模式分割
+            message_parts, mode_display = self.message_splitter.split_message(message)
 
             if len(message_parts) > 1:
                 # 分割成多个片段

@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+### 重构
+- 抽取消息分割逻辑为独立的 `MessageSplitter`(`llm/message_splitter.py`)，精简 `message_generator.py`
+- 新增 `constants.py` 统一历史条数上限与默认/旧版时间感知提示词，消除多处硬编码
+- 按职责拆分超大文件 `tasks/proactive_task.py`(1197→394 行)：时区、计时器、睡眠、AI 调度、发送重试、状态查询分别独立为 Mixin(`tasks/_timezone_mixin.py` 等)，主循环与任务控制保留在 `ProactiveTaskManager`
+- 按命令域拆分 `commands/handlers.py`(913→54 行)：状态、会话、测试、显示、管理、通用命令分别独立为 Mixin(`commands/_status_handlers.py` 等)，`CommandHandlers` 仅负责组合
+  - 上述拆分行为保持不变(各方法体逐一经 AST 校验与原实现一致)，公共 API 与方法签名不变
+
+### 修复
+- 对管理员配置的消息分割正则(custom/regex)增加长度与复杂度提示，并对超长文本跳过正则分割整条发送，缓解 ReDoS 理论风险
+
 ## [2.2.0] - 2026-05-31
 
 ### 新增
