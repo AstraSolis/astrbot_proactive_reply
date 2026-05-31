@@ -11,7 +11,11 @@ from ..utils.time_utils import get_now, get_tz
 
 
 def replace_placeholders(
-    prompt: str, session: str, config: dict, build_user_context_func, astrbot_config=None
+    prompt: str,
+    session: str,
+    config: dict,
+    build_user_context_func,
+    astrbot_config=None,
 ) -> str:
     """替换提示词中的占位符
 
@@ -62,7 +66,9 @@ def replace_placeholders(
             try:
                 result = result.replace(placeholder, str(value))
             except Exception as replace_error:
-                logger.warning(f"心念 | ⚠️ 替换占位符 {placeholder} 失败: {replace_error}")
+                logger.warning(
+                    f"心念 | ⚠️ 替换占位符 {placeholder} 失败: {replace_error}"
+                )
                 continue
 
         return result
@@ -119,7 +125,9 @@ def format_time_ago(time_str: str, tz=None) -> str:
         last_time = datetime.datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
         if tz is not None:
             last_time = last_time.replace(tzinfo=tz)
-        current_time = datetime.datetime.now(tz=tz) if tz is not None else datetime.datetime.now()
+        current_time = (
+            datetime.datetime.now(tz=tz) if tz is not None else datetime.datetime.now()
+        )
 
         # 计算时间差
         time_diff = current_time - last_time

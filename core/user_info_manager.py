@@ -9,7 +9,11 @@ from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 from .runtime_data import runtime_data
 from ..llm.placeholder_utils import format_time_ago, stabilize_static_prompt_template
-from ..utils.time_utils import get_now, get_tz, get_sleep_prompt_if_active as _check_sleep_prompt
+from ..utils.time_utils import (
+    get_now,
+    get_tz,
+    get_sleep_prompt_if_active as _check_sleep_prompt,
+)
 
 
 class UserInfoManager:
@@ -77,10 +81,14 @@ class UserInfoManager:
                     event.message_obj.timestamp, tz=tz
                 ).strftime(time_format)
             else:
-                current_time = get_now(self.config, astrbot_config).strftime(time_format)
+                current_time = get_now(self.config, astrbot_config).strftime(
+                    time_format
+                )
         except Exception as e:
             logger.warning(f"心念 | ⚠️ 时间格式错误 '{time_format}': {e}，使用默认格式")
-            current_time = get_now(self.config, astrbot_config).strftime("%Y-%m-%d %H:%M:%S")
+            current_time = get_now(self.config, astrbot_config).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
 
         # 获取平台信息
         platform_name = event.get_platform_name() or "未知平台"
@@ -124,7 +132,9 @@ class UserInfoManager:
                 "platform": platform_name,
                 "chat_type": message_type,
                 "current_time": current_time,
-                "weekday": weekday_names[get_now(self.config, astrbot_config).weekday()],
+                "weekday": weekday_names[
+                    get_now(self.config, astrbot_config).weekday()
+                ],
                 "user_last_message_time": user_last_message_time,
                 "user_last_message_time_ago": user_last_message_time_ago,
                 "ai_last_sent_time": ai_last_sent_time,
@@ -194,7 +204,9 @@ class UserInfoManager:
         """
         try:
             session_id = event.unified_msg_origin
-            current_time = get_now(self.config, self._get_astrbot_config()).strftime("%Y-%m-%d %H:%M:%S")
+            current_time = get_now(self.config, self._get_astrbot_config()).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
 
             if not session_id:
                 logger.warning("心念 | ⚠️ 会话ID为空，跳过用户信息记录")
@@ -231,7 +243,9 @@ class UserInfoManager:
         """
         try:
             session_id = event.unified_msg_origin
-            current_time = get_now(self.config, self._get_astrbot_config()).strftime("%Y-%m-%d %H:%M:%S")
+            current_time = get_now(self.config, self._get_astrbot_config()).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
 
             if not session_id:
                 logger.warning("心念 | ⚠️ 会话ID为空，跳过AI消息时间记录")
@@ -256,7 +270,9 @@ class UserInfoManager:
             session: 会话ID
         """
         try:
-            current_time = get_now(self.config, self._get_astrbot_config()).strftime("%Y-%m-%d %H:%M:%S")
+            current_time = get_now(self.config, self._get_astrbot_config()).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
 
             if not session:
                 logger.warning("心念 | ⚠️ 会话ID为空，跳过发送时间记录")
@@ -317,7 +333,9 @@ class UserInfoManager:
                 context_parts.append("这是AI第一次主动发起对话")
 
             # 添加当前时间
-            current_time = get_now(self.config, self._get_astrbot_config()).strftime("%Y-%m-%d %H:%M:%S")
+            current_time = get_now(self.config, self._get_astrbot_config()).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
             context_parts.append(f"当前时间：{current_time}")
 
             if context_parts:
@@ -371,13 +389,17 @@ class UserInfoManager:
 
         遵循 AstrBot 官方推荐：动态上下文放在本轮用户输入之后，并标记为临时内容。
         """
-        self._insert_dynamic_user_content(req, additional_prompt, len(req.extra_user_content_parts))
+        self._insert_dynamic_user_content(
+            req, additional_prompt, len(req.extra_user_content_parts)
+        )
 
     def _prepend_dynamic_user_content(self, req, additional_prompt: str) -> None:
         """将动态附带信息插入到 extra_user_content_parts 最前面，不修改 system_prompt"""
         self._insert_dynamic_user_content(req, additional_prompt, 0)
 
-    def _insert_dynamic_user_content(self, req, additional_prompt: str, index: int) -> None:
+    def _insert_dynamic_user_content(
+        self, req, additional_prompt: str, index: int
+    ) -> None:
         try:
             from astrbot.core.agent.message import TextPart
         except ImportError:

@@ -53,7 +53,9 @@ class ConversationManager:
         proactive_config = self.config.get("proactive_reply", {})
         history_save_mode = proactive_config.get("history_save_mode", "default")
 
-        current_time = get_now(self.config, self._get_astrbot_config()).strftime("%Y-%m-%d %H:%M:%S")
+        current_time = get_now(self.config, self._get_astrbot_config()).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
         unreplied_count = runtime_data.session_unreplied_count.get(session, 0)
 
         if history_save_mode == "proactive_prompt":
@@ -75,8 +77,11 @@ class ConversationManager:
             )
             if build_user_context_func:
                 return replace_placeholders(
-                    custom_template, session, self.config, build_user_context_func,
-                    self._get_astrbot_config()
+                    custom_template,
+                    session,
+                    self.config,
+                    build_user_context_func,
+                    self._get_astrbot_config(),
                 )
             else:
                 # 简单替换基础占位符
@@ -134,7 +139,9 @@ class ConversationManager:
                     )
                     return []
 
-                logger.debug(f"心念 | 会话 {session} 获取到 {len(raw_history)} 条原始历史记录")
+                logger.debug(
+                    f"心念 | 会话 {session} 获取到 {len(raw_history)} 条原始历史记录"
+                )
 
                 # 限制历史记录数量
                 history = raw_history
@@ -258,10 +265,13 @@ class ConversationManager:
                 UserMessageSegment,
                 TextPart,
             )
+
             await self.context.conversation_manager.add_message_pair(
                 cid=curr_cid,
                 user_message=UserMessageSegment(content=[TextPart(text=user_prompt)]),
-                assistant_message=AssistantMessageSegment(content=[TextPart(text=message)]),
+                assistant_message=AssistantMessageSegment(
+                    content=[TextPart(text=message)]
+                ),
             )
             logger.info("心念 | ✅ 使用 add_message_pair API 保存消息对成功")
 

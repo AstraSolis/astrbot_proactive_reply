@@ -108,9 +108,15 @@ class CommandHandlers:
             # 构建 AI 调度状态文本
             ai_schedule_status = f"\n\n🧠 AI 自主调度功能：{'✅ 已启用' if ai_schedule_enabled else '❌ 已禁用'}"
             if ai_schedule_enabled:
-                provider_text = ai_schedule_provider if ai_schedule_provider else "主模型（与用户对话相同）"
+                provider_text = (
+                    ai_schedule_provider
+                    if ai_schedule_provider
+                    else "主模型（与用户对话相同）"
+                )
                 ai_schedule_status += f"\n  - 分析模型：{provider_text}"
-                ai_schedule_status += "\n  - 功能说明：AI 在对话中提到时间约定时自动设置定时任务"
+                ai_schedule_status += (
+                    "\n  - 功能说明：AI 在对话中提到时间约定时自动设置定时任务"
+                )
 
             status_text = f"""📊 主动回复插件状态
 
@@ -442,7 +448,11 @@ class CommandHandlers:
             astrbot_cfg = self.context.get_config() if self.context else None
             resolved_tz = get_tz(self.config, astrbot_cfg)
             tz_display = str(resolved_tz) if resolved_tz is not None else "系统本地时区"
-            tz_now = datetime.datetime.now(tz=resolved_tz).strftime("%Y-%m-%d %H:%M:%S") if resolved_tz else datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            tz_now = (
+                datetime.datetime.now(tz=resolved_tz).strftime("%Y-%m-%d %H:%M:%S")
+                if resolved_tz
+                else datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            )
 
             result = replace_placeholders(
                 test_prompt,
@@ -451,7 +461,9 @@ class CommandHandlers:
                 self.plugin.user_info_manager.build_user_context_for_proactive,
                 astrbot_cfg,
             )
-            yield event.plain_result(f"✅ 占位符替换测试:\n[有效时区: {tz_display} | 当前时区时间: {tz_now}]\n{result}")
+            yield event.plain_result(
+                f"✅ 占位符替换测试:\n[有效时区: {tz_display} | 当前时区时间: {tz_now}]\n{result}"
+            )
         except Exception as e:
             yield event.plain_result(f"❌ 测试失败: {e}")
 
@@ -504,6 +516,7 @@ class CommandHandlers:
         try:
             session_id = event.unified_msg_origin
             from ..utils.time_utils import get_now
+
             test_msg = f"测试消息 {get_now(self.config, self.context.get_config() if self.context else None).strftime('%H:%M:%S')}"
             await self.plugin.conversation_manager.add_message_to_conversation_history(
                 session_id, test_msg
@@ -521,7 +534,9 @@ class CommandHandlers:
         session_id = event.unified_msg_origin
         try:
             # 1. 注入一个 1 分钟后到期的测试任务
-            _now = get_now(self.config, self.context.get_config() if self.context else None).replace(tzinfo=None)
+            _now = get_now(
+                self.config, self.context.get_config() if self.context else None
+            ).replace(tzinfo=None)
             fire_dt = _now + timedelta(minutes=1)
             fire_time_str = fire_dt.strftime("%Y-%m-%d %H:%M:%S")
             task = {

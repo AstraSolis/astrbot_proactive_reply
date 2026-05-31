@@ -76,9 +76,7 @@ class MessageGenerator:
                         f"(.*?({'|'.join(escaped_words)})|.+$)", re.DOTALL
                     )
                     self.split_words = split_words
-                    logger.debug(
-                        f"心念 | 初始化 words 模式，分段词: {split_words}"
-                    )
+                    logger.debug(f"心念 | 初始化 words 模式，分段词: {split_words}")
                 except re.error as e:
                     logger.error(f"心念 | ❌ 分段词模式初始化失败: {e}")
                     self.split_words_pattern = None
@@ -275,7 +273,9 @@ class MessageGenerator:
             )
 
             # 调用LLM生成主动消息
-            logger.debug(f"心念 | 调用 LLM 生成主动消息, contexts 数量: {len(contexts)}")
+            logger.debug(
+                f"心念 | 调用 LLM 生成主动消息, contexts 数量: {len(contexts)}"
+            )
             llm_response = await self.context.llm_generate(
                 chat_provider_id=provider_id,
                 prompt=final_prompt,
@@ -580,7 +580,9 @@ class MessageGenerator:
                 mode_display = f"正则模式(/{regex_preview}{'...' if len(split_config.get('regex', '')) > 30 else ''}/)"
             else:
                 # 向后兼容：使用旧的 re.split 逻辑
-                message_parts = self._split_text_legacy(message, split_mode, split_config)
+                message_parts = self._split_text_legacy(
+                    message, split_mode, split_config
+                )
                 if split_mode == "custom":
                     split_pattern = split_config.get("custom_pattern", "")
                     mode_display = f"自定义模式(/{split_pattern}/)"
@@ -589,7 +591,9 @@ class MessageGenerator:
 
             if len(message_parts) > 1:
                 # 分割成多个片段
-                logger.info(f"心念 | 📨 使用 {mode_display} 分割消息，共 {len(message_parts)} 条")
+                logger.info(
+                    f"心念 | 📨 使用 {mode_display} 分割消息，共 {len(message_parts)} 条"
+                )
 
                 delay_ms = split_config.get("delay_ms", 500)
                 delay_seconds = delay_ms / 1000.0

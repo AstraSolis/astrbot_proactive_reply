@@ -100,13 +100,13 @@ class ProactiveReplyPlugin(Star):
         register_web_apis(
             self.context,
             {
-                'config_manager': self.config_manager,
-                'user_info_manager': self.user_info_manager,
-                'task_manager': self.task_manager,
-                'conversation_manager': self.conversation_manager,
-                'persistence_manager': self.persistence_manager,
-                'prompt_builder': self.prompt_builder,
-                'message_generator': self.message_generator,
+                "config_manager": self.config_manager,
+                "user_info_manager": self.user_info_manager,
+                "task_manager": self.task_manager,
+                "conversation_manager": self.conversation_manager,
+                "persistence_manager": self.persistence_manager,
+                "prompt_builder": self.prompt_builder,
+                "message_generator": self.message_generator,
             },
         )
 
@@ -152,18 +152,23 @@ class ProactiveReplyPlugin(Star):
         # event.message_obj 包含原始消息（带 /），event.message_str 是处理后的
         is_command = False
         try:
-            if hasattr(event, 'message_obj') and event.message_obj:
+            if hasattr(event, "message_obj") and event.message_obj:
                 # 尝试从 message_obj 获取原始消息
-                if hasattr(event.message_obj, 'message_str'):
+                if hasattr(event.message_obj, "message_str"):
                     original_msg = event.message_obj.message_str
-                elif isinstance(event.message_obj, dict) and 'message_str' in event.message_obj:
-                    original_msg = event.message_obj['message_str']
+                elif (
+                    isinstance(event.message_obj, dict)
+                    and "message_str" in event.message_obj
+                ):
+                    original_msg = event.message_obj["message_str"]
                 else:
                     original_msg = ""
 
-                if original_msg and original_msg.strip().startswith('/'):
+                if original_msg and original_msg.strip().startswith("/"):
                     is_command = True
-                    logger.debug(f"心念 | 检测到命令消息，跳过时间记录和调度分析: {original_msg[:30]}...")
+                    logger.debug(
+                        f"心念 | 检测到命令消息，跳过时间记录和调度分析: {original_msg[:30]}..."
+                    )
         except Exception as e:
             logger.warning(f"心念 | 检测命令消息时出错: {e}")
 
@@ -245,9 +250,7 @@ class ProactiveReplyPlugin(Star):
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @proactive_group.command("test")
-    async def test_proactive(
-        self, event: AstrMessageEvent, test_type: str = ""
-    ):
+    async def test_proactive(self, event: AstrMessageEvent, test_type: str = ""):
         """测试功能 - 支持多种测试类型
 
         参数:
@@ -272,9 +275,7 @@ class ProactiveReplyPlugin(Star):
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @proactive_group.command("show")
-    async def show_info(
-        self, event: AstrMessageEvent, show_type: str = ""
-    ):
+    async def show_info(self, event: AstrMessageEvent, show_type: str = ""):
         """显示信息 - 支持多种显示类型
 
         参数:
@@ -303,9 +304,7 @@ class ProactiveReplyPlugin(Star):
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @proactive_group.command("manage")
-    async def manage_functions(
-        self, event: AstrMessageEvent, action: str = ""
-    ):
+    async def manage_functions(self, event: AstrMessageEvent, action: str = ""):
         """管理功能 - 支持多种管理操作
 
         参数:
@@ -377,10 +376,15 @@ class ProactiveReplyPlugin(Star):
                 try:
                     with open(metadata_path, encoding="utf-8") as f:
                         meta = yaml.safe_load(f)
-                    if isinstance(meta, dict) and meta.get("name") == self.PLUGIN_DIR_NAME:
+                    if (
+                        isinstance(meta, dict)
+                        and meta.get("name") == self.PLUGIN_DIR_NAME
+                    ):
                         shutil.rmtree(dir_path)
                         removed_dirs.append(dir_name)
-                        logger.info(f"心念 | ✅ 已自动清理 zip 安装残留目录: {dir_name}")
+                        logger.info(
+                            f"心念 | ✅ 已自动清理 zip 安装残留目录: {dir_name}"
+                        )
                 except Exception as e:
                     logger.warning(f"心念 | 清理残留目录 {dir_name} 失败: {e}")
 
@@ -390,7 +394,9 @@ class ProactiveReplyPlugin(Star):
                 if isinstance(failed_plugin_dict, dict):
                     for dir_name in removed_dirs:
                         failed_plugin_dict.pop(dir_name, None)
-                    rebuild_failed_info = getattr(star_manager, "_rebuild_failed_plugin_info", None)
+                    rebuild_failed_info = getattr(
+                        star_manager, "_rebuild_failed_plugin_info", None
+                    )
                     if callable(rebuild_failed_info):
                         rebuild_failed_info()
         except Exception as e:

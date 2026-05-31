@@ -29,7 +29,9 @@ class PromptBuilder:
     ) -> str:
         """替换提示词中的占位符（包装方法）"""
         astrbot_config = self._get_astrbot_config()
-        return replace_placeholders(prompt, session, config, build_user_context_func, astrbot_config)
+        return replace_placeholders(
+            prompt, session, config, build_user_context_func, astrbot_config
+        )
 
     def _get_astrbot_config(self):
         """安全获取 AstrBot 全局配置"""
@@ -62,7 +64,9 @@ class PromptBuilder:
 
         return persona_id
 
-    def _find_persona_prompt(self, personas: list, persona_name: str) -> tuple[str, str]:
+    def _find_persona_prompt(
+        self, personas: list, persona_name: str
+    ) -> tuple[str, str]:
         persona_name = self._normalize_persona_id(persona_name)
         if not persona_name:
             return "", ""
@@ -129,8 +133,11 @@ class PromptBuilder:
 
         # 替换提示词中的占位符
         final_prompt = replace_placeholders(
-            selected_prompt, session, self.config, build_user_context_func,
-            self._get_astrbot_config()
+            selected_prompt,
+            session,
+            self.config,
+            build_user_context_func,
+            self._get_astrbot_config(),
         )
         return final_prompt
 
@@ -165,7 +172,9 @@ class PromptBuilder:
                 try:
                     astrbot_config = self.context.get_config()
                     if hasattr(astrbot_config, "get"):
-                        provider_settings = astrbot_config.get("provider_settings", {}) or {}
+                        provider_settings = (
+                            astrbot_config.get("provider_settings", {}) or {}
+                        )
                 except Exception as e:
                     logger.warning(f"心念 | ⚠️ 获取 provider_settings 失败: {e}")
 
@@ -196,7 +205,9 @@ class PromptBuilder:
                     target_persona_id = self._normalize_persona_id(target_persona_id)
                     selected_persona_name = self._get_persona_name(selected_persona)
                     selected_persona_prompt = self._get_persona_prompt(selected_persona)
-                    resolved_persona_name = selected_persona_name or target_persona_id or "无"
+                    resolved_persona_name = (
+                        selected_persona_name or target_persona_id or "无"
+                    )
                     logger.debug(
                         f"心念 | AstrBot 人格解析结果: '{resolved_persona_name}' (prompt长度: {len(selected_persona_prompt)}字符)"
                     )
@@ -215,7 +226,9 @@ class PromptBuilder:
                                 base_system_prompt,
                                 matched_persona_name,
                             ) = self._find_persona_prompt(personas, target_persona_id)
-                            available_names = [self._get_persona_name(p) for p in personas]
+                            available_names = [
+                                self._get_persona_name(p) for p in personas
+                            ]
                             logger.debug(
                                 f"心念 | 人格匹配 - 请求: '{target_persona_id}', 可用: {available_names}"
                             )
@@ -265,7 +278,9 @@ class PromptBuilder:
 
             # 如果获取到默认人格名称，从人格列表中查找
             if default_persona_name and personas:
-                prompt, matched_name = self._find_persona_prompt(personas, default_persona_name)
+                prompt, matched_name = self._find_persona_prompt(
+                    personas, default_persona_name
+                )
                 if prompt:
                     logger.debug(
                         f"心念 | 使用默认人格 '{matched_name}' (prompt长度: {len(prompt)}字符)"
@@ -346,13 +361,17 @@ class PromptBuilder:
 
         if base_system_prompt:
             # 有AstrBot人格：使用AstrBot人格 + 固定时间指导 + 历史记录引导
-            combined_system_prompt = f"{base_system_prompt}{time_guidance}{history_guidance}"
+            combined_system_prompt = (
+                f"{base_system_prompt}{time_guidance}{history_guidance}"
+            )
         elif self._astrbot_persona_resolved:
             combined_system_prompt = f"{time_guidance}{history_guidance}".strip()
         else:
             # 没有AstrBot人格：使用插件备用人格 + 固定时间指导 + 历史记录引导
             if default_persona:
-                combined_system_prompt = f"{default_persona}{time_guidance}{history_guidance}"
+                combined_system_prompt = (
+                    f"{default_persona}{time_guidance}{history_guidance}"
+                )
             else:
                 combined_system_prompt = f"{time_guidance}{history_guidance}".strip()
 

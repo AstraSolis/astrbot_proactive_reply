@@ -33,7 +33,9 @@ def validate_persistent_data(data: dict) -> bool:
             logger.error(f"心念 | ❌ 持久化数据缺少必需键: {key}")
             return False
         if not isinstance(data[key], dict):
-            logger.error(f"心念 | ❌ 持久化数据键 {key} 应为字典类型，实际为 {type(data[key]).__name__}")
+            logger.error(
+                f"心念 | ❌ 持久化数据键 {key} 应为字典类型，实际为 {type(data[key]).__name__}"
+            )
             return False
 
     return True
