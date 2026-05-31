@@ -167,9 +167,9 @@ class MessageSplitter:
         Returns:
             分割后的文本片段列表
         """
+        # words 模式的正则由 re.escape 后的分段词构成（无用户可注入的量词），
+        # 不存在 ReDoS 风险，因此不施加长度保护。
         if not self.split_words_pattern:
-            return [text]
-        if self._is_text_too_long(text):
             return [text]
 
         segments = self.split_words_pattern.findall(text)
