@@ -759,20 +759,22 @@ class CommandHandlers:
 
 基础命令:
 - `/proactive status` - 查看状态
-- `/proactive config` - 查看配置
 - `/proactive add_session` - 添加会话
 - `/proactive remove_session` - 移除会话
+
+管理员命令 (仅管理员可用):
+- `/proactive config` - 查看配置
 - `/proactive restart` - 重启任务
 
-测试命令:
+测试命令 (仅管理员可用):
 - `/proactive test [类型]` - 测试功能
   类型: basic, llm, generation, prompt, placeholders, history, save, schedule
 
-显示命令:
+显示命令 (仅管理员可用):
 - `/proactive show [类型]` - 显示信息
   类型: prompt, users
 
-管理命令:
+管理命令 (仅管理员可用):
 - `/proactive manage [操作]` - 管理功能
   操作: clear, task_status, force_stop, force_start, save_config
   调试: debug_info, debug_send, debug_times
