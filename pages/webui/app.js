@@ -256,6 +256,7 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape") {
     hideAddDialog();
     hideSessionDetail();
+    hideConfirmDialog(false);
     closeSidebar();
   }
 });
@@ -649,8 +650,12 @@ document.getElementById("schedules-container").addEventListener("click", e => {
 });
 
 async function cancelSchedule(sessionId, fireTime, taskId) {
-  const msg = t("confirm_cancel_schedule", "确定要取消这个约定任务吗？");
-  if (!confirm(msg)) return;
+  const ok = await showConfirm({
+    title: t("confirm_cancel_schedule_title", "取消约定任务"),
+    message: t("confirm_cancel_schedule", "确定要取消这个约定任务吗？"),
+    confirmText: t("btn_confirm", "确定"),
+  });
+  if (!ok) return;
   try {
     const payload = {
       session_id: sessionId,
@@ -697,6 +702,38 @@ window.hideSessionDetail = function () {
 document.getElementById("btn-detail-close").addEventListener("click", hideSessionDetail);
 document.getElementById("session-detail-dialog").addEventListener("click", e => {
   if (e.target.id === "session-detail-dialog") hideSessionDetail();
+});
+
+let confirmResolver = null;
+
+function hideConfirmDialog(result) {
+  document.getElementById("confirm-dialog").style.display = "none";
+  if (confirmResolver) {
+    const resolve = confirmResolver;
+    confirmResolver = null;
+    resolve(result);
+  }
+}
+
+function showConfirm({ title, message, confirmText, danger = true }) {
+  if (confirmResolver) hideConfirmDialog(false);
+  document.getElementById("confirm-title").textContent = title || "";
+  document.getElementById("confirm-message").textContent = message || "";
+  document.getElementById("btn-confirm-cancel").textContent = t("btn_cancel", "取消");
+  const okBtn = document.getElementById("btn-confirm-ok");
+  okBtn.textContent = confirmText || t("btn_confirm", "确定");
+  okBtn.className = `btn ${danger ? "btn-danger" : "btn-primary"}`;
+  document.getElementById("confirm-dialog").style.display = "flex";
+  setTimeout(() => okBtn.focus(), 50);
+  return new Promise(resolve => {
+    confirmResolver = resolve;
+  });
+}
+
+document.getElementById("btn-confirm-cancel").addEventListener("click", () => hideConfirmDialog(false));
+document.getElementById("btn-confirm-ok").addEventListener("click", () => hideConfirmDialog(true));
+document.getElementById("confirm-dialog").addEventListener("click", e => {
+  if (e.target.id === "confirm-dialog") hideConfirmDialog(false);
 });
 
 function renderSessionDetailHtml(s) {
@@ -773,7 +810,12 @@ async function confirmRemove(sessionId) {
     "{session_id}",
     sessionId,
   );
-  if (!confirm(msg)) return;
+  const ok = await showConfirm({
+    title: t("confirm_remove_title", "移除会话"),
+    message: msg,
+    confirmText: t("remove_title", "移除"),
+  });
+  if (!ok) return;
   try {
     const data = await bridge.apiPost("sessions/remove", {
       session_id: sessionId,
