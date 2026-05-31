@@ -3,6 +3,7 @@
 运行: python scripts/build_i18n.py
 输出: zh-CN.json / en-US.json（请勿手改 JSON，应改本脚本后重新生成）
 """
+
 import json
 from pathlib import Path
 

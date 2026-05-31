@@ -46,7 +46,9 @@ class PersistenceManager:
 
             # 创建插件专用的数据子目录（在 data/plugin_data 目录下）
             # 这符合AstrBot规范，避免插件更新时数据被覆盖
-            plugin_data_dir = os.path.join(base_data_dir, "plugin_data", "astrbot_proactive_reply")
+            plugin_data_dir = os.path.join(
+                base_data_dir, "plugin_data", "astrbot_proactive_reply"
+            )
 
             # 确保目录存在
             os.makedirs(plugin_data_dir, exist_ok=True)
@@ -56,7 +58,9 @@ class PersistenceManager:
 
         except OSError as e:
             logger.error(f"心念 | ❌ 文件系统错误: {e}")
-            fallback_dir = os.path.join(os.getcwd(), "data", "plugin_data", "astrbot_proactive_reply")
+            fallback_dir = os.path.join(
+                os.getcwd(), "data", "plugin_data", "astrbot_proactive_reply"
+            )
             try:
                 os.makedirs(fallback_dir, exist_ok=True)
                 logger.warning(f"心念 | ⚠️ 使用回退数据目录: {fallback_dir}")
@@ -83,7 +87,9 @@ class PersistenceManager:
                     except UnicodeDecodeError:
                         continue  # 尝试下一个编码
                     except json.JSONDecodeError:
-                        logger.error("心念 | ❌ 持久化文件 JSON 解析失败，文件可能已损坏")
+                        logger.error(
+                            "心念 | ❌ 持久化文件 JSON 解析失败，文件可能已损坏"
+                        )
                         return
                 else:
                     logger.error("心念 | ❌ 无法以任何编码读取持久化文件")
@@ -184,7 +190,9 @@ class PersistenceManager:
 
                         # 验证数据格式（与 load_persistent_data 保持一致）
                         if not isinstance(old_data, dict):
-                            logger.warning(f"心念 | ⚠️ 旧文件格式错误（非字典）: {old_file}")
+                            logger.warning(
+                                f"心念 | ⚠️ 旧文件格式错误（非字典）: {old_file}"
+                            )
                             continue
 
                         new_file = os.path.join(new_data_dir, "persistent_data.json")
@@ -225,7 +233,8 @@ class PersistenceManager:
                                 and old_dir_normalized != os.path.normpath(cwd)
                                 and old_dir_normalized != os.path.normpath(data_dir)
                                 and old_dir_normalized != os.path.normpath(plugins_dir)
-                                and len(old_dir_normalized) > len(data_dir)  # 确保是子目录
+                                and len(old_dir_normalized)
+                                > len(data_dir)  # 确保是子目录
                             )
                             if safe_to_delete:
                                 os.rmdir(old_dir)
@@ -236,7 +245,9 @@ class PersistenceManager:
                         # 写入迁移完成标记
                         marker_file = os.path.join(new_data_dir, ".migrated")
                         with open(marker_file, "w") as f:
-                            f.write(f"migrated from {old_file} at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                            f.write(
+                                f"migrated from {old_file} at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                            )
 
                         return
                     except Exception as e:
@@ -294,12 +305,12 @@ class PersistenceManager:
 
     def load_data(self, key: str, default=None):
         """加载特定的运行时数据"""
-        if key == 'user_info':
+        if key == "user_info":
             return runtime_data.session_user_info
         return default
 
     def save_data(self, key: str, data):
         """保存特定的运行时数据"""
-        if key == 'user_info':
+        if key == "user_info":
             runtime_data.session_user_info = data
         self.save_persistent_data()

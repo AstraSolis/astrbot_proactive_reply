@@ -50,10 +50,14 @@ class ConfigManager:
                         section_def["items"]
                     )
 
-            logger.debug(f"心念 | 从 schema 加载了 {len(default_config)} 个配置区块的默认值")
+            logger.debug(
+                f"心念 | 从 schema 加载了 {len(default_config)} 个配置区块的默认值"
+            )
 
         except FileNotFoundError:
-            logger.warning(f"心念 | ⚠️ 配置 schema 文件不存在: {schema_path}，使用空默认配置")
+            logger.warning(
+                f"心念 | ⚠️ 配置 schema 文件不存在: {schema_path}，使用空默认配置"
+            )
         except json.JSONDecodeError as e:
             logger.error(f"心念 | ❌ 配置 schema JSON 解析失败: {e}")
         except Exception as e:
@@ -250,7 +254,9 @@ class ConfigManager:
                     if old_key in proactive_config:
                         del proactive_config[old_key]
 
-                logger.info("心念 | 已将旧版配置迁移到新分组 (message_split / ai_schedule)")
+                logger.info(
+                    "心念 | 已将旧版配置迁移到新分组 (message_split / ai_schedule)"
+                )
                 if self.save_config_safely():
                     logger.info("心念 | 配置迁移已保存")
                 else:

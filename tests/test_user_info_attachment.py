@@ -28,7 +28,9 @@ def _load_from_package(module_name: str, rel_path: str) -> types.ModuleType:
         parent = ".".join([PKG, *parts[:idx]])
         sub = "/".join(parts[:idx])
         _ensure_package(parent, ROOT / sub if sub else ROOT)
-    spec = importlib.util.spec_from_file_location(f"{PKG}.{module_name}", ROOT / rel_path)
+    spec = importlib.util.spec_from_file_location(
+        f"{PKG}.{module_name}", ROOT / rel_path
+    )
     module = importlib.util.module_from_spec(spec)
     module.__package__ = f"{PKG}.{module_name.rsplit('.', 1)[0]}"
     sys.modules[f"{PKG}.{module_name}"] = module
@@ -57,8 +59,12 @@ sys.modules["astrbot.core.agent.message"].TextPart = MockTextPart
 _load_from_package("core.runtime_data", "core/runtime_data.py")
 _load_from_package("utils.time_utils", "utils/time_utils.py")
 _load_from_package("llm.placeholder_utils", "llm/placeholder_utils.py")
-prompt_builder_module = _load_from_package("llm.prompt_builder", "llm/prompt_builder.py")
-user_info_module = _load_from_package("core.user_info_manager", "core/user_info_manager.py")
+prompt_builder_module = _load_from_package(
+    "llm.prompt_builder", "llm/prompt_builder.py"
+)
+user_info_module = _load_from_package(
+    "core.user_info_manager", "core/user_info_manager.py"
+)
 PromptBuilder = prompt_builder_module.PromptBuilder
 UserInfoManager = user_info_module.UserInfoManager
 
@@ -149,7 +155,9 @@ class TestUserInfoAttachment(unittest.TestCase):
         req = MockReq(system_prompt="固定人格设定")
         self.manager._append_static_system_prompt(req, "固定时间规则\n\n固定睡眠规则")
 
-        self.assertEqual(req.system_prompt, "固定人格设定\n\n固定时间规则\n\n固定睡眠规则")
+        self.assertEqual(
+            req.system_prompt, "固定人格设定\n\n固定时间规则\n\n固定睡眠规则"
+        )
         self.assertEqual(req.extra_user_content_parts, [])
 
     def test_add_user_info_keeps_sleep_prompt_out_of_system_prompt(self):
@@ -212,7 +220,9 @@ class TestUserInfoAttachment(unittest.TestCase):
 
         asyncio.run(self.manager.add_user_info_to_request(MockEvent(), req))
 
-        self.assertIn("固定时间规则 系统提供的用户上次发消息相对时间", req.system_prompt)
+        self.assertIn(
+            "固定时间规则 系统提供的用户上次发消息相对时间", req.system_prompt
+        )
         self.assertNotIn("{user_last_message_time_ago}", req.system_prompt)
         self.assertNotIn("固定时间规则", req.extra_user_content_parts[0].text)
 
@@ -258,7 +268,10 @@ class TestStaticPromptBuilder(unittest.TestCase):
             "",
         )
 
-        self.assertIn("固定时间规则 系统提供的当前时间 系统提供的用户上次发消息相对时间", system_prompt)
+        self.assertIn(
+            "固定时间规则 系统提供的当前时间 系统提供的用户上次发消息相对时间",
+            system_prompt,
+        )
         self.assertNotIn("主动对话", system_prompt)
         self.assertNotIn("{current_time}", system_prompt)
         self.assertNotIn("{user_last_message_time_ago}", system_prompt)
@@ -268,7 +281,10 @@ class TestStaticPromptBuilder(unittest.TestCase):
 
         self.assertEqual(
             builder._get_default_persona_name(
-                {"default_personality": "default", "fallback": {"default_personality": "suleng"}}
+                {
+                    "default_personality": "default",
+                    "fallback": {"default_personality": "suleng"},
+                }
             ),
             "default",
         )
@@ -278,7 +294,9 @@ class TestStaticPromptBuilder(unittest.TestCase):
         builder = PromptBuilder({}, context=None)
         selected_persona = {"name": "default", "prompt": "默认人格提示词"}
 
-        self.assertEqual(builder._get_persona_prompt(selected_persona), "默认人格提示词")
+        self.assertEqual(
+            builder._get_persona_prompt(selected_persona), "默认人格提示词"
+        )
         self.assertEqual(builder._get_persona_name(selected_persona), "default")
 
     def test_default_persona_can_be_empty_without_falling_back_to_first_persona(self):
@@ -304,7 +322,9 @@ class TestStaticPromptBuilder(unittest.TestCase):
         )
         builder._astrbot_persona_resolved = True
 
-        self.assertEqual(builder.build_combined_system_prompt("", "历史引导"), "历史引导")
+        self.assertEqual(
+            builder.build_combined_system_prompt("", "历史引导"), "历史引导"
+        )
 
 
 if __name__ == "__main__":

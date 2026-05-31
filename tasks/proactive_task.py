@@ -74,6 +74,7 @@ class ProactiveTaskManager:
     def _get_now(self) -> datetime:
         """获取当前时间（naive，已转换为配置时区的本地时间）"""
         from ..utils.time_utils import get_now
+
         return get_now(self.config, self._get_astrbot_config()).replace(tzinfo=None)
 
     def _get_timezone_signature(self) -> str:
@@ -82,12 +83,14 @@ class ProactiveTaskManager:
         用于检测时区是否发生变化。
         """
         from ..utils.time_utils import get_tz
+
         tz = get_tz(self.config, self._get_astrbot_config())
         return str(tz) if tz is not None else "system_local"
 
     def _utc_timestamp_to_local_naive(self, utc_ts: float) -> datetime:
         """将 UTC 时间戳转换为本地配置时区的 naive datetime（与 _get_now() 同源）"""
         from ..utils.time_utils import get_tz
+
         utc_dt = datetime.fromtimestamp(utc_ts, tz=_utc_tz.utc)
         tz = get_tz(self.config, self._get_astrbot_config())
         if tz is not None:
@@ -122,7 +125,9 @@ class ProactiveTaskManager:
             old_tz = ZoneInfo(old_tz_sig) if old_tz_sig != "system_local" else None
             new_tz = ZoneInfo(new_tz_sig) if new_tz_sig != "system_local" else None
         except (ZoneInfoNotFoundError, KeyError) as e:
-            logger.warning(f"心念 | ⚠️ AI 调度任务 fire_time 重算失败，无法解析时区: {e}")
+            logger.warning(
+                f"心念 | ⚠️ AI 调度任务 fire_time 重算失败，无法解析时区: {e}"
+            )
             return
 
         recalc_count = 0
@@ -135,7 +140,9 @@ class ProactiveTaskManager:
                     # 新数据：从 UTC 时间戳直接生成新时区的显示字符串
                     try:
                         utc_dt = datetime.fromtimestamp(float(utc_ts), tz=_utc_tz.utc)
-                        converted = utc_dt.astimezone(new_tz) if new_tz else utc_dt.astimezone()
+                        converted = (
+                            utc_dt.astimezone(new_tz) if new_tz else utc_dt.astimezone()
+                        )
                         new_str = converted.strftime("%Y-%m-%d %H:%M:%S")
                         if new_str != task.get("fire_time"):
                             task["fire_time"] = new_str
@@ -150,8 +157,12 @@ class ProactiveTaskManager:
                     continue
                 try:
                     naive = datetime.strptime(fire_time_str, "%Y-%m-%d %H:%M:%S")
-                    aware = naive.replace(tzinfo=old_tz) if old_tz else naive.astimezone()
-                    converted = aware.astimezone(new_tz) if new_tz else aware.astimezone()
+                    aware = (
+                        naive.replace(tzinfo=old_tz) if old_tz else naive.astimezone()
+                    )
+                    converted = (
+                        aware.astimezone(new_tz) if new_tz else aware.astimezone()
+                    )
                     new_str = converted.strftime("%Y-%m-%d %H:%M:%S")
                     if new_str != fire_time_str:
                         task["fire_time"] = new_str
@@ -202,7 +213,9 @@ class ProactiveTaskManager:
         try:
             return datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
         except ValueError:
-            logger.warning(f"心念 | ⚠️ 会话 {session} 的下次发送时间格式错误: {time_str}")
+            logger.warning(
+                f"心念 | ⚠️ 会话 {session} 的下次发送时间格式错误: {time_str}"
+            )
             return None
 
     def set_session_next_fire_time(self, session: str, fire_time: datetime):
@@ -462,7 +475,9 @@ class ProactiveTaskManager:
                     next_events.append(fire_time)
 
         # 2. 添加睡眠结束时间
-        seconds_until_sleep_end = get_seconds_until_sleep_end(self.config, self._get_astrbot_config())
+        seconds_until_sleep_end = get_seconds_until_sleep_end(
+            self.config, self._get_astrbot_config()
+        )
         if seconds_until_sleep_end > 0:
             sleep_end_time = now + timedelta(seconds=seconds_until_sleep_end)
             next_events.append(sleep_end_time)
@@ -475,7 +490,6 @@ class ProactiveTaskManager:
 
         # 限制在 1~300 秒之间
         return max(1, min(300, int(seconds_to_next)))
-
 
     # ==================== 睡眠状态处理 ====================
 
@@ -493,7 +507,9 @@ class ProactiveTaskManager:
                 if remaining_seconds > 0:
                     # 只保存未过期的剩余时间
                     runtime_data.session_sleep_remaining[session] = remaining_seconds
-                    logger.debug(f"心念 | 会话 {session} 进入睡眠，剩余 {remaining_seconds:.0f} 秒")
+                    logger.debug(
+                        f"心念 | 会话 {session} 进入睡眠，剩余 {remaining_seconds:.0f} 秒"
+                    )
                 else:
                     # 已过期的不保存，退出睡眠时保持过期状态
                     logger.debug(f"心念 | 会话 {session} 进入睡眠，计时器已过期")
@@ -525,7 +541,9 @@ class ProactiveTaskManager:
                 logger.debug(f"心念 | 会话 {session} 睡眠结束，跳过模式，刷新计时器")
             elif wake_mode == "immediate":
                 # 模式2：保持原计时器，让主循环检测到过期后立即发送
-                logger.debug(f"心念 | 会话 {session} 睡眠结束，立即发送模式，保持原计时器")
+                logger.debug(
+                    f"心念 | 会话 {session} 睡眠结束，立即发送模式，保持原计时器"
+                )
             else:
                 # 模式3：恢复剩余计时，延后发送
                 remaining = runtime_data.session_sleep_remaining.get(session)
@@ -898,13 +916,17 @@ class ProactiveTaskManager:
                     f"（第 {attempt}/{self._MAX_RETRIES} 次）: {e}"
                 )
                 if attempt < self._MAX_RETRIES:
-                    logger.info(f"心念 | 等待 {self._RETRY_INTERVAL_SECONDS} 秒后重试...")
+                    logger.info(
+                        f"心念 | 等待 {self._RETRY_INTERVAL_SECONDS} 秒后重试..."
+                    )
                     await asyncio.sleep(self._RETRY_INTERVAL_SECONDS)
 
         # 全部重试失败，发送错误通知给用户（不保存到历史记录）
         failures = runtime_data.session_consecutive_failures.get(session, 0) + 1
         runtime_data.session_consecutive_failures[session] = failures
-        logger.error(f"心念 | ❌ 会话 {session} 连续 {failures} 次调度均发送失败，已通知用户")
+        logger.error(
+            f"心念 | ❌ 会话 {session} 连续 {failures} 次调度均发送失败，已通知用户"
+        )
         await self._notify_user_send_failure(session, last_error, failures)
         return False, None
 

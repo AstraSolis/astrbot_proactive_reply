@@ -111,7 +111,9 @@ def parse_schedule_response(response_text: str) -> Optional[dict]:
         }
 
     except json.JSONDecodeError as e:
-        logger.warning(f"心念 | ⚠️ AI 调度响应 JSON 解析失败: {e}, 原文: {response_text[:200]}")
+        logger.warning(
+            f"心念 | ⚠️ AI 调度响应 JSON 解析失败: {e}, 原文: {response_text[:200]}"
+        )
         return None
     except Exception as e:
         logger.error(f"心念 | ❌ 解析 AI 调度响应时发生错误: {e}")
@@ -168,13 +170,13 @@ async def analyze_for_schedule(
     # 注入已有约定，帮助 LLM 判断是否重复
     if existing_tasks:
         valid_tasks = [
-            t for t in existing_tasks
+            t
+            for t in existing_tasks
             if t.get("fire_time") and t.get("follow_up_prompt")
         ]
         if valid_tasks:
             tasks_desc = "\n".join(
-                f"- {t['fire_time']}：{t['follow_up_prompt']}"
-                for t in valid_tasks
+                f"- {t['fire_time']}：{t['follow_up_prompt']}" for t in valid_tasks
             )
             user_prompt_parts.append(
                 f"该用户已有以下待执行的约定：\n{tasks_desc}\n"
@@ -228,7 +230,8 @@ async def analyze_for_schedule(
         result["fire_time"] = fire_time.strftime("%Y-%m-%d %H:%M:%S")
         # UTC 时间戳：用于精确比较，彻底规避时区转换问题
         result["fire_time_utc"] = (
-            fire_time.timestamp() if tz is not None
+            fire_time.timestamp()
+            if tz is not None
             else fire_time.astimezone().timestamp()
         )
         result["task_id"] = str(uuid.uuid4())

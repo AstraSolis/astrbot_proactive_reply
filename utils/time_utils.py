@@ -60,10 +60,14 @@ def get_tz(config: dict, astrbot_config=None):
                     f"心念 | ⚠️ AstrBot 时区配置无效 '{tz_str}': {e}，回退到插件时区配置"
                 )
         elif use_astrbot:
-            logger.debug("心念 | 已启用「跟随 AstrBot 时区」但 AstrBot 未配置时区，回退到插件时区配置")
+            logger.debug(
+                "心念 | 已启用「跟随 AstrBot 时区」但 AstrBot 未配置时区，回退到插件时区配置"
+            )
 
     # 使用插件自身的时区配置（兼容新旧两个字段位置）
-    tz_str = timezone_settings.get("timezone", "") or time_awareness_config.get("timezone", "")
+    tz_str = timezone_settings.get("timezone", "") or time_awareness_config.get(
+        "timezone", ""
+    )
     if not tz_str:
         return None
     try:
@@ -106,7 +110,9 @@ def is_in_time_range(time_range: str, tz=None) -> bool:
         start_hour, start_min = map(int, start_time.split(":"))
         end_hour, end_min = map(int, end_time.split(":"))
 
-        now = datetime.datetime.now(tz=tz) if tz is not None else datetime.datetime.now()
+        now = (
+            datetime.datetime.now(tz=tz) if tz is not None else datetime.datetime.now()
+        )
         current_minutes = now.hour * 60 + now.minute
         start_minutes = start_hour * 60 + start_min
         end_minutes = end_hour * 60 + end_min
@@ -173,11 +179,17 @@ def get_seconds_until_sleep_end(config: dict, astrbot_config=None) -> int:
         _, end_time = sleep_hours.split("-")
         end_hour, end_min = map(int, end_time.split(":"))
 
-        now = datetime.datetime.now(tz=tz) if tz is not None else datetime.datetime.now()
+        now = (
+            datetime.datetime.now(tz=tz) if tz is not None else datetime.datetime.now()
+        )
         # 构造结束时间（下一分钟的开始，因为 is_in_time_range 使用分钟精度）
         # 例如：睡眠时间 "xx:xx-15:21" 表示到 15:21:59 结束，即 15:22:00 开始不在睡眠时间
-        end_datetime = now.replace(hour=end_hour, minute=end_min, second=0, microsecond=0)
-        end_datetime += datetime.timedelta(minutes=1)  # 加1分钟，对齐 is_in_time_range 的语义
+        end_datetime = now.replace(
+            hour=end_hour, minute=end_min, second=0, microsecond=0
+        )
+        end_datetime += datetime.timedelta(
+            minutes=1
+        )  # 加1分钟，对齐 is_in_time_range 的语义
 
         # 如果结束时间已经过了，说明是跨午夜，结束时间是明天
         if end_datetime <= now:
@@ -188,7 +200,6 @@ def get_seconds_until_sleep_end(config: dict, astrbot_config=None) -> int:
     except Exception as e:
         logger.warning(f"心念 | ⚠️ 计算睡眠结束时间失败: {e}")
         return 0
-
 
 
 def get_sleep_prompt_if_active(config: dict, astrbot_config=None) -> str:

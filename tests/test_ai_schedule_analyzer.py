@@ -103,7 +103,9 @@ class TestFireTimeUtc(unittest.TestCase):
         fire_time_str = fire_time.strftime("%Y-%m-%d %H:%M:%S")
         fire_time_utc = fire_time.timestamp()
 
-        recovered = datetime.fromtimestamp(fire_time_utc, tz=timezone.utc).astimezone(tz)
+        recovered = datetime.fromtimestamp(fire_time_utc, tz=timezone.utc).astimezone(
+            tz
+        )
         self.assertEqual(recovered.strftime("%Y-%m-%d %H:%M:%S"), fire_time_str)
 
     def test_utc_timestamp_roundtrip_without_timezone(self):

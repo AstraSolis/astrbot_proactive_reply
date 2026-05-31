@@ -21,7 +21,9 @@ def _internal_error_response(locale: str):
     return jsonify(
         {
             "success": False,
-            "error": t(locale, "api.errors.internal_error", "服务器内部错误，请稍后重试"),
+            "error": t(
+                locale, "api.errors.internal_error", "服务器内部错误，请稍后重试"
+            ),
         }
     ), 500
 
@@ -42,17 +44,23 @@ def register_web_apis(context, managers: dict) -> None:
             return jsonify({"success": True, "stats": stats})
         except Exception as e:
             logger.error(f"心念 Web API | 获取仪表板统计失败: {e}")
-            return _internal_error_response(normalize_locale(request.args.get("locale")))
+            return _internal_error_response(
+                normalize_locale(request.args.get("locale"))
+            )
 
     async def get_sessions_list():
         """获取会话列表"""
         try:
             locale = normalize_locale(request.args.get("locale"))
             sessions = _build_sessions_data(managers, locale)
-            return jsonify({"success": True, "sessions": sessions, "total": len(sessions)})
+            return jsonify(
+                {"success": True, "sessions": sessions, "total": len(sessions)}
+            )
         except Exception as e:
             logger.error(f"心念 Web API | 获取会话列表失败: {e}")
-            return _internal_error_response(normalize_locale(request.args.get("locale")))
+            return _internal_error_response(
+                normalize_locale(request.args.get("locale"))
+            )
 
     async def add_session():
         """添加会话"""
@@ -63,7 +71,11 @@ def register_web_apis(context, managers: dict) -> None:
                 return jsonify(
                     {
                         "success": False,
-                        "error": t(locale, "api.errors.config_manager_not_found", "配置管理器未找到"),
+                        "error": t(
+                            locale,
+                            "api.errors.config_manager_not_found",
+                            "配置管理器未找到",
+                        ),
                     }
                 ), 500
 
@@ -73,7 +85,9 @@ def register_web_apis(context, managers: dict) -> None:
                 return jsonify(
                     {
                         "success": False,
-                        "error": t(locale, "api.errors.session_id_empty", "会话 ID 不能为空"),
+                        "error": t(
+                            locale, "api.errors.session_id_empty", "会话 ID 不能为空"
+                        ),
                     }
                 ), 400
 
@@ -107,7 +121,9 @@ def register_web_apis(context, managers: dict) -> None:
                 return jsonify(
                     {
                         "success": False,
-                        "error": t(locale, "api.errors.config_save_failed", "配置保存失败"),
+                        "error": t(
+                            locale, "api.errors.config_save_failed", "配置保存失败"
+                        ),
                     }
                 ), 500
 
@@ -136,7 +152,11 @@ def register_web_apis(context, managers: dict) -> None:
                 return jsonify(
                     {
                         "success": False,
-                        "error": t(locale, "api.errors.config_manager_not_found", "配置管理器未找到"),
+                        "error": t(
+                            locale,
+                            "api.errors.config_manager_not_found",
+                            "配置管理器未找到",
+                        ),
                     }
                 ), 500
 
@@ -146,7 +166,9 @@ def register_web_apis(context, managers: dict) -> None:
                 return jsonify(
                     {
                         "success": False,
-                        "error": t(locale, "api.errors.session_id_empty", "会话 ID 不能为空"),
+                        "error": t(
+                            locale, "api.errors.session_id_empty", "会话 ID 不能为空"
+                        ),
                     }
                 ), 400
 
@@ -159,7 +181,9 @@ def register_web_apis(context, managers: dict) -> None:
                 return jsonify(
                     {
                         "success": False,
-                        "error": t(locale, "api.errors.session_not_found", "未找到该会话"),
+                        "error": t(
+                            locale, "api.errors.session_not_found", "未找到该会话"
+                        ),
                     }
                 ), 404
 
@@ -168,7 +192,9 @@ def register_web_apis(context, managers: dict) -> None:
                 return jsonify(
                     {
                         "success": False,
-                        "error": t(locale, "api.errors.config_save_failed", "配置保存失败"),
+                        "error": t(
+                            locale, "api.errors.config_save_failed", "配置保存失败"
+                        ),
                     }
                 ), 500
 
@@ -197,14 +223,22 @@ def register_web_apis(context, managers: dict) -> None:
         try:
             locale = normalize_locale(request.args.get("locale"))
             config_manager = managers.get("config_manager")
-            config = config_manager.config if config_manager and hasattr(config_manager, "config") else {}
+            config = (
+                config_manager.config
+                if config_manager and hasattr(config_manager, "config")
+                else {}
+            )
             astrbot_config = _get_astrbot_config(managers)
             now = get_now(config, astrbot_config).replace(tzinfo=None)
             schedules = _build_ai_schedules_data(now, locale)
-            return jsonify({"success": True, "schedules": schedules, "total": len(schedules)})
+            return jsonify(
+                {"success": True, "schedules": schedules, "total": len(schedules)}
+            )
         except Exception as e:
             logger.error(f"心念 Web API | 获取 AI 约定任务失败: {e}")
-            return _internal_error_response(normalize_locale(request.args.get("locale")))
+            return _internal_error_response(
+                normalize_locale(request.args.get("locale"))
+            )
 
     async def cancel_ai_schedule():
         """取消 AI 约定任务"""
@@ -217,33 +251,56 @@ def register_web_apis(context, managers: dict) -> None:
 
             if not session_id:
                 return jsonify(
-                    {"success": False, "error": t(locale, "api.errors.session_id_empty", "会话 ID 不能为空")}
+                    {
+                        "success": False,
+                        "error": t(
+                            locale, "api.errors.session_id_empty", "会话 ID 不能为空"
+                        ),
+                    }
                 ), 400
             if not task_id and not fire_time:
                 return jsonify(
                     {
                         "success": False,
-                        "error": t(locale, "api.errors.schedule_not_found", "未找到该约定任务"),
+                        "error": t(
+                            locale, "api.errors.schedule_not_found", "未找到该约定任务"
+                        ),
                     }
                 ), 400
 
             tasks = runtime_data.session_ai_scheduled.get(session_id)
             if not tasks:
                 return jsonify(
-                    {"success": False, "error": t(locale, "api.errors.schedule_not_found", "未找到该约定任务")}
+                    {
+                        "success": False,
+                        "error": t(
+                            locale, "api.errors.schedule_not_found", "未找到该约定任务"
+                        ),
+                    }
                 ), 404
 
             task_list = (
-                tasks if isinstance(tasks, list) else [tasks] if isinstance(tasks, dict) else []
+                tasks
+                if isinstance(tasks, list)
+                else [tasks]
+                if isinstance(tasks, dict)
+                else []
             )
             if task_id:
                 updated = [task for task in task_list if task.get("task_id") != task_id]
             else:
-                updated = [task for task in task_list if task.get("fire_time", "") != fire_time]
+                updated = [
+                    task for task in task_list if task.get("fire_time", "") != fire_time
+                ]
 
             if len(updated) == len(task_list):
                 return jsonify(
-                    {"success": False, "error": t(locale, "api.errors.schedule_not_found", "未找到该约定任务")}
+                    {
+                        "success": False,
+                        "error": t(
+                            locale, "api.errors.schedule_not_found", "未找到该约定任务"
+                        ),
+                    }
                 ), 404
 
             if updated:
@@ -264,7 +321,12 @@ def register_web_apis(context, managers: dict) -> None:
                 f"task_id={task_id or '-'} fire_time={fire_time or '-'}"
             )
             return jsonify(
-                {"success": True, "message": t(locale, "api.messages.schedule_cancelled", "已取消约定任务")}
+                {
+                    "success": True,
+                    "message": t(
+                        locale, "api.messages.schedule_cancelled", "已取消约定任务"
+                    ),
+                }
             )
         except Exception as e:
             logger.error(f"心念 Web API | 取消 AI 约定任务失败: {e}")
@@ -337,7 +399,11 @@ def _get_astrbot_config(managers: dict):
 def _build_dashboard_stats(managers: dict, locale: str = "zh-CN") -> dict:
     """构建仪表板统计数据"""
     config_manager = managers.get("config_manager")
-    config = config_manager.config if config_manager and hasattr(config_manager, "config") else {}
+    config = (
+        config_manager.config
+        if config_manager and hasattr(config_manager, "config")
+        else {}
+    )
     astrbot_config = _get_astrbot_config(managers)
 
     sessions = _safe_sessions_list(config)
@@ -369,7 +435,9 @@ def _build_dashboard_stats(managers: dict, locale: str = "zh-CN") -> dict:
     }
 
 
-def _build_recent_activities(config: dict, astrbot_config, locale: str = "zh-CN") -> list:
+def _build_recent_activities(
+    config: dict, astrbot_config, locale: str = "zh-CN"
+) -> list:
     """构建最近活动时间线（最多10条，按时间倒序）"""
     now = get_now(config, astrbot_config).replace(tzinfo=None)
     activities = []
@@ -408,7 +476,11 @@ def _build_recent_activities(config: dict, astrbot_config, locale: str = "zh-CN"
 
     for session, tasks in runtime_data.session_ai_scheduled.items():
         task_list = (
-            tasks if isinstance(tasks, list) else [tasks] if isinstance(tasks, dict) else []
+            tasks
+            if isinstance(tasks, list)
+            else [tasks]
+            if isinstance(tasks, dict)
+            else []
         )
         for task in task_list:
             created_at = task.get("created_at", "")
@@ -563,7 +635,11 @@ def _build_ai_schedules_data(now: datetime, locale: str = "zh-CN") -> list:
     schedules = []
     for session_id, tasks in runtime_data.session_ai_scheduled.items():
         task_list = (
-            tasks if isinstance(tasks, list) else [tasks] if isinstance(tasks, dict) else []
+            tasks
+            if isinstance(tasks, list)
+            else [tasks]
+            if isinstance(tasks, dict)
+            else []
         )
         parts = session_id.split(":")
         platform = parts[0] if len(parts) >= 3 else "unknown"
@@ -585,11 +661,17 @@ def _build_ai_schedules_data(now: datetime, locale: str = "zh-CN") -> list:
                         fire_soon = True
                     elif total_seconds < 3600:
                         time_display = t(
-                            locale, "api.time.in_minutes", "{n} 分钟后", n=total_seconds // 60
+                            locale,
+                            "api.time.in_minutes",
+                            "{n} 分钟后",
+                            n=total_seconds // 60,
                         )
                     elif total_seconds < 86400:
                         time_display = t(
-                            locale, "api.time.in_hours", "{n} 小时后", n=total_seconds // 3600
+                            locale,
+                            "api.time.in_hours",
+                            "{n} 小时后",
+                            n=total_seconds // 3600,
                         )
                     else:
                         time_display = fire_time
@@ -658,16 +740,18 @@ def _build_session_entry(session_id: str, now: datetime, locale: str = "zh-CN") 
             entry["next_fire_display"] = "—"
     else:
         entry["next_fire_soon"] = False
-        entry["next_fire_display"] = t(
-            locale, "api.session.waiting_init", "等待初始化"
-        )
+        entry["next_fire_display"] = t(locale, "api.session.waiting_init", "等待初始化")
 
     last_sent = runtime_data.last_sent_times.get(session_id, "")
     entry["last_sent_time"] = last_sent or "—"
 
     entry["unreplied_count"] = runtime_data.session_unreplied_count.get(session_id, 0)
-    entry["consecutive_failures"] = runtime_data.session_consecutive_failures.get(session_id, 0)
-    entry["last_proactive_message"] = runtime_data.session_last_proactive_message.get(session_id, "")
+    entry["consecutive_failures"] = runtime_data.session_consecutive_failures.get(
+        session_id, 0
+    )
+    entry["last_proactive_message"] = runtime_data.session_last_proactive_message.get(
+        session_id, ""
+    )
 
     user_info = runtime_data.session_user_info.get(session_id, {})
     entry["username"] = user_info.get("username", "")
