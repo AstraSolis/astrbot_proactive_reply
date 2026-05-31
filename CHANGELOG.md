@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+### 重构
+- 抽取消息分割逻辑为独立的 `MessageSplitter`(`llm/message_splitter.py`)，精简 `message_generator.py`
+- 新增 `constants.py` 统一历史条数上限与默认/旧版时间感知提示词，消除多处硬编码
+
+### 修复
+- 对管理员配置的消息分割正则(custom/regex)增加长度与复杂度提示，并对超长文本跳过正则分割整条发送，缓解 ReDoS 理论风险
+
 ## [2.2.0] - 2026-05-31
 
 ### 新增
