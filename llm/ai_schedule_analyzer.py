@@ -160,9 +160,10 @@ async def analyze_for_schedule(
         return None
 
     system_prompt = analysis_prompt
+    user_prompt_parts = []
 
     if current_time_str:
-        system_prompt += f"\n\n当前时间: {current_time_str}"
+        user_prompt_parts.append(f"当前时间: {current_time_str}")
 
     # 注入已有约定，帮助 LLM 判断是否重复
     if existing_tasks:
@@ -175,16 +176,18 @@ async def analyze_for_schedule(
                 f"- {t['fire_time']}：{t['follow_up_prompt']}"
                 for t in valid_tasks
             )
-            system_prompt += (
-                f"\n\n该用户已有以下待执行的约定：\n{tasks_desc}\n"
+            user_prompt_parts.append(
+                f"该用户已有以下待执行的约定：\n{tasks_desc}\n"
                 "如果当前消息提到的约定与上述已有约定是同一件事（相同的时间和目的），"
                 "请返回 delay_minutes 为 0，不要重复创建。"
                 "只有当这是一个全新的、不同的约定时才返回正数的 delay_minutes。"
             )
             logger.debug(f"心念 | 调度分析注入 {len(valid_tasks)} 条已有约定用于去重")
 
-    # 构建用户消息：包含 AI 刚生成的消息
-    user_prompt = f"请分析以下 AI 消息是否包含时间约定：\n\n{ai_message}"
+    # 构建用户消息：动态分析上下文和 AI 刚生成的消息放在本轮用户 prompt，
+    # 保持 system_prompt 只包含稳定分析规则。
+    user_prompt_parts.append(f"请分析以下 AI 消息是否包含时间约定：\n\n{ai_message}")
+    user_prompt = "\n\n".join(user_prompt_parts)
 
     # 确定使用的 provider_id
     actual_provider_id = schedule_provider_id if schedule_provider_id else provider_id

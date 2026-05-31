@@ -404,7 +404,7 @@ def _zh_config() -> dict:
             "items": {
                 "enabled": {
                     "description": "启用聊天附带用户信息",
-                    "hint": "在每次 LLM 请求前将用户信息追加到用户消息后，不修改 system_prompt",
+                    "hint": "在每次 LLM 请求前将动态用户信息追加到用户消息后；固定时间规则追加到 system_prompt，睡眠提示追加到用户消息后",
                 },
                 "time_format": {
                     "description": "时间格式",
@@ -421,7 +421,7 @@ def _zh_config() -> dict:
             "items": {
                 "time_guidance_enabled": {
                     "description": "启用时间感知增强提示词",
-                    "hint": "用户正常聊天时追加到用户消息后；主动对话使用独立提示词",
+                    "hint": "用户正常聊天时追加固定时间指南到 system_prompt 末尾；主动对话使用独立提示词",
                 },
                 "time_guidance_prompt": {
                     "description": "时间感知增强提示词",
@@ -429,7 +429,7 @@ def _zh_config() -> dict:
                 },
                 "sleep_mode_enabled": {
                     "description": "启用睡眠时间功能",
-                    "hint": "睡眠时段内不发送主动消息，用户消息会附加睡眠提示",
+                    "hint": "睡眠时段内不发送主动消息，并将睡眠提示追加到用户消息后",
                 },
                 "sleep_hours": {
                     "description": "睡眠时间段",
@@ -613,7 +613,7 @@ def _en_config() -> dict:
             "items": {
                 "enabled": {
                     "description": "Append user info to chat",
-                    "hint": "Appends user info after the user message on each LLM request without modifying system_prompt",
+                    "hint": "Appends dynamic user info after the user message; fixed time guidance is added to system_prompt and sleep hints are added after the user message",
                 },
                 "time_format": {
                     "description": "Time format",
@@ -630,7 +630,7 @@ def _en_config() -> dict:
             "items": {
                 "time_guidance_enabled": {
                     "description": "Enable time-awareness prompt",
-                    "hint": "Appends time guidance after the user message in normal chat; proactive uses separate prompts",
+                    "hint": "Appends fixed time guidance to the end of system_prompt in normal chat; proactive uses separate prompts",
                 },
                 "time_guidance_prompt": {
                     "description": "Time-awareness prompt text",
@@ -638,7 +638,7 @@ def _en_config() -> dict:
                 },
                 "sleep_mode_enabled": {
                     "description": "Enable sleep hours",
-                    "hint": "No proactive messages during sleep; sleep hint on user messages",
+                    "hint": "No proactive messages during sleep; appends the sleep hint after the user message",
                 },
                 "sleep_hours": {
                     "description": "Sleep time range",
@@ -646,7 +646,7 @@ def _en_config() -> dict:
                 },
                 "sleep_prompt": {
                     "description": "Sleep-time prompt",
-                    "hint": "Appended during sleep hours",
+                    "hint": "Appended after the user message during sleep hours",
                 },
                 "send_on_wake_enabled": {
                     "description": "Send when sleep ends",

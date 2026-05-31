@@ -1,8 +1,9 @@
 import sys
 import unittest
 import importlib.util
+import asyncio
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 # Mock astrbot module before anything else
 sys.modules["astrbot"] = MagicMock()
@@ -21,6 +22,7 @@ spec.loader.exec_module(module)
 # Now use the module
 contains_time_keywords = module.contains_time_keywords
 parse_schedule_response = module.parse_schedule_response
+analyze_for_schedule = module.analyze_for_schedule
 
 
 class TestAIScheduleAnalyzer(unittest.TestCase):
@@ -130,6 +132,43 @@ class TestFireTimeUtc(unittest.TestCase):
         t3 = (base + timedelta(minutes=30)).astimezone().timestamp()
         self.assertLess(t1, t2)
         self.assertLess(t2, t3)
+
+
+class TestSchedulePromptPlacement(unittest.TestCase):
+    def test_dynamic_analysis_context_stays_out_of_system_prompt(self):
+        context = MagicMock()
+        context.llm_generate = AsyncMock(
+            return_value=MagicMock(
+                role="assistant",
+                completion_text='{"delay_minutes": 40, "follow_up_prompt": "按约定跟进"}',
+            )
+        )
+
+        result = asyncio.run(
+            analyze_for_schedule(
+                context=context,
+                provider_id="main",
+                ai_message="40分钟后找你",
+                contexts=[],
+                analysis_prompt="固定分析规则",
+                current_time_str="2026-05-30 23:09:43",
+                existing_tasks=[
+                    {
+                        "fire_time": "2026-05-31 00:00:00",
+                        "follow_up_prompt": "已有约定",
+                    }
+                ],
+            )
+        )
+
+        self.assertIsNotNone(result)
+        call_kwargs = context.llm_generate.await_args.kwargs
+        self.assertEqual(call_kwargs["system_prompt"], "固定分析规则")
+        self.assertIn("当前时间: 2026-05-30 23:09:43", call_kwargs["prompt"])
+        self.assertIn("已有约定", call_kwargs["prompt"])
+        self.assertIn("40分钟后找你", call_kwargs["prompt"])
+        self.assertNotIn("2026-05-30 23:09:43", call_kwargs["system_prompt"])
+        self.assertNotIn("已有约定", call_kwargs["system_prompt"])
 
 
 if __name__ == "__main__":

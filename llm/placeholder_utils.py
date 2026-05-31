@@ -75,6 +75,32 @@ def replace_placeholders(
         return prompt  # 如果替换失败，返回原始提示词
 
 
+def stabilize_static_prompt_template(prompt: str) -> str:
+    """将固定系统提示词中的动态占位符替换为稳定描述，避免污染前缀缓存"""
+    if not prompt:
+        return ""
+
+    stable_placeholders = {
+        "username": "系统提供的用户昵称",
+        "user_id": "系统提供的用户ID",
+        "time": "系统提供的消息时间",
+        "current_time": "系统提供的当前时间",
+        "weekday": "系统提供的星期信息",
+        "platform": "系统提供的平台名称",
+        "chat_type": "系统提供的聊天类型",
+        "user_last_message_time": "系统提供的用户上次发消息时间",
+        "user_last_message_time_ago": "系统提供的用户上次发消息相对时间",
+        "ai_last_sent_time": "系统提供的AI上次发送时间",
+        "unreplied_count": "系统提供的连续未回复次数",
+        "user_context": "系统提供的用户上下文",
+    }
+
+    result = prompt
+    for key, value in stable_placeholders.items():
+        result = result.replace("{" + key + "}", value)
+    return result
+
+
 def format_time_ago(time_str: str, tz=None) -> str:
     """将时间字符串转换为相对时间描述（如"5分钟前"）
 

@@ -6,7 +6,7 @@
 
 import random
 from astrbot.api import logger
-from .placeholder_utils import replace_placeholders
+from .placeholder_utils import replace_placeholders, stabilize_static_prompt_template
 from ..utils.parsers import parse_prompt_list
 
 
@@ -255,19 +255,13 @@ class PromptBuilder:
     def build_combined_system_prompt(
         self,
         base_system_prompt: str,
-        final_prompt: str,
         history_guidance: str,
-        session: str = None,
-        build_user_context_func=None,
     ) -> str:
         """构建组合系统提示词
 
         Args:
             base_system_prompt: 基础人格提示词
-            final_prompt: 主动对话提示词
             history_guidance: 历史记录引导
-            session: 会话ID (可选，用于替换时间感知提示词中的占位符)
-            build_user_context_func: 构建用户上下文的函数 (可选)
 
         Returns:
             组合后的系统提示词
@@ -287,39 +281,28 @@ class PromptBuilder:
 1. 真实性：系统提供的时间信息是你唯一可信的时间来源，禁止编造或推测。
 2. 自然回应：优先使用自然口语（如"刚才"、"大半夜"、"好久不见"）替代数字报时，仅在用户明确询问时提供精确时间。
 3. 状态映射：依据当前时间调整人设的生理状态（如深夜困倦、饭点饥饿）。
-4. 上下文感知：根据与用户上次对话的时间差（{user_last_message_time_ago}）调整语气（如很久没见要表现出想念，刚聊过则保持连贯）。>"""
+4. 上下文感知：根据系统提供的用户上次对话时间和相对时间调整语气（如很久没见要表现出想念，刚聊过则保持连贯）。>"""
 
             custom_prompt = time_awareness_config.get("time_guidance_prompt", "")
             time_guidance_content = (
                 custom_prompt if custom_prompt else default_time_guidance
             )
 
-            # 如果提供了 session，替换占位符
-            if session and build_user_context_func:
-                try:
-                    time_guidance_content = replace_placeholders(
-                        time_guidance_content,
-                        session,
-                        self.config,
-                        build_user_context_func,
-                        self._get_astrbot_config(),
-                    )
-                except Exception as e:
-                    logger.warning(f"心念 | ⚠️ 时间感知提示词占位符替换失败: {e}")
+            time_guidance_content = stabilize_static_prompt_template(
+                time_guidance_content
+            )
 
             time_guidance = f"\n\n{time_guidance_content}\n"
 
         if base_system_prompt:
-            # 有AstrBot人格：使用AstrBot人格 + 时间指导 + 主动对话提示词 + 历史记录引导
-            combined_system_prompt = f"{base_system_prompt}{time_guidance}\n\n--- 主动对话指令 ---\n{final_prompt}{history_guidance}"
+            # 有AstrBot人格：使用AstrBot人格 + 固定时间指导 + 历史记录引导
+            combined_system_prompt = f"{base_system_prompt}{time_guidance}{history_guidance}"
         else:
-            # 没有AstrBot人格：使用插件默认人格 + 时间指导 + 主动对话提示词 + 历史记录引导
+            # 没有AstrBot人格：使用插件默认人格 + 固定时间指导 + 历史记录引导
             if default_persona:
-                combined_system_prompt = f"{default_persona}{time_guidance}\n\n--- 主动对话指令 ---\n{final_prompt}{history_guidance}"
+                combined_system_prompt = f"{default_persona}{time_guidance}{history_guidance}"
             else:
-                combined_system_prompt = (
-                    f"{time_guidance}\n\n{final_prompt}{history_guidance}"
-                )
+                combined_system_prompt = f"{time_guidance}{history_guidance}".strip()
 
         return combined_system_prompt
 

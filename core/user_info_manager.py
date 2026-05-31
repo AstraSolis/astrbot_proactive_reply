@@ -8,7 +8,7 @@ import datetime
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 from .runtime_data import runtime_data
-from ..llm.placeholder_utils import format_time_ago
+from ..llm.placeholder_utils import format_time_ago, stabilize_static_prompt_template
 from ..utils.time_utils import get_now, get_tz, get_sleep_prompt_if_active as _check_sleep_prompt
 
 
@@ -140,35 +140,37 @@ class UserInfoManager:
         time_awareness_config = self.config.get("time_awareness", {})
         time_guidance_enabled = time_awareness_config.get("time_guidance_enabled", True)
 
-        time_guidance = ""
+        static_system_prompts = []
         if time_guidance_enabled:
             # 从配置中读取自定义提示词，如果没有则使用默认值
             default_time_guidance = """<TIME_GUIDE: 核心时间规则（必须严格遵守）
 1. 真实性：系统提供的时间信息是你唯一可信的时间来源，禁止编造或推测。
 2. 自然回应：优先使用自然口语（如"刚才"、"大半夜"、"好久不见"）替代数字报时，仅在用户明确询问时提供精确时间。
 3. 状态映射：依据当前时间调整人设的生理状态（如深夜困倦、饭点饥饿）。
+4. 上下文感知：根据系统提供的用户上次对话时间和相对时间调整语气（如很久没见要表现出想念，刚聊过则保持连贯）。>"""
+            legacy_default_time_guidance = """<TIME_GUIDE: 核心时间规则（必须严格遵守）
+1. 真实性：系统提供的时间信息是你唯一可信的时间来源，禁止编造或推测。
+2. 自然回应：优先使用自然口语（如"刚才"、"大半夜"、"好久不见"）替代数字报时，仅在用户明确询问时提供精确时间。
+3. 状态映射：依据当前时间调整人设的生理状态（如深夜困倦、饭点饥饿）。
 4. 上下文感知：根据与用户上次对话的时间差（{user_last_message_time_ago}）调整语气（如很久没见要表现出想念，刚聊过则保持连贯）。>"""
 
             custom_prompt = time_awareness_config.get("time_guidance_prompt", "")
-            time_guidance = custom_prompt if custom_prompt else default_time_guidance
+            time_guidance = (
+                custom_prompt
+                if custom_prompt and custom_prompt != legacy_default_time_guidance
+                else default_time_guidance
+            )
+            time_guidance = stabilize_static_prompt_template(time_guidance)
+            if time_guidance:
+                static_system_prompts.append(time_guidance)
 
-            # 使用现有占位符替换 time_guidance 中的变量
-            try:
-                time_guidance = self._safe_format_template(time_guidance, placeholders)
-            except Exception as e:
-                logger.warning(f"心念 | ⚠️ 时间感知提示词占位符替换失败: {e}")
-
-        # 通过 extra_user_content_parts 追加动态信息，避免修改 system_prompt 导致前缀缓存失效
-        additional_prompt = user_info
-        if time_guidance:
-            additional_prompt = f"{time_guidance}\n\n{user_info}"
-
-        # 检查是否处于睡眠时间，如果是则附加睡眠提示
         sleep_prompt = self._get_sleep_prompt_if_active()
-        if sleep_prompt:
-            additional_prompt = f"{sleep_prompt}\n\n{additional_prompt}"
 
-        self._append_dynamic_user_content(req, additional_prompt)
+        # 固定提示词放在 system_prompt 末尾，条件性上下文放在本轮用户消息后。
+        self._append_static_system_prompt(req, "\n\n".join(static_system_prompts))
+        self._prepend_dynamic_user_content(req, user_info)
+        if sleep_prompt:
+            self._append_dynamic_user_content(req, sleep_prompt)
 
         # 记录用户信息
         self.record_user_info(event, username, user_id, platform_name, message_type)
@@ -369,15 +371,35 @@ class UserInfoManager:
 
         遵循 AstrBot 官方推荐：动态上下文放在本轮用户输入之后，并标记为临时内容。
         """
+        self._insert_dynamic_user_content(req, additional_prompt, len(req.extra_user_content_parts))
+
+    def _prepend_dynamic_user_content(self, req, additional_prompt: str) -> None:
+        """将动态附带信息插入到 extra_user_content_parts 最前面，不修改 system_prompt"""
+        self._insert_dynamic_user_content(req, additional_prompt, 0)
+
+    def _insert_dynamic_user_content(self, req, additional_prompt: str, index: int) -> None:
         try:
             from astrbot.core.agent.message import TextPart
         except ImportError:
             logger.warning("心念 | ⚠️ 无法导入 TextPart，跳过附带信息注入")
             return
 
-        req.extra_user_content_parts.append(
-            self._make_temp_text_part(TextPart, additional_prompt)
+        req.extra_user_content_parts.insert(
+            index,
+            self._make_temp_text_part(TextPart, additional_prompt),
         )
+
+    def _append_static_system_prompt(self, req, additional_prompt: str) -> None:
+        """将固定提示词追加到 system_prompt 末尾"""
+        additional_prompt = (additional_prompt or "").strip()
+        if not additional_prompt:
+            return
+
+        system_prompt = getattr(req, "system_prompt", "") or ""
+        if system_prompt.strip():
+            req.system_prompt = f"{system_prompt.rstrip()}\n\n{additional_prompt}"
+        else:
+            req.system_prompt = additional_prompt
 
     @staticmethod
     def _make_temp_text_part(text_part_cls, text: str):

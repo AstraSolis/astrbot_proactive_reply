@@ -27,7 +27,7 @@
       "description": "聊天附带用户信息设置",
       "enabled": {
         "description": "启用聊天附带用户信息",
-        "hint": "在每次 LLM 请求前将用户信息追加到用户消息后，不修改 system_prompt"
+        "hint": "在每次 LLM 请求前将动态用户信息追加到用户消息后；固定时间规则追加到 system_prompt，睡眠提示追加到用户消息后"
       },
       "time_format": {
         "description": "时间格式",
@@ -42,7 +42,7 @@
       "description": "时间感知设置",
       "time_guidance_enabled": {
         "description": "启用时间感知增强提示词",
-        "hint": "用户正常聊天时追加到用户消息后；主动对话使用独立提示词"
+        "hint": "用户正常聊天时追加固定时间指南到 system_prompt 末尾；主动对话使用独立提示词"
       },
       "time_guidance_prompt": {
         "description": "时间感知增强提示词",
@@ -50,7 +50,7 @@
       },
       "sleep_mode_enabled": {
         "description": "启用睡眠时间功能",
-        "hint": "睡眠时段内不发送主动消息，用户消息会附加睡眠提示"
+        "hint": "睡眠时段内不发送主动消息，并将睡眠提示追加到用户消息后"
       },
       "sleep_hours": {
         "description": "睡眠时间段",

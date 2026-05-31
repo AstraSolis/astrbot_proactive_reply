@@ -27,7 +27,7 @@
       "description": "User context in chat",
       "enabled": {
         "description": "Append user info to chat",
-        "hint": "Appends user info after the user message on each LLM request without modifying system_prompt"
+        "hint": "Appends dynamic user info after the user message; fixed time guidance is added to system_prompt and sleep hints are added after the user message"
       },
       "time_format": {
         "description": "Time format",
@@ -42,7 +42,7 @@
       "description": "Time awareness",
       "time_guidance_enabled": {
         "description": "Enable time-awareness prompt",
-        "hint": "Appends time guidance after the user message in normal chat; proactive uses separate prompts"
+        "hint": "Appends fixed time guidance to the end of system_prompt in normal chat; proactive uses separate prompts"
       },
       "time_guidance_prompt": {
         "description": "Time-awareness prompt text",
@@ -50,7 +50,7 @@
       },
       "sleep_mode_enabled": {
         "description": "Enable sleep hours",
-        "hint": "No proactive messages during sleep; sleep hint on user messages"
+        "hint": "No proactive messages during sleep; appends the sleep hint after the user message"
       },
       "sleep_hours": {
         "description": "Sleep time range",
@@ -58,7 +58,7 @@
       },
       "sleep_prompt": {
         "description": "Sleep-time prompt",
-        "hint": "Appended during sleep hours"
+        "hint": "Appended after the user message during sleep hours"
       },
       "send_on_wake_enabled": {
         "description": "Send when sleep ends",

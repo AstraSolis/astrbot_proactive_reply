@@ -355,10 +355,7 @@ class CommandHandlers:
             combined_system_prompt = (
                 self.plugin.prompt_builder.build_combined_system_prompt(
                     base_system_prompt,
-                    final_prompt,
                     history_guidance,
-                    session_id,
-                    self.plugin.user_info_manager.build_user_context_for_proactive,
                 )
             )
 
@@ -398,9 +395,10 @@ class CommandHandlers:
 🎭 最终组合系统提示词结构：
   [人格提示词 {len(base_system_prompt)}字符]
   {"[时间增强提示词 ~350字符]" if time_guidance_enabled else "[时间增强提示词 已禁用]"}
-  [--- 主动对话指令 ---]
-  [{final_prompt}]
   [历史引导语]
+
+📨 本轮用户提示词：
+{final_prompt}
 
 📊 统计信息:
 - 可用提示词数量: {len(prompt_list)}
@@ -410,7 +408,8 @@ class CommandHandlers:
 - 最终系统提示词长度: {len(combined_system_prompt)} 字符
 
 💡 说明:
-- 系统提示词包含: 人格 + 时间指导 + 主动对话指令 + 历史引导
+- 系统提示词包含: 人格 + 固定时间指导 + 历史引导
+- 主动对话指令作为本轮用户提示词传递，避免动态占位符污染 system_prompt
 - 历史记录通过 contexts 参数传递给 LLM，而非嵌入系统提示词"""
 
             yield event.plain_result(result_text)
