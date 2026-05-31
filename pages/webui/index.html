@@ -190,6 +190,17 @@
       </div>
     </div>
 
+    <div class="dialog-overlay" id="confirm-dialog" style="display:none;" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+      <div class="dialog">
+        <header class="dialog-header" id="confirm-title"></header>
+        <div class="dialog-body" id="confirm-message"></div>
+        <footer class="dialog-footer">
+          <button type="button" class="btn btn-ghost" id="btn-confirm-cancel"></button>
+          <button type="button" class="btn btn-danger" id="btn-confirm-ok"></button>
+        </footer>
+      </div>
+    </div>
+
     <script type="module" src="./app.js"></script>
   </body>
 </html>
