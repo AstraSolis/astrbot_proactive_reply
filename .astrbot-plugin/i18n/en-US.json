@@ -116,8 +116,8 @@
         "hint": "Random-interval mode only"
       },
       "proactive_default_persona": {
-        "description": "Default proactive persona",
-        "hint": "Base system prompt when no AstrBot persona"
+        "description": "Fallback proactive persona",
+        "hint": "Used as a fallback system prompt only when AstrBot returns no usable persona"
       },
       "proactive_prompt_list": {
         "description": "Proactive prompt list",

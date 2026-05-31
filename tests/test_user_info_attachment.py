@@ -141,7 +141,6 @@ class TestUserInfoAttachment(unittest.TestCase):
             def __init__(self, text: str = ""):
                 self.text = text
 
-        req = MockReq()
         part = UserInfoManager._make_temp_text_part(LegacyTextPart, "[对话信息]")
         self.assertEqual(part.text, "[对话信息]")
         self.assertFalse(hasattr(part, "_no_save"))
@@ -263,6 +262,49 @@ class TestStaticPromptBuilder(unittest.TestCase):
         self.assertNotIn("主动对话", system_prompt)
         self.assertNotIn("{current_time}", system_prompt)
         self.assertNotIn("{user_last_message_time_ago}", system_prompt)
+
+    def test_default_persona_name_keeps_builtin_default_persona(self):
+        builder = PromptBuilder({}, context=None)
+
+        self.assertEqual(
+            builder._get_default_persona_name(
+                {"default_personality": "default", "fallback": {"default_personality": "suleng"}}
+            ),
+            "default",
+        )
+        self.assertEqual(builder._normalize_persona_id("[%None]"), "")
+
+    def test_persona_prompt_prefers_resolved_selected_persona(self):
+        builder = PromptBuilder({}, context=None)
+        selected_persona = {"name": "default", "prompt": "默认人格提示词"}
+
+        self.assertEqual(builder._get_persona_prompt(selected_persona), "默认人格提示词")
+        self.assertEqual(builder._get_persona_name(selected_persona), "default")
+
+    def test_default_persona_can_be_empty_without_falling_back_to_first_persona(self):
+        builder = PromptBuilder({}, context=MagicMock())
+        builder.context.get_config.return_value = {
+            "provider_settings": {"default_personality": "default"}
+        }
+
+        self.assertEqual(
+            builder._get_default_persona_prompt(
+                [{"name": "custom-persona", "prompt": "自定义人格提示词"}]
+            ),
+            "",
+        )
+
+    def test_resolved_empty_default_persona_does_not_use_plugin_fallback(self):
+        builder = PromptBuilder(
+            {
+                "time_awareness": {"time_guidance_enabled": False},
+                "proactive_reply": {"proactive_default_persona": "插件备用人格"},
+            },
+            context=None,
+        )
+        builder._astrbot_persona_resolved = True
+
+        self.assertEqual(builder.build_combined_system_prompt("", "历史引导"), "历史引导")
 
 
 if __name__ == "__main__":

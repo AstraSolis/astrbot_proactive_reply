@@ -491,8 +491,8 @@ def _zh_config() -> dict:
                     "hint": "仅随机间隔模式生效",
                 },
                 "proactive_default_persona": {
-                    "description": "主动对话默认人格",
-                    "hint": "无 AstrBot 人格时作为系统提示基础",
+                    "description": "主动对话备用人格",
+                    "hint": "仅当 AstrBot 未返回可用人格时作为备用系统提示词",
                 },
                 "proactive_prompt_list": {
                     "description": "主动对话提示词列表",
@@ -700,8 +700,8 @@ def _en_config() -> dict:
                     "hint": "Random-interval mode only",
                 },
                 "proactive_default_persona": {
-                    "description": "Default proactive persona",
-                    "hint": "Base system prompt when no AstrBot persona",
+                    "description": "Fallback proactive persona",
+                    "hint": "Used as a fallback system prompt only when AstrBot returns no usable persona",
                 },
                 "proactive_prompt_list": {
                     "description": "Proactive prompt list",

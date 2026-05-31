@@ -22,6 +22,7 @@ class PromptBuilder:
         """
         self.config = config
         self.context = context
+        self._astrbot_persona_resolved = False
 
     def replace_placeholders(
         self, prompt: str, session: str, config: dict, build_user_context_func
@@ -50,6 +51,52 @@ class PromptBuilder:
             return persona.get("prompt", "")
         # Persona SQLModel 使用 system_prompt 字段
         return getattr(persona, "system_prompt", "") or getattr(persona, "prompt", "")
+
+    def _normalize_persona_id(self, persona_id) -> str:
+        if not persona_id:
+            return ""
+
+        persona_id = str(persona_id).strip()
+        if persona_id == "[%None]":
+            return ""
+
+        return persona_id
+
+    def _find_persona_prompt(self, personas: list, persona_name: str) -> tuple[str, str]:
+        persona_name = self._normalize_persona_id(persona_name)
+        if not persona_name:
+            return "", ""
+
+        for persona in personas:
+            name = self._get_persona_name(persona)
+            if name == persona_name:
+                return self._get_persona_prompt(persona), name
+
+        for persona in personas:
+            name = self._get_persona_name(persona)
+            if name and name.lower() == persona_name.lower():
+                return self._get_persona_prompt(persona), name
+
+        return "", persona_name
+
+    def _get_default_persona_name(self, provider_settings: dict) -> str:
+        if not isinstance(provider_settings, dict):
+            return ""
+
+        for key in ("default_personality", "default_persona", "personality"):
+            persona_name = self._normalize_persona_id(provider_settings.get(key))
+            if persona_name:
+                return persona_name
+
+        for value in provider_settings.values():
+            if not isinstance(value, dict):
+                continue
+
+            persona_name = self._get_default_persona_name(value)
+            if persona_name:
+                return persona_name
+
+        return ""
 
     def get_proactive_prompt(self, session: str, build_user_context_func) -> str:
         """获取并处理主动对话提示词
@@ -97,6 +144,7 @@ class PromptBuilder:
             人格系统提示词
         """
         base_system_prompt = ""
+        self._astrbot_persona_resolved = False
         try:
             # 尝试获取当前会话的人格设置
             uid = session  # session 就是 unified_msg_origin
@@ -136,7 +184,7 @@ class PromptBuilder:
                     (
                         target_persona_id,
                         selected_persona,
-                        force_applied_persona_id,
+                        _,
                         _,
                     ) = await self.context.persona_manager.resolve_selected_persona(
                         umo=uid,
@@ -145,38 +193,38 @@ class PromptBuilder:
                         provider_settings=provider_settings,
                     )
 
-                    if target_persona_id and target_persona_id != "[%None]":
-                        # 人格匹配
-                        available_names = [self._get_persona_name(p) for p in personas]
-                        logger.debug(
-                            f"心念 | 人格匹配 - 请求: '{target_persona_id}', 可用: {available_names}"
-                        )
+                    target_persona_id = self._normalize_persona_id(target_persona_id)
+                    selected_persona_name = self._get_persona_name(selected_persona)
+                    selected_persona_prompt = self._get_persona_prompt(selected_persona)
+                    resolved_persona_name = selected_persona_name or target_persona_id or "无"
+                    logger.debug(
+                        f"心念 | AstrBot 人格解析结果: '{resolved_persona_name}' (prompt长度: {len(selected_persona_prompt)}字符)"
+                    )
 
-                        if personas:
-                            # 精确匹配
-                            for persona in personas:
-                                if self._get_persona_name(persona) == target_persona_id:
-                                    base_system_prompt = self._get_persona_prompt(persona)
-                                    logger.debug(
-                                        f"心念 | 人格匹配成功 (精确): '{target_persona_id}'"
-                                    )
-                                    break
+                    if selected_persona_prompt:
+                        base_system_prompt = selected_persona_prompt
+                        self._astrbot_persona_resolved = True
+                    else:
+                        if not target_persona_id and selected_persona_name:
+                            target_persona_id = selected_persona_name
 
-                            # 若精确匹配失败，尝试大小写不敏感匹配
-                            if not base_system_prompt:
-                                for persona in personas:
-                                    name = self._get_persona_name(persona)
-                                    if name and name.lower() == target_persona_id.lower():
-                                        base_system_prompt = self._get_persona_prompt(
-                                            persona
-                                        )
-                                        logger.debug(
-                                            f"心念 | 人格匹配成功 (忽略大小写): '{target_persona_id}' -> '{name}'"
-                                        )
-                                        break
+                        if target_persona_id == "default":
+                            self._astrbot_persona_resolved = True
+                        elif target_persona_id:
+                            (
+                                base_system_prompt,
+                                matched_persona_name,
+                            ) = self._find_persona_prompt(personas, target_persona_id)
+                            available_names = [self._get_persona_name(p) for p in personas]
+                            logger.debug(
+                                f"心念 | 人格匹配 - 请求: '{target_persona_id}', 可用: {available_names}"
+                            )
 
-                            # 匹配失败警告
-                            if not base_system_prompt:
+                            if base_system_prompt:
+                                logger.debug(
+                                    f"心念 | 人格匹配成功: '{target_persona_id}' -> '{matched_persona_name}'"
+                                )
+                            elif personas:
                                 logger.warning(
                                     f"心念 | ⚠️ 人格匹配失败: 会话请求 '{target_persona_id}' 不在可用人格列表 {available_names} 中"
                                 )
@@ -185,7 +233,7 @@ class PromptBuilder:
                     logger.warning(f"心念 | ⚠️ resolve_selected_persona 调用失败: {e}")
 
             # 如果没有获取到人格提示词，尝试从配置中获取当前默认人格
-            if not base_system_prompt:
+            if not base_system_prompt and not self._astrbot_persona_resolved:
                 base_system_prompt = self._get_default_persona_prompt(personas)
 
         except Exception as e:
@@ -205,27 +253,29 @@ class PromptBuilder:
         try:
             # 从 AstrBot 配置中读取当前设置的默认人格名称
             astrbot_config = self.context.get_config()
-            default_persona_name = None
+            default_persona_name = ""
 
             # 尝试用字典方式获取（AstrBotConfig 支持 get 方法）
             if hasattr(astrbot_config, "get"):
-                # 从 provider_settings 获取 default_personality（正确的字段名）
+                # 从 provider_settings 获取默认人格
                 provider_settings = astrbot_config.get("provider_settings", {})
-                if provider_settings and isinstance(provider_settings, dict):
-                    # 优先使用 default_personality 字段
-                    default_persona_name = provider_settings.get("default_personality")
-                    if default_persona_name:
-                        logger.debug(f"心念 | 从配置获取默认人格: '{default_persona_name}'")
+                default_persona_name = self._get_default_persona_name(provider_settings)
+                if default_persona_name:
+                    logger.debug(f"心念 | 从配置获取默认人格: '{default_persona_name}'")
 
             # 如果获取到默认人格名称，从人格列表中查找
             if default_persona_name and personas:
-                for persona in personas:
-                    if self._get_persona_name(persona) == default_persona_name:
-                        prompt = self._get_persona_prompt(persona)
-                        logger.debug(
-                            f"心念 | 使用默认人格 '{default_persona_name}' (prompt长度: {len(prompt)}字符)"
-                        )
-                        return prompt
+                prompt, matched_name = self._find_persona_prompt(personas, default_persona_name)
+                if prompt:
+                    logger.debug(
+                        f"心念 | 使用默认人格 '{matched_name}' (prompt长度: {len(prompt)}字符)"
+                    )
+                    return prompt
+
+                # AstrBot 的 default 可以是空系统提示词，不应回退到其他人格
+                if default_persona_name == "default":
+                    logger.debug("心念 | 默认人格 'default' 未提供系统提示词")
+                    return ""
 
                 # 匹配失败
                 available = [self._get_persona_name(p) for p in personas]
@@ -297,8 +347,10 @@ class PromptBuilder:
         if base_system_prompt:
             # 有AstrBot人格：使用AstrBot人格 + 固定时间指导 + 历史记录引导
             combined_system_prompt = f"{base_system_prompt}{time_guidance}{history_guidance}"
+        elif self._astrbot_persona_resolved:
+            combined_system_prompt = f"{time_guidance}{history_guidance}".strip()
         else:
-            # 没有AstrBot人格：使用插件默认人格 + 固定时间指导 + 历史记录引导
+            # 没有AstrBot人格：使用插件备用人格 + 固定时间指导 + 历史记录引导
             if default_persona:
                 combined_system_prompt = f"{default_persona}{time_guidance}{history_guidance}"
             else:
@@ -322,7 +374,7 @@ class PromptBuilder:
             # 使用与 get_persona_system_prompt 相同的动态获取逻辑
             base_system_prompt = self._get_default_persona_prompt(personas)
 
-            # 如果还是没有获取到，使用插件默认人格
+            # 如果还是没有获取到，使用插件备用人格
             if not base_system_prompt:
                 proactive_config = self.config.get("proactive_reply", {})
                 base_system_prompt = proactive_config.get(
@@ -333,7 +385,7 @@ class PromptBuilder:
 
         except Exception as e:
             logger.warning(f"心念 | ⚠️ 获取基础系统提示词失败: {e}")
-            # 返回插件默认人格
+            # 返回插件备用人格
             proactive_config = self.config.get("proactive_reply", {})
             return proactive_config.get(
                 "proactive_default_persona", "你是一个友好、轻松的AI助手。"

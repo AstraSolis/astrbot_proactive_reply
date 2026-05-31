@@ -5,7 +5,6 @@
 """
 
 import asyncio
-import datetime
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 from ..core.runtime_data import runtime_data
@@ -876,10 +875,10 @@ class CommandHandlers:
             prompt_list = proactive_config.get("proactive_prompt_list", [])
             config_text += f"主动对话提示词数量: {len(prompt_list)} 条\n"
 
-            # 默认人格
+            # 备用人格
             default_persona = proactive_config.get("proactive_default_persona", "")
             if default_persona:
-                config_text += f"\n插件默认人格长度: {len(default_persona)} 字符\n"
+                config_text += f"\n插件备用人格长度: {len(default_persona)} 字符\n"
 
             config_text += "\n💡 使用 /proactive show prompt 查看所有主动对话提示词"
 

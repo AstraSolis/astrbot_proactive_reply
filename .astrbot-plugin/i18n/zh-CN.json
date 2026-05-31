@@ -116,8 +116,8 @@
         "hint": "仅随机间隔模式生效"
       },
       "proactive_default_persona": {
-        "description": "主动对话默认人格",
-        "hint": "无 AstrBot 人格时作为系统提示基础"
+        "description": "主动对话备用人格",
+        "hint": "仅当 AstrBot 未返回可用人格时作为备用系统提示词"
       },
       "proactive_prompt_list": {
         "description": "主动对话提示词列表",
