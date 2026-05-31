@@ -2,6 +2,60 @@ const bridge = window.AstrBotPluginPage || null;
 const I18N = "pages.webui.";
 const VISIT_KEY = "astrbot-proactive-webui-seen";
 
+const PLACEHOLDER_GROUPS = [
+  {
+    titleKey: "placeholders_group_user_info",
+    titleFallback: "用户信息模板",
+    hintKey: "placeholders_group_user_info_hint",
+    hintFallback: "追加到用户消息后，描述当前对话的用户与上下文",
+    tokens: [
+      "username",
+      "user_id",
+      "time",
+      "current_time",
+      "weekday",
+      "platform",
+      "chat_type",
+      "user_last_message_time",
+      "user_last_message_time_ago",
+      "ai_last_sent_time",
+    ],
+  },
+  {
+    titleKey: "placeholders_group_proactive",
+    titleFallback: "主动提示词",
+    hintKey: "placeholders_group_proactive_hint",
+    hintFallback: "随机选用，用于生成主动发起的消息",
+    tokens: [
+      "user_context",
+      "username",
+      "platform",
+      "chat_type",
+      "current_time",
+      "weekday",
+      "user_last_message_time",
+      "user_last_message_time_ago",
+      "ai_last_sent_time",
+      "unreplied_count",
+    ],
+  },
+];
+
+const PLACEHOLDER_DESC_FALLBACK = {
+  user_context: "完整的用户上下文信息（含用户名、平台、时间等）",
+  username: "用户昵称",
+  user_id: "用户 ID",
+  time: "消息时间",
+  current_time: "当前时间",
+  weekday: "当前星期（如“星期一”）",
+  platform: "平台名称（如 aiocqhttp、telegram）",
+  chat_type: "聊天类型（群聊/私聊）",
+  user_last_message_time: "用户上次发消息的时间",
+  user_last_message_time_ago: "用户上次发消息的相对时间（如“5分钟前”）",
+  ai_last_sent_time: "AI 上次发送消息的时间",
+  unreplied_count: "用户连续未回复次数",
+};
+
 let activeView = "dashboard";
 let sessionsLoaded = false;
 let sessions = [];
@@ -120,6 +174,13 @@ function renderStatic() {
   document.getElementById("btn-detail-close").textContent =
     t("btn_close", "关闭");
 
+  document.getElementById("nav-label-placeholders").textContent =
+    t("tab_placeholders", "占位符");
+  document.getElementById("page-title-placeholders").textContent =
+    t("tab_placeholders", "占位符");
+  document.getElementById("placeholders-subtitle").textContent =
+    t("placeholders_subtitle", "点击任意占位符即可复制到剪贴板，粘贴进配置模板使用");
+
   document.getElementById("sidebar-nav").setAttribute(
     "aria-label",
     t("aria_main_nav", "主导航"),
@@ -132,6 +193,7 @@ function renderStatic() {
   applyLoadingPlaceholders();
   updateSearchShortcutHint();
   updateSearchForView(activeView);
+  renderPlaceholders();
 }
 
 function applyLoadingPlaceholders() {
@@ -183,9 +245,13 @@ function updateSearchForView(view) {
     input.disabled = true;
     input.value = "";
     sessionFilter = "";
-    input.placeholder = view === "schedules"
-      ? t("search_hint_schedules", "此页面不支持搜索")
-      : t("search_hint_dashboard", "切换到会话页后可搜索");
+    if (view === "schedules") {
+      input.placeholder = t("search_hint_schedules", "此页面不支持搜索");
+    } else if (view === "placeholders") {
+      input.placeholder = t("search_hint_placeholders", "此页面不支持搜索");
+    } else {
+      input.placeholder = t("search_hint_dashboard", "切换到会话页后可搜索");
+    }
   }
 }
 
@@ -631,6 +697,76 @@ function _truncateSessionId(sessionId) {
     return `${parts[0]}:${parts[1]}:${raw.length > 10 ? raw.slice(0, 10) + "…" : raw}`;
   }
   return sessionId.length > 24 ? sessionId.slice(0, 24) + "…" : sessionId;
+}
+
+function renderPlaceholders() {
+  const container = document.getElementById("placeholders-container");
+  if (!container) return;
+
+  const copyHint = t("placeholders_copy_hint", "点击复制");
+  const groupsHtml = PLACEHOLDER_GROUPS.map(group => {
+    const chips = group.tokens.map(token => {
+      const desc = t("ph_desc_" + token, PLACEHOLDER_DESC_FALLBACK[token] || "");
+      const full = `{${token}}`;
+      return `
+        <button type="button" class="ph-chip" data-token="${escAttr(token)}" title="${escAttr(copyHint + " " + full)}">
+          <code class="ph-chip-token">${escHtml(full)}</code>
+          <span class="ph-chip-desc">${escHtml(desc)}</span>
+        </button>`;
+    }).join("");
+
+    return `
+      <article class="panel ph-group">
+        <header class="panel-head ph-group-head">
+          <h3 class="panel-title">${escHtml(t(group.titleKey, group.titleFallback))}</h3>
+          <span class="ph-group-hint">${escHtml(t(group.hintKey, group.hintFallback))}</span>
+        </header>
+        <div class="panel-body ph-chip-grid">${chips}</div>
+      </article>`;
+  }).join("");
+
+  container.innerHTML = groupsHtml;
+}
+
+document.getElementById("placeholders-container").addEventListener("click", e => {
+  const chip = e.target.closest("[data-token]");
+  if (chip) copyPlaceholder(chip);
+});
+
+async function copyPlaceholder(chip) {
+  const token = chip.dataset.token;
+  const full = `{${token}}`;
+  let copied = false;
+  try {
+    await navigator.clipboard.writeText(full);
+    copied = true;
+  } catch {
+    copied = fallbackCopyText(full);
+  }
+  if (copied) {
+    toast(t("toast_copied", "已复制 {token}").replace("{token}", full), "success");
+    chip.classList.add("ph-chip-copied");
+    setTimeout(() => chip.classList.remove("ph-chip-copied"), 900);
+  } else {
+    toast(t("toast_copy_failed", "复制失败，请手动选择"), "error");
+  }
+}
+
+function fallbackCopyText(text) {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try {
+    ok = document.execCommand("copy");
+  } catch {
+    ok = false;
+  }
+  document.body.removeChild(ta);
+  return ok;
 }
 
 document.getElementById("schedules-container").addEventListener("click", e => {

@@ -37,6 +37,12 @@
             </span>
             <span class="nav-label" id="nav-label-schedules"></span>
           </button>
+          <button type="button" class="nav-item" data-view="placeholders" id="nav-placeholders">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            </span>
+            <span class="nav-label" id="nav-label-placeholders"></span>
+          </button>
         </nav>
 
         <div class="sidebar-footer">
@@ -120,6 +126,14 @@
                 <div class="loading"><div class="spinner"></div><span class="loading-text"></span></div>
               </div>
             </article>
+          </div>
+
+          <div class="view" id="view-placeholders" data-view="placeholders">
+            <header class="page-header">
+              <h1 class="page-title" id="page-title-placeholders"></h1>
+              <p class="page-subtitle" id="placeholders-subtitle"></p>
+            </header>
+            <div id="placeholders-container"></div>
           </div>
 
           <div class="view" id="view-sessions" data-view="sessions">
