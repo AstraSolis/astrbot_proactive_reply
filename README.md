@@ -214,17 +214,19 @@
 
 插件提供了9个主要指令，按功能分组：
 
+> ⚠️ **权限说明**：`test`、`show`、`config`、`manage`、`restart` 等涉及调试、配置、破坏性操作及隐私信息的指令仅**管理员**可用（基于 AstrBot 的 `PermissionType.ADMIN` 校验）。普通成员仅可使用 `status`、`add_session`、`remove_session`、`help`。
+
 #### 核心功能指令（6个）
 ```
 /proactive help            # 显示帮助信息
 /proactive status          # 查看插件状态和当前会话信息
-/proactive config          # 显示完整的插件配置信息
 /proactive add_session     # 将当前会话添加到主动对话列表
 /proactive remove_session  # 将当前会话从主动对话列表移除
-/proactive restart         # 重启定时任务（强制刷新计时器）
+/proactive config          # [管理员] 显示完整的插件配置信息
+/proactive restart         # [管理员] 重启定时任务（强制刷新计时器）
 ```
 
-#### 测试功能指令（1个指令，8种功能）
+#### 测试功能指令（1个指令，8种功能）[仅管理员]
 ```
 /proactive test [type]     # 统一测试指令（不带参数显示帮助）
   • test basic             # 基础测试发送
@@ -237,14 +239,14 @@
   • test schedule          # 测试 AI 调度任务
 ```
 
-#### 显示功能指令（1个指令，2种功能）
+#### 显示功能指令（1个指令，2种功能）[仅管理员]
 ```
 /proactive show [type]     # 统一显示指令
   • show prompt            # 显示当前配置下会输入给LLM的组合话术
   • show users             # 显示记录的用户信息
 ```
 
-#### 管理功能指令（1个指令，8种操作）
+#### 管理功能指令（1个指令，8种操作）[仅管理员]
 ```
 /proactive manage [action] # 统一管理指令
   基础管理操作：

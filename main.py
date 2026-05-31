@@ -243,6 +243,7 @@ class ProactiveReplyPlugin(Star):
 
     # ==================== 测试命令 ====================
 
+    @filter.permission_type(filter.PermissionType.ADMIN)
     @proactive_group.command("test")
     async def test_proactive(
         self, event: AstrMessageEvent, test_type: str = ""
@@ -269,6 +270,7 @@ class ProactiveReplyPlugin(Star):
 
     # ==================== 显示命令 ====================
 
+    @filter.permission_type(filter.PermissionType.ADMIN)
     @proactive_group.command("show")
     async def show_info(
         self, event: AstrMessageEvent, show_type: str = ""
@@ -287,6 +289,7 @@ class ProactiveReplyPlugin(Star):
         async for result in self.command_handlers.show_info(event, show_type):
             yield result
 
+    @filter.permission_type(filter.PermissionType.ADMIN)
     @proactive_group.command("config")
     async def show_config_cmd(self, event: AstrMessageEvent):
         """显示完整的插件配置信息
@@ -298,6 +301,7 @@ class ProactiveReplyPlugin(Star):
 
     # ==================== 管理命令 ====================
 
+    @filter.permission_type(filter.PermissionType.ADMIN)
     @proactive_group.command("manage")
     async def manage_functions(
         self, event: AstrMessageEvent, action: str = ""
@@ -333,6 +337,7 @@ class ProactiveReplyPlugin(Star):
         async for result in self.command_handlers.help_command(event):
             yield result
 
+    @filter.permission_type(filter.PermissionType.ADMIN)
     @proactive_group.command("restart")
     async def restart(self, event: AstrMessageEvent):
         """重启定时主动发送任务（配置更改后使用）
