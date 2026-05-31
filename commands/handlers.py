@@ -7,6 +7,7 @@
 import asyncio
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
+from ..constants import MAX_HISTORY_MESSAGE_COUNT, MIN_HISTORY_MESSAGE_COUNT
 from ..core.runtime_data import runtime_data
 
 
@@ -329,7 +330,10 @@ class CommandHandlers:
 
             if history_enabled:
                 try:
-                    history_count = max(1, min(50, history_count))
+                    history_count = max(
+                        MIN_HISTORY_MESSAGE_COUNT,
+                        min(MAX_HISTORY_MESSAGE_COUNT, history_count),
+                    )
                     contexts = (
                         await self.plugin.conversation_manager.get_conversation_history(
                             session_id, history_count
@@ -476,7 +480,10 @@ class CommandHandlers:
             # 从配置读取历史记录条数
             history_enabled = proactive_config.get("include_history_enabled", False)
             history_count = proactive_config.get("history_message_count", 10)
-            history_count = max(1, min(50, history_count))  # 限制范围 1-50
+            history_count = max(
+                MIN_HISTORY_MESSAGE_COUNT,
+                min(MAX_HISTORY_MESSAGE_COUNT, history_count),
+            )  # 限制范围 1-50
 
             history = await self.plugin.conversation_manager.get_conversation_history(
                 session_id, history_count

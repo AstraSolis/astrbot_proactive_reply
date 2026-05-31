@@ -7,6 +7,7 @@
 import random
 from astrbot.api import logger
 from .placeholder_utils import replace_placeholders, stabilize_static_prompt_template
+from ..constants import DEFAULT_TIME_GUIDANCE_PROMPT
 from ..utils.parsers import parse_prompt_list
 
 
@@ -342,15 +343,9 @@ class PromptBuilder:
         time_guidance = ""
         if time_guidance_enabled:
             # 从配置中读取自定义提示词，如果没有则使用默认值
-            default_time_guidance = """<TIME_GUIDE: 核心时间规则（必须严格遵守）
-1. 真实性：系统提供的时间信息是你唯一可信的时间来源，禁止编造或推测。
-2. 自然回应：优先使用自然口语（如"刚才"、"大半夜"、"好久不见"）替代数字报时，仅在用户明确询问时提供精确时间。
-3. 状态映射：依据当前时间调整人设的生理状态（如深夜困倦、饭点饥饿）。
-4. 上下文感知：根据系统提供的用户上次对话时间和相对时间调整语气（如很久没见要表现出想念，刚聊过则保持连贯）。>"""
-
             custom_prompt = time_awareness_config.get("time_guidance_prompt", "")
             time_guidance_content = (
-                custom_prompt if custom_prompt else default_time_guidance
+                custom_prompt if custom_prompt else DEFAULT_TIME_GUIDANCE_PROMPT
             )
 
             time_guidance_content = stabilize_static_prompt_template(

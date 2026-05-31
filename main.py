@@ -43,6 +43,10 @@ class ProactiveReplyPlugin(Star):
         # 当 zip 安装失败（目标目录已存在）时，AstrBot 不会清理提取出的临时目录，
         # 导致下次重启时该目录被当作独立插件实例再次加载，产生重复。
         # 主动抛错可让该目录进入"加载失败"列表，用户可通过 WebUI 一键卸载清理。
+        #
+        # 注意：在 __init__ 中抛出 RuntimeError 是刻意为之的设计——AstrBot 依赖构造
+        # 阶段的异常来将该实例归类为"加载失败"。这是触发上述清理流程的唯一可靠时机，
+        # 因此此处的异常不应改为静默返回或记录日志后继续。
         _current_dir_name = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
         if _current_dir_name.startswith(self.TEMP_UPLOAD_PREFIX):
             raise RuntimeError(
