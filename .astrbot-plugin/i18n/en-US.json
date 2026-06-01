@@ -512,8 +512,6 @@
       "calendar_event_deleted": "Event deleted",
       "calendar_cleared": "Cleared {count} event(s)",
       "calendar_imported": "Imported {count} event(s)",
-      "calendar_enabled_updated": "Calendar toggle updated",
-      "calendar_settings_updated": "Calendar display settings updated",
       "calendar_ai_generated": "Generated {count} event(s)",
       "calendar_ai_applied": "Applied {count} event(s)"
     },
