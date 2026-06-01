@@ -1713,14 +1713,14 @@ input[type="text"]:focus {
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   background: var(--surface);
-  color: var(--text-primary);
+  color: var(--text);
   font-size: 0.85rem;
   box-sizing: border-box;
 }
 
 .cal-ai-edit:focus {
   outline: none;
-  border-color: var(--accent, #6366f1);
+  border-color: var(--primary);
 }
 
 .cal-ai-edit-month,
