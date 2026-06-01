@@ -5,27 +5,36 @@
 ## [Unreleased]
 
 ### 新增
-- 内置「AI 生成时间表」功能：在 WebUI「时间表」页签输入主题或世界观（如「末世废土 / 幸存者据点的物资节、旧世界缅怀日」「蒸汽朋克都市 / 发明家庆典、齿轮节」），由 AI 一次性生成整套贴合主题的节日 / 纪念日
+- 智能时间表（日历事项）与 `{calendar_today}` 占位符 (#16)
+  - WebUI 新增「时间表」页签：以月历视图为任意日期添加「节日」/「事项」，每条可设重复规则（不重复仅当年 / 重复 1–4 年 / 每年永久）
+  - 新增 `core/calendar_store.py` 与全局共享的 `calendar_data.yaml`（所有会话共用，完全本地），支持导入 / 导出（合并 / 替换两种模式）与清空
+  - 新增 `calendar.*` 配置（`enable_calendar` / `calendar_separator` / `calendar_empty_text`），`{calendar_today}` 按开关注入当天事项（关闭时返回空）
+- 内置「AI 生成时间表」功能 (#19)：在 WebUI「时间表」页签输入主题或世界观（如「末世废土 / 幸存者据点的物资节、旧世界缅怀日」「蒸汽朋克都市 / 发明家庆典、齿轮节」），由 AI 一次性生成整套贴合主题的节日 / 纪念日
   - 配置新增 `calendar.ai_generate_provider_id`（生成所用模型，`select_provider`，留空用主模型）与 `calendar.ai_generate_prompt`（生成系统提示词，带默认值），参考「AI 自主调度」实现
   - WebUI 新增「AI 生成」面板：模型下拉 + 主题输入框 + 生成按钮；生成结果先以**可编辑预览**呈现（每条可改月/日/名称/重复规则、逐条删除、手动新增一行），确认后再选择「追加到现有」或「清空并替换」（语义更明确，替换前二次确认）
   - 新增后端 `llm/calendar_generator.py`（提示词组织 + LLM 调用 + JSON 事项解析）与 3 个 API：`/calendar/ai/options`、`/calendar/ai/generate`、`/calendar/ai/apply`
   - 生成事项经 `normalize_event` 校验，应用复用 `import_events`（自动分配 id、受数量上限约束）
+- WebUI 新增「配置文件」页 (#20)：以可视化表单编辑插件全部配置分组（基础设置、用户信息、时间感知、时间表、主动对话、消息分割、AI 调度），保存后即时生效，无需手改 JSON
+- WebUI 新增「占位符」速查与一键复制面板：按「用户信息」「主动对话」分组列出全部可用占位符及说明，数据由统一占位符注册表派生
 
 ### 变更
-- 持久化文件 `persistent_data.yaml` 重排为 **session-major（按会话聚合）** 布局，更直观美观
+- 持久化文件 `persistent_data.yaml` 重排为 **session-major（按会话聚合）** 布局，更直观美观 (#18)
   - 顶层拆为 `meta`（全局：`data_version` / `last_update` / `timezone_signature` / `timing_config_signature`）与 `sessions`（按会话 UMO 聚合）
   - 每个会话固定分块：`user`（用户信息）/ `timers`（计时器）/ `activity`（活动统计）/ `ai_scheduled`（AI 约定）/ `last_proactive_message`（最近一条主动消息）
   - 长主动消息在无行尾空白时以字面量块样式（`|`）写出，中文与 emoji 不转义；含行尾空白时自动回退为引号样式以保证无损
   - 兼容读取旧的扁平格式（首次保存时自动升级为新布局）；`data_version` 升至 `3.1`
-- 持久化文件由 JSON 迁移到 YAML，更直观、便于查看与手动编辑
+- 持久化文件由 JSON 迁移到 YAML，更直观、便于查看与手动编辑 (#17)
   - `persistent_data.json` → `persistent_data.yaml`，`calendar_data.json` → `calendar_data.yaml`
   - 首次启动自动迁移历史 `.json` 文件，旧文件备份为 `.json.bak`（可回滚）
   - 时间表导入/导出改用 YAML（弃用 JSON）
   - 新增 `core/_datafile.py` 统一 YAML 读取 / 原子写入 / JSON→YAML 迁移逻辑（优先使用 libyaml C 扩展提速）
   - 加载时对关键字段做类型规整，防止 YAML 隐式转型（如纯数字昵称 / QQ 号被误转为整数）
   - `data_version` 升至 `3.0`；新增 `pyyaml` 依赖
+- WebUI 整体 UI/UX 优化 (#21)：视觉、布局与交互细节打磨
+- WebUI 用统一的确认对话框替换浏览器原生 `confirm()` (#14)，移除 / 取消等破坏性操作提示更一致美观
 
 ### 重构
+- 占位符统一为单一注册表 + 解析器 (#15)：在 `llm/placeholder_utils.py` 集中声明所有占位符的分组与说明，用户信息模板、主动提示词、前端速查面板与 Web API 均从该注册表派生，避免多处定义漂移
 - 抽取消息分割逻辑为独立的 `MessageSplitter`(`llm/message_splitter.py`)，精简 `message_generator.py`
 - 新增 `constants.py` 统一历史条数上限与默认/旧版时间感知提示词，消除多处硬编码
 - 按职责拆分超大文件 `tasks/proactive_task.py`(1197→394 行)：时区、计时器、睡眠、AI 调度、发送重试、状态查询分别独立为 Mixin(`tasks/_timezone_mixin.py` 等)，主循环与任务控制保留在 `ProactiveTaskManager`
@@ -33,20 +42,31 @@
   - 上述拆分行为保持不变(各方法体逐一经 AST 校验与原实现一致)，公共 API 与方法签名不变
 
 ### 修复
-- 对管理员配置的消息分割正则(custom/regex)增加长度与复杂度提示，并对超长文本跳过正则分割整条发送，缓解 ReDoS 理论风险
+- 对敏感 `/proactive` 子命令（管理 / 调试 / 测试 / 配置 / 重启）叠加管理员权限校验（基于 `PermissionType.ADMIN`），普通成员仅可使用 `status` / `add_session` / `remove_session` / `help`
+- 持久化目录优先使用 `StarTools.get_data_dir()` 定位，避免数据落到错误路径 (#12)
+- 对管理员配置的消息分割正则(custom/regex)增加长度与复杂度提示，并对超长文本跳过正则分割整条发送，缓解 ReDoS 理论风险 (#13)
+
+### 杂项
+- 使用 `ruff format` 统一格式化全部代码 (#10)，并移除未使用的 `datetime` 导入 (#11)
 
 ## [2.2.0] - 2026-05-31
 
 ### 新增
-- 使用i18api国际化项目
-  - 支持中英语双语切换
+- 可视化管理面板（WebUI）迁移至 AstrBot Plugin Pages 统一入口，从 AstrBot 插件页面直接打开
+- WebUI 新增「AI 约定」页与会话详情弹窗：查看一次性调度任务的倒计时 / 执行时间 / 触发提示词并可取消，会话详情展示运行状态、最后发送、失败计数等
+- WebUI 与后端 API 全面国际化（i18n），支持中英文双语切换
+- 主循环改用 Event 驱动即时唤醒：添加 / 移除会话、重启等操作即时生效，降低空转
+- AI 调度新增 `fire_time_utc`，任务比较与时区重算优先使用 UTC 时间戳，跨时区更稳健
 
 ### 重构
+- WebUI 拆分 HTML / CSS / JS，重做侧栏布局并新增会话搜索，同步更新 i18n
 - 稳定动态提示词注入位置(#7)
   - 按官方 LLM 请求钩子指南注入动态上下文：https://docs.astrbot.app/dev/star/guides/listen-message-event.html#llm-请求时
   - 固定规则进 system_prompt，动态上下文进用户提示词。固定规则包括人格、固定时间感知提示词、主动对话里的历史使用说明、调度分析规则。动态上下文包括普通聊天的用户信息模板内容、睡眠提示、主动对话final_prompt、调度分析里的当前时间、已有约定和待分析 AI 消息。
 
 ### 修复
+- 改用 `extra_user_content_parts` 注入附带用户信息，修复每轮变化内容污染 system_prompt 前缀缓存的问题（最低 AstrBot 版本升至 `>=4.24.0`）
+- 提升 WebUI 异常场景下的稳定性
 - 修正主动消息人格解析(#8)
   - 优先使用 AstrBot 解析后的人格结果，避免内置 default 空人格被误判为匹配失败或回退到其他人格。
   - 将插件主动对话人格配置文案调整为备用人格，明确其仅在 AstrBot 未返回可用人格时生效
