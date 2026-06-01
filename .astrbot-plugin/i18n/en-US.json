@@ -407,7 +407,38 @@
       "toast_calendar_imported": "Imported",
       "toast_calendar_import_bad_file": "Invalid file format, cannot import",
       "err_calendar_load": "Failed to load calendar: ",
-      "load_calendar_failed": "Load failed — please refresh"
+      "load_calendar_failed": "Load failed — please refresh",
+      "calendar_ai_title": "Generate calendar with AI",
+      "calendar_ai_subtitle": "Enter a theme or world setting (can be multi-faceted) and let AI generate a full set of matching holidays / anniversaries at once; edit or delete each result, then append to or replace the calendar",
+      "calendar_ai_provider_label": "Model",
+      "calendar_ai_provider_hint": "Leave empty to use the default (main model); you can pin a preferred model in plugin config",
+      "calendar_ai_provider_default": "Default (main model)",
+      "calendar_ai_prompt_label": "Theme prompt",
+      "calendar_ai_prompt_placeholder": "e.g. post-apocalyptic wasteland / survivor camp supply festival, old-world remembrance day; or steampunk city / inventors' gala, gear festival",
+      "calendar_ai_prompt_hint": "Describe the world or setting (more specific = better fit); AI generates the full set (Ctrl+Enter to generate)",
+      "calendar_ai_generate_btn": "Generate",
+      "calendar_ai_generating": "Generating…",
+      "calendar_ai_result_title": "Preview · editable ({count})",
+      "calendar_ai_preview_date": "{month}/{day}",
+      "calendar_ai_month_label": "Mon",
+      "calendar_ai_day_label": "Day",
+      "calendar_ai_text_placeholder": "Event name",
+      "calendar_ai_delete_row": "Delete",
+      "calendar_ai_add_row": "Add row",
+      "calendar_ai_clear_all": "Clear all",
+      "calendar_ai_apply_merge": "Append to existing",
+      "calendar_ai_apply_replace": "Clear & replace",
+      "calendar_ai_apply_hint": "Append to existing keeps all current events and adds the results below; Clear & replace deletes all existing events and keeps only the generated results",
+      "confirm_ai_apply_title": "Clear & replace calendar",
+      "confirm_ai_apply_replace": "\"Clear & replace\" will delete all existing events and keep only the {count} generated result(s). Continue?",
+      "toast_calendar_ai_prompt_required": "Please enter a theme prompt",
+      "toast_calendar_ai_failed": "AI generation failed",
+      "toast_calendar_ai_empty": "AI did not generate any valid events",
+      "toast_calendar_ai_generated": "Events generated",
+      "toast_calendar_ai_applied": "Applied",
+      "toast_calendar_ai_applied_partial": "Applied {applied}; skipped {skipped} with invalid dates",
+      "toast_calendar_ai_apply_failed": "Apply failed",
+      "toast_calendar_ai_row_invalid": "Please check the month, day and name of each event"
     }
   },
   "api": {
@@ -425,7 +456,10 @@
       "calendar_manager_not_found": "Calendar manager not found",
       "calendar_event_invalid": "Invalid event data or event limit reached",
       "calendar_event_not_found": "Event not found or invalid data",
-      "calendar_import_invalid": "Invalid import data (expected a valid YAML calendar file)"
+      "calendar_import_invalid": "Invalid import data (expected a valid YAML calendar file)",
+      "calendar_ai_prompt_empty": "Please enter a theme prompt",
+      "calendar_ai_generate_failed": "AI generation failed. Check the model config or try again later.",
+      "calendar_ai_no_events": "No events to apply"
     },
     "messages": {
       "session_added": "Session added: {session_id}",
@@ -436,7 +470,9 @@
       "calendar_cleared": "Cleared {count} event(s)",
       "calendar_imported": "Imported {count} event(s)",
       "calendar_enabled_updated": "Calendar toggle updated",
-      "calendar_settings_updated": "Calendar display settings updated"
+      "calendar_settings_updated": "Calendar display settings updated",
+      "calendar_ai_generated": "Generated {count} event(s)",
+      "calendar_ai_applied": "Applied {count} event(s)"
     },
     "activity": {
       "proactive_send_user": "Sent proactive message to {username}",

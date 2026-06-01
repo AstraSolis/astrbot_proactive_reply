@@ -185,6 +185,45 @@
                 </div>
               </article>
 
+              <article class="panel" style="margin-bottom:16px;">
+                <header class="panel-head">
+                  <h3 class="panel-title" id="cal-ai-title"></h3>
+                </header>
+                <div class="panel-body">
+                  <p class="cal-ai-subtitle" id="cal-ai-subtitle"></p>
+                  <div class="cal-ai-form">
+                    <div class="cal-form-field cal-ai-provider-field">
+                      <label id="cal-ai-provider-label" for="cal-ai-provider"></label>
+                      <select id="cal-ai-provider"></select>
+                      <span class="cal-field-hint" id="cal-ai-provider-hint"></span>
+                    </div>
+                    <div class="cal-form-field">
+                      <label id="cal-ai-prompt-label" for="cal-ai-prompt-input"></label>
+                      <textarea id="cal-ai-prompt-input" rows="2" maxlength="200"></textarea>
+                      <span class="cal-field-hint" id="cal-ai-prompt-hint"></span>
+                    </div>
+                    <div class="cal-ai-actions">
+                      <button type="button" class="btn btn-primary btn-sm" id="cal-ai-generate"></button>
+                    </div>
+                  </div>
+                  <div class="cal-ai-result" id="cal-ai-result" style="display:none;">
+                    <div class="cal-ai-result-head">
+                      <span class="cal-ai-result-title" id="cal-ai-result-title"></span>
+                      <div class="cal-ai-result-head-actions">
+                        <button type="button" class="btn btn-ghost btn-sm cal-ai-add-row" id="cal-ai-add-row"></button>
+                        <button type="button" class="btn btn-ghost btn-sm cal-ai-clear-all" id="cal-ai-clear-all"></button>
+                      </div>
+                    </div>
+                    <div class="cal-ai-preview" id="cal-ai-preview"></div>
+                    <p class="cal-field-hint cal-ai-apply-hint" id="cal-ai-apply-hint"></p>
+                    <div class="cal-ai-result-actions">
+                      <button type="button" class="btn btn-ghost btn-sm" id="cal-ai-apply-merge"></button>
+                      <button type="button" class="btn btn-primary btn-sm" id="cal-ai-apply-replace"></button>
+                    </div>
+                  </div>
+                </div>
+              </article>
+
               <article class="panel">
                 <header class="panel-head calendar-head">
                   <div class="calendar-nav">

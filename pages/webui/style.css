@@ -971,6 +971,11 @@ code {
   background: var(--danger-soft);
 }
 
+.toast-warning {
+  border-color: #fde68a;
+  background: var(--warning-soft, #fffbeb);
+}
+
 @keyframes toast-in {
   from {
     opacity: 0;
@@ -1514,6 +1519,159 @@ input[type="text"]:focus {
   margin-top: 4px;
   font-size: 12px;
   color: var(--text-muted, #888);
+}
+
+/* —— Calendar AI generation —— */
+.cal-ai-subtitle {
+  margin: 0 0 14px;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.cal-ai-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cal-ai-form label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.cal-ai-form select,
+.cal-ai-form textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.cal-ai-form select {
+  height: 38px;
+}
+
+.cal-ai-form textarea {
+  resize: vertical;
+  min-height: 38px;
+}
+
+.cal-ai-provider-field {
+  max-width: 360px;
+}
+
+.cal-ai-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.cal-ai-result {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--border-strong);
+}
+
+.cal-ai-result-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.cal-ai-result-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.cal-ai-result-head-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.cal-ai-result-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.cal-ai-apply-hint {
+  margin: 10px 0 0;
+}
+
+.cal-ai-preview {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.cal-ai-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.cal-ai-edit {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  box-sizing: border-box;
+}
+
+.cal-ai-edit:focus {
+  outline: none;
+  border-color: var(--accent, #6366f1);
+}
+
+.cal-ai-edit-month,
+.cal-ai-edit-day {
+  flex: 0 0 48px;
+  width: 48px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-ai-edit-sep {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+
+.cal-ai-edit-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.cal-ai-edit-repeat {
+  flex: 0 0 auto;
+  max-width: 150px;
+}
+
+.cal-ai-row-del {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 640px) {
+  .cal-ai-preview-row {
+    flex-wrap: wrap;
+  }
+  .cal-ai-edit-text {
+    flex: 1 1 100%;
+    order: 5;
+  }
 }
 
 @media (max-width: 640px) {

@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+### 新增
+- 内置「AI 生成时间表」功能：在 WebUI「时间表」页签输入主题或世界观（如「末世废土 / 幸存者据点的物资节、旧世界缅怀日」「蒸汽朋克都市 / 发明家庆典、齿轮节」），由 AI 一次性生成整套贴合主题的节日 / 纪念日
+  - 配置新增 `calendar.ai_generate_provider_id`（生成所用模型，`select_provider`，留空用主模型）与 `calendar.ai_generate_prompt`（生成系统提示词，带默认值），参考「AI 自主调度」实现
+  - WebUI 新增「AI 生成」面板：模型下拉 + 主题输入框 + 生成按钮；生成结果先以**可编辑预览**呈现（每条可改月/日/名称/重复规则、逐条删除、手动新增一行），确认后再选择「追加到现有」或「清空并替换」（语义更明确，替换前二次确认）
+  - 新增后端 `llm/calendar_generator.py`（提示词组织 + LLM 调用 + JSON 事项解析）与 3 个 API：`/calendar/ai/options`、`/calendar/ai/generate`、`/calendar/ai/apply`
+  - 生成事项经 `normalize_event` 校验，应用复用 `import_events`（自动分配 id、受数量上限约束）
+
 ### 变更
 - 持久化文件 `persistent_data.yaml` 重排为 **session-major（按会话聚合）** 布局，更直观美观
   - 顶层拆为 `meta`（全局：`data_version` / `last_update` / `timezone_signature` / `timing_config_signature`）与 `sessions`（按会话 UMO 聚合）

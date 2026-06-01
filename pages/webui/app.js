@@ -31,6 +31,12 @@ let calViewMonth = _now.getMonth() + 1; // 1-12
 let calSelected = null; // { year, month, day }
 let calEditingId = null;
 
+// 时间表 · AI 生成状态
+let calAiOptionsLoaded = false;
+let calAiGenerating = false;
+let calAiGeneratedEvents = [];
+let calAiCidSeq = 0;
+
 applyVisitState();
 
 function t(key, fallback) {
@@ -1039,6 +1045,16 @@ async function reloadActiveView() {
 
 const CAL_REPEAT_VALUES = [0, 1, 2, 3, 4, -1];
 
+// 每月最大天数（与后端 calendar_store._MONTH_MAX_DAYS 一致，2 月按 29 计以支持闰年纪念日）
+const CAL_MONTH_MAX_DAYS = {
+  1: 31, 2: 29, 3: 31, 4: 30, 5: 31, 6: 30,
+  7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31,
+};
+
+function maxDayOfMonth(month) {
+  return CAL_MONTH_MAX_DAYS[parseInt(month, 10)] || 31;
+}
+
 function normRepeat(r) {
   const v = parseInt(r, 10);
   if (v === -1) return -1;
@@ -1095,6 +1111,33 @@ function renderCalendarStatic() {
   set("cal-sep-hint", "calendar_separator_hint", "");
   set("cal-empty-hint", "calendar_empty_text_hint", "");
   set("cal-settings-save", "btn_save", "保存");
+  set("cal-ai-title", "calendar_ai_title", "AI 生成时间表");
+  set(
+    "cal-ai-subtitle",
+    "calendar_ai_subtitle",
+    "输入主题，让 AI 一次性生成整套节日 / 纪念日；生成结果可逐条编辑或删除",
+  );
+  set("cal-ai-provider-label", "calendar_ai_provider_label", "模型");
+  set("cal-ai-provider-hint", "calendar_ai_provider_hint", "");
+  set("cal-ai-prompt-label", "calendar_ai_prompt_label", "主题提示词");
+  set("cal-ai-prompt-hint", "calendar_ai_prompt_hint", "");
+  set("cal-ai-generate", "calendar_ai_generate_btn", "生成");
+  set("cal-ai-add-row", "calendar_ai_add_row", "新增一行");
+  set("cal-ai-clear-all", "calendar_ai_clear_all", "全部清空");
+  set("cal-ai-apply-merge", "calendar_ai_apply_merge", "追加到现有");
+  set("cal-ai-apply-replace", "calendar_ai_apply_replace", "清空并替换");
+  set(
+    "cal-ai-apply-hint",
+    "calendar_ai_apply_hint",
+    "「追加到现有」保留当前事项并加入下方结果；「清空并替换」会先删除全部现有事项",
+  );
+  const aiPromptInput = document.getElementById("cal-ai-prompt-input");
+  if (aiPromptInput) {
+    aiPromptInput.placeholder = t(
+      "calendar_ai_prompt_placeholder",
+      "例如：末世废土 / 幸存者据点的物资节、旧世界缅怀日",
+    );
+  }
 
   const prevBtn = document.getElementById("cal-prev");
   if (prevBtn) prevBtn.title = t("calendar_prev_month", "上个月");
@@ -1153,6 +1196,7 @@ function renderCalendar() {
     const emptyInput = document.getElementById("cal-empty-input");
     if (emptyInput) emptyInput.value = calendarEmptyText;
     renderCalendarGrid();
+    loadCalendarAiOptions();
   } else {
     if (body) body.style.display = "none";
     if (disabled) {
@@ -1577,6 +1621,315 @@ async function importCalendarFile(file) {
   }
 }
 
+async function loadCalendarAiOptions() {
+  if (calAiOptionsLoaded) return;
+  try {
+    const data = await bridge.apiGet("calendar/ai/options", apiLocale());
+    if (!data.success) throw new Error(data.error || t("err_unknown", "未知错误"));
+    calAiOptionsLoaded = true;
+    populateAiProviders(
+      Array.isArray(data.providers) ? data.providers : [],
+      typeof data.provider_id === "string" ? data.provider_id : "",
+    );
+  } catch (err) {
+    // 选项加载失败不阻塞时间表主功能，仅在控制台记录
+    console.error("加载 AI 生成选项失败", err);
+  }
+}
+
+function populateAiProviders(providers, selected) {
+  const sel = document.getElementById("cal-ai-provider");
+  if (!sel) return;
+  const defaultLabel = t("calendar_ai_provider_default", "默认（主模型）");
+  const opts = [`<option value="">${escHtml(defaultLabel)}</option>`];
+  providers.forEach(p => {
+    const id = p && typeof p.id === "string" ? p.id : "";
+    if (!id) return;
+    const model = p && typeof p.model === "string" && p.model ? ` (${p.model})` : "";
+    opts.push(
+      `<option value="${escAttr(id)}">${escHtml(id + model)}</option>`,
+    );
+  });
+  sel.innerHTML = opts.join("");
+  // 配置中指定的模型若在列表中则默认选中
+  if (selected && providers.some(p => p && p.id === selected)) {
+    sel.value = selected;
+  } else {
+    sel.value = "";
+  }
+}
+
+function setAiGenerating(on) {
+  calAiGenerating = on;
+  const btn = document.getElementById("cal-ai-generate");
+  if (btn) {
+    btn.disabled = on;
+    btn.textContent = on
+      ? t("calendar_ai_generating", "生成中…")
+      : t("calendar_ai_generate_btn", "生成");
+  }
+}
+
+async function generateCalendarAi() {
+  if (calAiGenerating) return;
+  const promptInput = document.getElementById("cal-ai-prompt-input");
+  const userPrompt = (promptInput?.value || "").trim();
+  if (!userPrompt) {
+    toast(t("toast_calendar_ai_prompt_required", "请输入主题提示词"), "error");
+    promptInput?.focus();
+    return;
+  }
+  const providerSel = document.getElementById("cal-ai-provider");
+  const providerId = providerSel ? providerSel.value : "";
+
+  setAiGenerating(true);
+  try {
+    const data = await bridge.apiPost("calendar/ai/generate", {
+      user_prompt: userPrompt,
+      provider_id: providerId,
+      locale: getLocale(),
+    });
+    if (!data.success) {
+      throw new Error(data.error || t("toast_calendar_ai_failed", "AI 生成失败"));
+    }
+    calAiGeneratedEvents = (Array.isArray(data.events) ? data.events : []).map(
+      makeAiRow,
+    );
+    renderAiPreview();
+    if (!calAiGeneratedEvents.length) {
+      toast(t("toast_calendar_ai_empty", "AI 未生成任何有效事项"), "error");
+    } else {
+      toast(
+        data.message || t("toast_calendar_ai_generated", "已生成事项"),
+        "success",
+      );
+    }
+  } catch (err) {
+    toast(err.message, "error");
+  } finally {
+    setAiGenerating(false);
+  }
+}
+
+// 将后端返回 / 新增的事项规整为可编辑行（附带稳定的客户端 id）
+function makeAiRow(ev) {
+  ev = ev && typeof ev === "object" ? ev : {};
+  const month = clampInt(ev.month, 1, 12, 1);
+  const row = {
+    _cid: ++calAiCidSeq,
+    month,
+    day: clampInt(ev.day, 1, maxDayOfMonth(month), 1),
+    text: typeof ev.text === "string" ? ev.text : "",
+    repeat: CAL_REPEAT_VALUES.includes(Number(ev.repeat)) ? Number(ev.repeat) : -1,
+  };
+  if (ev.year != null && !Number.isNaN(parseInt(ev.year, 10))) {
+    row.year = parseInt(ev.year, 10);
+  }
+  return row;
+}
+
+function clampInt(value, min, max, fallback) {
+  const n = parseInt(value, 10);
+  if (Number.isNaN(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+function renderAiPreview() {
+  const result = document.getElementById("cal-ai-result");
+  const preview = document.getElementById("cal-ai-preview");
+  const titleEl = document.getElementById("cal-ai-result-title");
+  if (!result || !preview) return;
+
+  if (!calAiGeneratedEvents.length) {
+    result.style.display = "none";
+    preview.innerHTML = "";
+    return;
+  }
+
+  result.style.display = "";
+  if (titleEl) {
+    titleEl.textContent = fmt(
+      t("calendar_ai_result_title", "预览 · 可编辑（{count} 条）"),
+      { count: calAiGeneratedEvents.length },
+    );
+  }
+
+  const monthLabel = t("calendar_ai_month_label", "月");
+  const dayLabel = t("calendar_ai_day_label", "日");
+  const textPlaceholder = t("calendar_ai_text_placeholder", "事项名称");
+  const deleteLabel = t("calendar_ai_delete_row", "删除");
+  const repeatOptions = CAL_REPEAT_VALUES.map(v => ({
+    value: v,
+    label: repeatLabel(v),
+  }));
+
+  // 按数组原始顺序渲染，避免编辑时跳动；应用时由后端再规整
+  preview.innerHTML = calAiGeneratedEvents
+    .map(ev => {
+      const opts = repeatOptions
+        .map(
+          o =>
+            `<option value="${o.value}"${o.value === ev.repeat ? " selected" : ""}>${escHtml(o.label)}</option>`,
+        )
+        .join("");
+      return `
+        <div class="cal-ai-preview-row" data-cid="${ev._cid}">
+          <input type="number" class="cal-ai-edit cal-ai-edit-month" data-field="month"
+            min="1" max="12" value="${ev.month}" aria-label="${escAttr(monthLabel)}" />
+          <span class="cal-ai-edit-sep">/</span>
+          <input type="number" class="cal-ai-edit cal-ai-edit-day" data-field="day"
+            min="1" max="${maxDayOfMonth(ev.month)}" value="${ev.day}" aria-label="${escAttr(dayLabel)}" />
+          <input type="text" class="cal-ai-edit cal-ai-edit-text" data-field="text"
+            maxlength="200" value="${escAttr(ev.text)}" placeholder="${escAttr(textPlaceholder)}" />
+          <select class="cal-ai-edit cal-ai-edit-repeat" data-field="repeat">${opts}</select>
+          <button type="button" class="btn btn-ghost btn-sm cal-ai-row-del" data-cid="${ev._cid}">${escHtml(deleteLabel)}</button>
+        </div>`;
+    })
+    .join("");
+
+  preview.querySelectorAll(".cal-ai-preview-row").forEach(rowEl => {
+    const cid = Number(rowEl.getAttribute("data-cid"));
+    rowEl.querySelectorAll(".cal-ai-edit").forEach(input => {
+      const handler = () => updateAiRowField(cid, input.dataset.field, input.value);
+      input.addEventListener("input", handler);
+      input.addEventListener("change", handler);
+    });
+    rowEl
+      .querySelector(".cal-ai-row-del")
+      ?.addEventListener("click", () => deleteAiRow(cid));
+  });
+}
+
+function updateAiRowField(cid, field, value) {
+  const ev = calAiGeneratedEvents.find(e => e._cid === cid);
+  if (!ev || !field) return;
+  if (field === "text") {
+    ev.text = value;
+  } else if (field === "month") {
+    ev.month = clampInt(value, 1, 12, ev.month);
+    // 改月份后收敛日期上限（如 1/31 改到 2 月时收敛为 29）
+    const max = maxDayOfMonth(ev.month);
+    const rowEl = document.querySelector(
+      `.cal-ai-preview-row[data-cid="${cid}"]`,
+    );
+    const dayInput = rowEl?.querySelector(".cal-ai-edit-day");
+    if (dayInput) dayInput.max = String(max);
+    if (ev.day > max) {
+      ev.day = max;
+      if (dayInput) dayInput.value = String(max);
+    }
+  } else if (field === "day") {
+    ev.day = clampInt(value, 1, maxDayOfMonth(ev.month), ev.day);
+  } else if (field === "repeat") {
+    const n = Number(value);
+    if (CAL_REPEAT_VALUES.includes(n)) ev.repeat = n;
+  }
+}
+
+function deleteAiRow(cid) {
+  calAiGeneratedEvents = calAiGeneratedEvents.filter(e => e._cid !== cid);
+  renderAiPreview();
+}
+
+function clearAiPreview() {
+  if (!calAiGeneratedEvents.length) return;
+  calAiGeneratedEvents = [];
+  renderAiPreview();
+}
+
+function addAiRow() {
+  const row = makeAiRow({ month: calViewMonth, day: 1, text: "", repeat: -1 });
+  calAiGeneratedEvents.push(row);
+  renderAiPreview();
+  const preview = document.getElementById("cal-ai-preview");
+  const last = preview?.querySelector(
+    `.cal-ai-preview-row[data-cid="${row._cid}"] .cal-ai-edit-text`,
+  );
+  last?.focus();
+}
+
+async function applyCalendarAi(mode) {
+  if (!calAiGeneratedEvents.length) {
+    toast(t("toast_calendar_ai_empty", "AI 未生成任何有效事项"), "error");
+    return;
+  }
+  // 校验每一行：月份 1-12、日期符合当月实际天数、名称非空
+  const invalid = calAiGeneratedEvents.some(
+    ev =>
+      !(ev.month >= 1 && ev.month <= 12) ||
+      !(ev.day >= 1 && ev.day <= maxDayOfMonth(ev.month)) ||
+      !String(ev.text || "").trim(),
+  );
+  if (invalid) {
+    toast(
+      t("toast_calendar_ai_row_invalid", "请检查事项的月份、日期与名称是否填写正确"),
+      "error",
+    );
+    return;
+  }
+  if (mode === "replace") {
+    const ok = await showConfirm({
+      title: t("confirm_ai_apply_title", "清空并替换时间表"),
+      message: fmt(
+        t(
+          "confirm_ai_apply_replace",
+          "「清空并替换」会删除现有全部事项，仅保留下方 {count} 条生成结果，是否继续？",
+        ),
+        { count: calAiGeneratedEvents.length },
+      ),
+      confirmText: t("calendar_ai_apply_replace", "清空并替换"),
+    });
+    if (!ok) return;
+  }
+
+  try {
+    const payload = calAiGeneratedEvents.map(ev => {
+      const out = {
+        month: ev.month,
+        day: ev.day,
+        text: String(ev.text || "").trim(),
+        repeat: ev.repeat,
+      };
+      if (ev.year != null) out.year = ev.year;
+      return out;
+    });
+    const data = await bridge.apiPost("calendar/ai/apply", {
+      events: payload,
+      mode,
+      locale: getLocale(),
+    });
+    if (!data.success) {
+      throw new Error(data.error || t("toast_calendar_ai_apply_failed", "应用失败"));
+    }
+    calendarEvents = Array.isArray(data.events) ? data.events : calendarEvents;
+    const submitted = payload.length;
+    const applied = Number.isInteger(data.imported) ? data.imported : submitted;
+    const skipped = Math.max(0, submitted - applied);
+    calAiGeneratedEvents = [];
+    renderAiPreview();
+    renderCalendarGrid();
+    const promptInput = document.getElementById("cal-ai-prompt-input");
+    if (promptInput) promptInput.value = "";
+    if (skipped > 0) {
+      // 双保险：理论上前端已按当月天数校验，仍兜底提示后端跳过的非法事项
+      toast(
+        fmt(
+          t(
+            "toast_calendar_ai_applied_partial",
+            "已应用 {applied} 条，{skipped} 条因日期非法被跳过",
+          ),
+          { applied, skipped },
+        ),
+        "warning",
+      );
+    } else {
+      toast(data.message || t("toast_calendar_ai_applied", "已应用"), "success");
+    }
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
 function bindCalendarEvents() {
   document.getElementById("cal-prev")?.addEventListener("click", () =>
     shiftCalendarMonth(-1),
@@ -1623,6 +1976,27 @@ function bindCalendarEvents() {
       saveCalDayEvent();
     }
   });
+  document
+    .getElementById("cal-ai-generate")
+    ?.addEventListener("click", generateCalendarAi);
+  document.getElementById("cal-ai-add-row")?.addEventListener("click", addAiRow);
+  document
+    .getElementById("cal-ai-clear-all")
+    ?.addEventListener("click", clearAiPreview);
+  document
+    .getElementById("cal-ai-apply-merge")
+    ?.addEventListener("click", () => applyCalendarAi("merge"));
+  document
+    .getElementById("cal-ai-apply-replace")
+    ?.addEventListener("click", () => applyCalendarAi("replace"));
+  document
+    .getElementById("cal-ai-prompt-input")
+    ?.addEventListener("keydown", e => {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        generateCalendarAi();
+      }
+    });
 }
 
 bindCalendarEvents();
