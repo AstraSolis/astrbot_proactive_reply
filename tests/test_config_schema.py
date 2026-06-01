@@ -121,6 +121,34 @@ class TestBuildConfigSchema(unittest.TestCase):
             ],
         )
 
+    def test_select_labels_translated(self):
+        def translate_list(key, fallback):
+            if key == "config.proactive_reply.timing_mode.labels":
+                return ["Fixed interval", "Random interval"]
+            return fallback
+
+        groups = build_config_schema(SCHEMA, {}, translate_list=translate_list)
+        pr = next(g for g in groups if g["key"] == "proactive_reply")
+        timing = next(f for f in pr["fields"] if f["key"] == "timing_mode")
+        self.assertEqual(
+            timing["choices"],
+            [
+                {"value": "fixed_interval", "label": "Fixed interval"},
+                {"value": "random_interval", "label": "Random interval"},
+            ],
+        )
+
+    def test_select_labels_fallback_to_schema(self):
+        # translate_list 返回 fallback（未命中）时应回退到 schema 中文 labels
+        groups = build_config_schema(
+            SCHEMA, {}, translate_list=lambda key, fallback: fallback
+        )
+        pr = next(g for g in groups if g["key"] == "proactive_reply")
+        timing = next(f for f in pr["fields"] if f["key"] == "timing_mode")
+        self.assertEqual(
+            [c["label"] for c in timing["choices"]], ["固定间隔", "随机间隔"]
+        )
+
     def test_translate_callback_used(self):
         def translate(key, fallback):
             return f"T[{key}]"

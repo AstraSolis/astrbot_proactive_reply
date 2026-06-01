@@ -66,6 +66,21 @@ def t(locale: str | None, key: str, fallback: str = "", **kwargs: Any) -> str:
     return text
 
 
+def t_list(locale: str | None, key: str, fallback: list | None = None) -> list:
+    """按点分 key 取「字符串数组」文案（如 select 的 labels）。
+
+    找不到或类型不符时回退到 fallback（默认空列表）。
+    """
+    fb = list(fallback) if isinstance(fallback, list) else []
+    loc = normalize_locale(locale)
+    for candidate in (loc, _FALLBACK_LOCALE):
+        bundle = _load_bundle(candidate)
+        value = _lookup(bundle, key)
+        if isinstance(value, list) and value:
+            return [str(item) for item in value]
+    return fb
+
+
 def request_locale() -> str:
     """从 Quart 请求中解析 WebUI 语言（query ?locale= 或 JSON body）。"""
     try:

@@ -23,7 +23,7 @@ from .utils.config_schema import (
     coerce_section_values,
     load_conf_schema,
 )
-from .utils.plugin_i18n import normalize_locale, request_locale, t
+from .utils.plugin_i18n import normalize_locale, request_locale, t, t_list
 from .utils.time_utils import get_now
 
 PLUGIN_NAME = "astrbot_proactive_reply"
@@ -815,6 +815,7 @@ def register_web_apis(context, managers: dict) -> None:
                 config,
                 providers=_list_providers(),
                 translate=lambda key, fallback="": t(locale, key, fallback),
+                translate_list=lambda key, fallback=None: t_list(locale, key, fallback),
             )
             return jsonify({"success": True, "groups": groups})
         except Exception as e:

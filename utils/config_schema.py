@@ -100,6 +100,7 @@ def build_field(
     section_config: dict,
     translate: Optional[Callable[[str, str], str]] = None,
     providers: Optional[list] = None,
+    translate_list: Optional[Callable[[str, list], list]] = None,
 ) -> Optional[dict]:
     """构建单个字段的描述对象；返回 None 表示该字段应被跳过。"""
     if not isinstance(field_def, dict):
@@ -146,6 +147,15 @@ def build_field(
     if control == "select":
         options = field_def.get("options") or []
         labels = field_def.get("labels") or []
+        if translate_list is not None:
+            try:
+                translated = translate_list(
+                    f"config.{section_key}.{field_key}.labels", labels
+                )
+            except Exception:
+                translated = labels
+            if isinstance(translated, list) and translated:
+                labels = translated
         choices = []
         for idx, opt in enumerate(options):
             label = labels[idx] if idx < len(labels) else str(opt)
@@ -173,6 +183,7 @@ def build_config_schema(
     config: Any,
     providers: Optional[list] = None,
     translate: Optional[Callable[[str, str], str]] = None,
+    translate_list: Optional[Callable[[str, list], list]] = None,
 ) -> list:
     """构建 WebUI 配置页所需的分组结构。
 
@@ -182,6 +193,8 @@ def build_config_schema(
         providers: 模型提供商列表（用于 select_provider 字段），形如
             ``[{"id": ..., "model": ...}]``。
         translate: 本地化回调 ``(key, fallback) -> str``，由调用方绑定 locale。
+        translate_list: 数组文案回调 ``(key, fallback_list) -> list``，用于
+            select 字段的 ``labels`` 本地化（``t()`` 仅能取字符串）。
 
     Returns:
         分组列表，每个分组形如
@@ -218,6 +231,7 @@ def build_config_schema(
                 section_config,
                 translate,
                 providers,
+                translate_list,
             )
             if field is None:
                 continue
