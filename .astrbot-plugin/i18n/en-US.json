@@ -369,6 +369,14 @@
       "calendar_repeat_4": "Repeat 4 years",
       "calendar_repeat_forever": "Every year (forever)",
       "calendar_year_label": "Base year",
+      "calendar_year_forever_hint": "\"Every year (forever)\" needs no base year",
+      "calendar_display_settings": "Display settings",
+      "calendar_separator_label": "Event separator",
+      "calendar_empty_text_label": "Empty-day text",
+      "calendar_separator_hint": "Joins multiple events on the same day",
+      "calendar_empty_text_hint": "Text returned by {calendar_today} when no events; empty = empty string",
+      "toast_calendar_settings_saved": "Display settings saved",
+      "toast_calendar_settings_failed": "Failed to save display settings",
       "btn_save": "Save",
       "btn_delete": "Delete",
       "btn_edit": "Edit",
@@ -422,7 +430,8 @@
       "calendar_event_deleted": "Event deleted",
       "calendar_cleared": "Cleared {count} event(s)",
       "calendar_imported": "Imported {count} event(s)",
-      "calendar_enabled_updated": "Calendar toggle updated"
+      "calendar_enabled_updated": "Calendar toggle updated",
+      "calendar_settings_updated": "Calendar display settings updated"
     },
     "activity": {
       "proactive_send_user": "Sent proactive message to {username}",

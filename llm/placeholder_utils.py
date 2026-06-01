@@ -167,19 +167,17 @@ def _resolve_current_time(event, config, astrbot_config, tz, time_format) -> str
 def _resolve_calendar_today(config, now) -> str:
     """计算 ``{calendar_today}`` 的取值
 
-    仅在 ``time_awareness.enable_calendar`` 为真时返回当天事项，否则返回空字符串
+    仅在 ``calendar.enable_calendar`` 为真时返回当天事项，否则返回空字符串
     （即使配置了时间表也不注入）。事项文本按配置的分隔符拼接；无事项时返回
     可配置的默认文本（默认空字符串）。
     """
-    time_awareness = (
-        config.get("time_awareness", {}) if isinstance(config, dict) else {}
-    )
-    if not time_awareness.get("enable_calendar", False):
+    calendar_conf = config.get("calendar", {}) if isinstance(config, dict) else {}
+    if not calendar_conf.get("enable_calendar", False):
         return ""
-    separator = time_awareness.get("calendar_separator", "、")
+    separator = calendar_conf.get("calendar_separator", "、")
     if not isinstance(separator, str):
         separator = "、"
-    empty_text = time_awareness.get("calendar_empty_text", "")
+    empty_text = calendar_conf.get("calendar_empty_text", "")
     if not isinstance(empty_text, str):
         empty_text = ""
     try:

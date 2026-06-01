@@ -164,6 +164,27 @@
             <div id="calendar-disabled-state" style="display:none;"></div>
 
             <section class="content-section" id="calendar-body" style="display:none;">
+              <article class="panel" style="margin-bottom:16px;">
+                <header class="panel-head">
+                  <h3 class="panel-title" id="calendar-display-title"></h3>
+                </header>
+                <div class="panel-body">
+                  <div class="cal-settings-row">
+                    <div class="cal-form-field">
+                      <label id="cal-sep-label" for="cal-sep-input"></label>
+                      <input type="text" id="cal-sep-input" maxlength="20" />
+                      <span class="cal-field-hint" id="cal-sep-hint"></span>
+                    </div>
+                    <div class="cal-form-field">
+                      <label id="cal-empty-label" for="cal-empty-input"></label>
+                      <input type="text" id="cal-empty-input" maxlength="200" />
+                      <span class="cal-field-hint" id="cal-empty-hint"></span>
+                    </div>
+                    <button type="button" class="btn btn-ghost btn-sm" id="cal-settings-save"></button>
+                  </div>
+                </div>
+              </article>
+
               <article class="panel">
                 <header class="panel-head calendar-head">
                   <div class="calendar-nav">
@@ -284,6 +305,7 @@
               <div class="cal-form-field">
                 <label id="cal-form-year-label" for="cal-form-year"></label>
                 <input type="number" id="cal-form-year" min="1970" max="9999" step="1" />
+                <span class="cal-field-hint" id="cal-form-year-hint" style="display:none;"></span>
               </div>
               <div class="cal-form-field">
                 <label id="cal-form-repeat-label" for="cal-form-repeat"></label>

@@ -161,7 +161,7 @@ class TestCalendarPlaceholder(unittest.TestCase):
         calendar_store.set_events(
             [_event(today.year, today.month, today.day, "生日", repeat=REPEAT_FOREVER)]
         )
-        mapping = ph.build_placeholder_map(SESSION, {"time_awareness": {}})
+        mapping = ph.build_placeholder_map(SESSION, {"calendar": {}})
         self.assertEqual(mapping["calendar_today"], "")
 
     def test_enabled_returns_today_events(self):
@@ -176,15 +176,13 @@ class TestCalendarPlaceholder(unittest.TestCase):
                 ),
             ]
         )
-        config = {
-            "time_awareness": {"enable_calendar": True, "calendar_separator": "、"}
-        }
+        config = {"calendar": {"enable_calendar": True, "calendar_separator": "、"}}
         mapping = ph.build_placeholder_map(SESSION, config)
         self.assertEqual(mapping["calendar_today"], "生日、纪念日")
 
     def test_empty_text_used_when_no_events(self):
         config = {
-            "time_awareness": {
+            "calendar": {
                 "enable_calendar": True,
                 "calendar_empty_text": "今日无特殊事项",
             }
@@ -213,7 +211,7 @@ class TestCalendarPlaceholder(unittest.TestCase):
             "chat_type": "私聊",
             "last_active_time": "2024-01-01 10:00:00",
         }
-        config = {"time_awareness": {"enable_calendar": True}}
+        config = {"calendar": {"enable_calendar": True}}
         mapping = ph.build_placeholder_map(SESSION, config)
         out = ph.render_template("你好 {username}，今天 {calendar_today}", mapping)
         # 模板里的 {username} 被替换为小明，但事项文本里的 {username} 保留为字面量

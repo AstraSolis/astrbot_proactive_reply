@@ -370,13 +370,13 @@ def register_web_apis(context, managers: dict) -> None:
                 if config_manager and hasattr(config_manager, "config")
                 else {}
             )
-            time_awareness = config.get("time_awareness", {})
+            calendar_conf = config.get("calendar", {})
             return jsonify(
                 {
                     "success": True,
-                    "enabled": bool(time_awareness.get("enable_calendar", False)),
-                    "separator": time_awareness.get("calendar_separator", "、"),
-                    "empty_text": time_awareness.get("calendar_empty_text", ""),
+                    "enabled": bool(calendar_conf.get("enable_calendar", False)),
+                    "separator": calendar_conf.get("calendar_separator", "、"),
+                    "empty_text": calendar_conf.get("calendar_empty_text", ""),
                     "events": calendar_manager.get_events(),
                 }
             )
@@ -499,7 +499,7 @@ def register_web_apis(context, managers: dict) -> None:
             return _internal_error_response(request_locale())
 
     async def set_calendar_enabled():
-        """页内开关：写回 time_awareness.enable_calendar"""
+        """页内开关：写回 calendar.enable_calendar"""
         try:
             locale = request_locale()
             config_manager = managers.get("config_manager")
@@ -518,7 +518,7 @@ def register_web_apis(context, managers: dict) -> None:
             data = await request.get_json() or {}
             enabled = bool(data.get("enabled", False))
             config = config_manager.config if hasattr(config_manager, "config") else {}
-            config.setdefault("time_awareness", {})["enable_calendar"] = enabled
+            config.setdefault("calendar", {})["enable_calendar"] = enabled
             if not config_manager.save_config_safely():
                 return jsonify(
                     {
@@ -541,6 +541,55 @@ def register_web_apis(context, managers: dict) -> None:
             )
         except Exception as e:
             logger.error(f"心念 Web API | 更新时间表开关失败: {e}")
+            return _internal_error_response(request_locale())
+
+    async def set_calendar_settings():
+        """页内显示设置：写回 calendar.calendar_separator / calendar_empty_text"""
+        try:
+            locale = request_locale()
+            config_manager = managers.get("config_manager")
+            if not config_manager:
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": t(
+                            locale,
+                            "api.errors.config_manager_not_found",
+                            "配置管理器未找到",
+                        ),
+                    }
+                ), 500
+
+            data = await request.get_json() or {}
+            config = config_manager.config if hasattr(config_manager, "config") else {}
+            calendar_conf = config.setdefault("calendar", {})
+            if "separator" in data:
+                calendar_conf["calendar_separator"] = str(data.get("separator") or "")
+            if "empty_text" in data:
+                calendar_conf["calendar_empty_text"] = str(data.get("empty_text") or "")
+            if not config_manager.save_config_safely():
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": t(
+                            locale, "api.errors.config_save_failed", "配置保存失败"
+                        ),
+                    }
+                ), 500
+            return jsonify(
+                {
+                    "success": True,
+                    "separator": calendar_conf.get("calendar_separator", "、"),
+                    "empty_text": calendar_conf.get("calendar_empty_text", ""),
+                    "message": t(
+                        locale,
+                        "api.messages.calendar_settings_updated",
+                        "时间表显示设置已更新",
+                    ),
+                }
+            )
+        except Exception as e:
+            logger.error(f"心念 Web API | 更新时间表显示设置失败: {e}")
             return _internal_error_response(request_locale())
 
     async def import_calendar():
@@ -663,6 +712,12 @@ def register_web_apis(context, managers: dict) -> None:
         set_calendar_enabled,
         ["POST"],
         "更新时间表开关",
+    )
+    context.register_web_api(
+        f"/{PLUGIN_NAME}/calendar/settings",
+        set_calendar_settings,
+        ["POST"],
+        "更新时间表显示设置",
     )
     context.register_web_api(
         f"/{PLUGIN_NAME}/calendar/import",

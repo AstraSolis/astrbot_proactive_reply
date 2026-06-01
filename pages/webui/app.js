@@ -23,6 +23,8 @@ let calendarLoaded = false;
 let calendarPromise = null;
 let calendarEvents = [];
 let calendarEnabled = false;
+let calendarSeparator = "、";
+let calendarEmptyText = "";
 const _now = new Date();
 let calViewYear = _now.getFullYear();
 let calViewMonth = _now.getMonth() + 1; // 1-12
@@ -1086,6 +1088,13 @@ function renderCalendarStatic() {
   set("cal-form-text-label", "calendar_event_text_label", "事项内容");
   set("cal-form-year-label", "calendar_year_label", "基准年");
   set("cal-form-repeat-label", "calendar_repeat_label", "重复");
+  set("cal-form-year-hint", "calendar_year_forever_hint", "");
+  set("calendar-display-title", "calendar_display_settings", "显示设置");
+  set("cal-sep-label", "calendar_separator_label", "事项分隔符");
+  set("cal-empty-label", "calendar_empty_text_label", "无事项默认文本");
+  set("cal-sep-hint", "calendar_separator_hint", "");
+  set("cal-empty-hint", "calendar_empty_text_hint", "");
+  set("cal-settings-save", "btn_save", "保存");
 
   const prevBtn = document.getElementById("cal-prev");
   if (prevBtn) prevBtn.title = t("calendar_prev_month", "上个月");
@@ -1115,6 +1124,8 @@ async function loadCalendar() {
       if (!data.success) throw new Error(data.error || t("err_unknown", "未知错误"));
       calendarEvents = Array.isArray(data.events) ? data.events : [];
       calendarEnabled = !!data.enabled;
+      calendarSeparator = typeof data.separator === "string" ? data.separator : "、";
+      calendarEmptyText = typeof data.empty_text === "string" ? data.empty_text : "";
       calendarLoaded = true;
       renderCalendar();
       hideGlobalError();
@@ -1137,6 +1148,10 @@ function renderCalendar() {
   if (calendarEnabled) {
     if (body) body.style.display = "";
     if (disabled) disabled.style.display = "none";
+    const sepInput = document.getElementById("cal-sep-input");
+    if (sepInput) sepInput.value = calendarSeparator;
+    const emptyInput = document.getElementById("cal-empty-input");
+    if (emptyInput) emptyInput.value = calendarEmptyText;
     renderCalendarGrid();
   } else {
     if (body) body.style.display = "none";
@@ -1338,6 +1353,17 @@ function renderCalDayEvents() {
     .join("");
 }
 
+// 「每年重复（永久）」时基准年无意义：禁用输入并给出提示
+function applyRepeatYearState() {
+  const repeatSel = document.getElementById("cal-form-repeat");
+  const yearInput = document.getElementById("cal-form-year");
+  const yearHint = document.getElementById("cal-form-year-hint");
+  if (!repeatSel || !yearInput) return;
+  const forever = parseInt(repeatSel.value, 10) === -1;
+  yearInput.disabled = forever;
+  if (yearHint) yearHint.style.display = forever ? "" : "none";
+}
+
 function resetCalForm() {
   calEditingId = null;
   const textInput = document.getElementById("cal-form-text");
@@ -1346,6 +1372,7 @@ function resetCalForm() {
   if (textInput) textInput.value = "";
   if (yearInput) yearInput.value = calSelected ? calSelected.year : calViewYear;
   if (repeatSel) repeatSel.value = "0";
+  applyRepeatYearState();
   const saveBtn = document.getElementById("cal-day-save");
   if (saveBtn) saveBtn.textContent = t("btn_save", "保存");
 }
@@ -1357,8 +1384,31 @@ window.editCalEvent = function (id) {
   document.getElementById("cal-form-text").value = ev.text;
   document.getElementById("cal-form-year").value = ev.year;
   document.getElementById("cal-form-repeat").value = String(normRepeat(ev.repeat));
+  applyRepeatYearState();
   document.getElementById("cal-form-text")?.focus();
 };
+
+async function saveCalendarSettings() {
+  const sepInput = document.getElementById("cal-sep-input");
+  const emptyInput = document.getElementById("cal-empty-input");
+  try {
+    const data = await bridge.apiPost("calendar/settings", {
+      separator: sepInput ? sepInput.value : calendarSeparator,
+      empty_text: emptyInput ? emptyInput.value : calendarEmptyText,
+      locale: getLocale(),
+    });
+    if (!data.success) {
+      throw new Error(
+        data.error || t("toast_calendar_settings_failed", "显示设置保存失败"),
+      );
+    }
+    calendarSeparator = typeof data.separator === "string" ? data.separator : "";
+    calendarEmptyText = typeof data.empty_text === "string" ? data.empty_text : "";
+    toast(t("toast_calendar_settings_saved", "显示设置已保存"), "success");
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
 
 window.deleteCalEvent = async function (id) {
   try {
@@ -1567,6 +1617,12 @@ function bindCalendarEvents() {
   });
   document.getElementById("cal-day-save")?.addEventListener("click", saveCalDayEvent);
   document.getElementById("cal-day-close")?.addEventListener("click", hideCalendarDay);
+  document
+    .getElementById("cal-form-repeat")
+    ?.addEventListener("change", applyRepeatYearState);
+  document
+    .getElementById("cal-settings-save")
+    ?.addEventListener("click", saveCalendarSettings);
   document.getElementById("calendar-day-dialog")?.addEventListener("click", e => {
     if (e.target.id === "calendar-day-dialog") hideCalendarDay();
   });
