@@ -1591,38 +1591,77 @@ input[type="text"]:focus {
 .cal-ai-result-actions {
   display: flex;
   gap: 8px;
+  margin-top: 12px;
+}
+
+.cal-ai-apply-hint {
+  margin: 10px 0 0;
 }
 
 .cal-ai-preview {
-  max-height: 320px;
+  max-height: 360px;
   overflow-y: auto;
 }
 
 .cal-ai-preview-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 0;
+  gap: 8px;
+  padding: 6px 0;
   border-bottom: 1px solid var(--border);
 }
 
-.cal-ai-preview-date {
-  flex: 0 0 56px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  color: var(--text-secondary);
+.cal-ai-edit {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  box-sizing: border-box;
 }
 
-.cal-ai-preview-text {
+.cal-ai-edit:focus {
+  outline: none;
+  border-color: var(--accent, #6366f1);
+}
+
+.cal-ai-edit-month,
+.cal-ai-edit-day {
+  flex: 0 0 48px;
+  width: 48px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-ai-edit-sep {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+
+.cal-ai-edit-text {
   flex: 1;
   min-width: 0;
-  word-break: break-word;
 }
 
-.cal-ai-preview-meta {
+.cal-ai-edit-repeat {
   flex: 0 0 auto;
-  font-size: 0.75rem;
-  color: var(--text-muted);
+  max-width: 150px;
+}
+
+.cal-ai-row-del {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 640px) {
+  .cal-ai-preview-row {
+    flex-wrap: wrap;
+  }
+  .cal-ai-edit-text {
+    flex: 1 1 100%;
+    order: 5;
+  }
 }
 
 @media (max-width: 640px) {

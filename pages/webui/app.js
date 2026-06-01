@@ -35,6 +35,7 @@ let calEditingId = null;
 let calAiOptionsLoaded = false;
 let calAiGenerating = false;
 let calAiGeneratedEvents = [];
+let calAiCidSeq = 0;
 
 applyVisitState();
 
@@ -1101,19 +1102,29 @@ function renderCalendarStatic() {
   set("cal-empty-hint", "calendar_empty_text_hint", "");
   set("cal-settings-save", "btn_save", "保存");
   set("cal-ai-title", "calendar_ai_title", "AI 生成时间表");
-  set("cal-ai-subtitle", "calendar_ai_subtitle", "输入主题，让 AI 一次性生成整套节日 / 纪念日");
+  set(
+    "cal-ai-subtitle",
+    "calendar_ai_subtitle",
+    "输入主题，让 AI 一次性生成整套节日 / 纪念日；生成结果可逐条编辑或删除",
+  );
   set("cal-ai-provider-label", "calendar_ai_provider_label", "模型");
   set("cal-ai-provider-hint", "calendar_ai_provider_hint", "");
   set("cal-ai-prompt-label", "calendar_ai_prompt_label", "主题提示词");
   set("cal-ai-prompt-hint", "calendar_ai_prompt_hint", "");
   set("cal-ai-generate", "calendar_ai_generate_btn", "生成");
-  set("cal-ai-apply-merge", "calendar_ai_apply_merge", "合并应用");
-  set("cal-ai-apply-replace", "calendar_ai_apply_replace", "替换应用");
+  set("cal-ai-add-row", "calendar_ai_add_row", "新增一行");
+  set("cal-ai-apply-merge", "calendar_ai_apply_merge", "追加到现有");
+  set("cal-ai-apply-replace", "calendar_ai_apply_replace", "清空并替换");
+  set(
+    "cal-ai-apply-hint",
+    "calendar_ai_apply_hint",
+    "「追加到现有」保留当前事项并加入下方结果；「清空并替换」会先删除全部现有事项",
+  );
   const aiPromptInput = document.getElementById("cal-ai-prompt-input");
   if (aiPromptInput) {
     aiPromptInput.placeholder = t(
       "calendar_ai_prompt_placeholder",
-      "如：异世界/魔法/节日，或 现代都市/节日",
+      "例如：末世废土 / 幸存者据点的物资节、旧世界缅怀日",
     );
   }
 
@@ -1670,7 +1681,9 @@ async function generateCalendarAi() {
     if (!data.success) {
       throw new Error(data.error || t("toast_calendar_ai_failed", "AI 生成失败"));
     }
-    calAiGeneratedEvents = Array.isArray(data.events) ? data.events : [];
+    calAiGeneratedEvents = (Array.isArray(data.events) ? data.events : []).map(
+      makeAiRow,
+    );
     renderAiPreview();
     if (!calAiGeneratedEvents.length) {
       toast(t("toast_calendar_ai_empty", "AI 未生成任何有效事项"), "error");
@@ -1685,6 +1698,28 @@ async function generateCalendarAi() {
   } finally {
     setAiGenerating(false);
   }
+}
+
+// 将后端返回 / 新增的事项规整为可编辑行（附带稳定的客户端 id）
+function makeAiRow(ev) {
+  ev = ev && typeof ev === "object" ? ev : {};
+  const row = {
+    _cid: ++calAiCidSeq,
+    month: clampInt(ev.month, 1, 12, 1),
+    day: clampInt(ev.day, 1, 31, 1),
+    text: typeof ev.text === "string" ? ev.text : "",
+    repeat: CAL_REPEAT_VALUES.includes(Number(ev.repeat)) ? Number(ev.repeat) : -1,
+  };
+  if (ev.year != null && !Number.isNaN(parseInt(ev.year, 10))) {
+    row.year = parseInt(ev.year, 10);
+  }
+  return row;
+}
+
+function clampInt(value, min, max, fallback) {
+  const n = parseInt(value, 10);
+  if (Number.isNaN(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
 }
 
 function renderAiPreview() {
@@ -1702,28 +1737,86 @@ function renderAiPreview() {
   result.style.display = "";
   if (titleEl) {
     titleEl.textContent = fmt(
-      t("calendar_ai_result_title", "预览（{count} 条）"),
+      t("calendar_ai_result_title", "预览 · 可编辑（{count} 条）"),
       { count: calAiGeneratedEvents.length },
     );
   }
 
-  const sorted = [...calAiGeneratedEvents].sort(
-    (a, b) => a.month - b.month || a.day - b.day,
-  );
-  preview.innerHTML = sorted
+  const monthLabel = t("calendar_ai_month_label", "月");
+  const dayLabel = t("calendar_ai_day_label", "日");
+  const textPlaceholder = t("calendar_ai_text_placeholder", "事项名称");
+  const deleteLabel = t("calendar_ai_delete_row", "删除");
+  const repeatOptions = CAL_REPEAT_VALUES.map(v => ({
+    value: v,
+    label: repeatLabel(v),
+  }));
+
+  // 按数组原始顺序渲染，避免编辑时跳动；应用时由后端再规整
+  preview.innerHTML = calAiGeneratedEvents
     .map(ev => {
-      const date = fmt(t("calendar_ai_preview_date", "{month}/{day}"), {
-        month: ev.month,
-        day: ev.day,
-      });
+      const opts = repeatOptions
+        .map(
+          o =>
+            `<option value="${o.value}"${o.value === ev.repeat ? " selected" : ""}>${escHtml(o.label)}</option>`,
+        )
+        .join("");
       return `
-        <div class="cal-ai-preview-row">
-          <span class="cal-ai-preview-date">${escHtml(date)}</span>
-          <span class="cal-ai-preview-text">${escHtml(ev.text)}</span>
-          <span class="cal-ai-preview-meta">${escHtml(repeatLabel(ev.repeat))}</span>
+        <div class="cal-ai-preview-row" data-cid="${ev._cid}">
+          <input type="number" class="cal-ai-edit cal-ai-edit-month" data-field="month"
+            min="1" max="12" value="${ev.month}" aria-label="${escAttr(monthLabel)}" />
+          <span class="cal-ai-edit-sep">/</span>
+          <input type="number" class="cal-ai-edit cal-ai-edit-day" data-field="day"
+            min="1" max="31" value="${ev.day}" aria-label="${escAttr(dayLabel)}" />
+          <input type="text" class="cal-ai-edit cal-ai-edit-text" data-field="text"
+            maxlength="200" value="${escAttr(ev.text)}" placeholder="${escAttr(textPlaceholder)}" />
+          <select class="cal-ai-edit cal-ai-edit-repeat" data-field="repeat">${opts}</select>
+          <button type="button" class="btn btn-ghost btn-sm cal-ai-row-del" data-cid="${ev._cid}">${escHtml(deleteLabel)}</button>
         </div>`;
     })
     .join("");
+
+  preview.querySelectorAll(".cal-ai-preview-row").forEach(rowEl => {
+    const cid = Number(rowEl.getAttribute("data-cid"));
+    rowEl.querySelectorAll(".cal-ai-edit").forEach(input => {
+      const handler = () => updateAiRowField(cid, input.dataset.field, input.value);
+      input.addEventListener("input", handler);
+      input.addEventListener("change", handler);
+    });
+    rowEl
+      .querySelector(".cal-ai-row-del")
+      ?.addEventListener("click", () => deleteAiRow(cid));
+  });
+}
+
+function updateAiRowField(cid, field, value) {
+  const ev = calAiGeneratedEvents.find(e => e._cid === cid);
+  if (!ev || !field) return;
+  if (field === "text") {
+    ev.text = value;
+  } else if (field === "month") {
+    ev.month = clampInt(value, 1, 12, ev.month);
+  } else if (field === "day") {
+    ev.day = clampInt(value, 1, 31, ev.day);
+  } else if (field === "repeat") {
+    const n = Number(value);
+    if (CAL_REPEAT_VALUES.includes(n)) ev.repeat = n;
+  }
+}
+
+function deleteAiRow(cid) {
+  calAiGeneratedEvents = calAiGeneratedEvents.filter(e => e._cid !== cid);
+  renderAiPreview();
+}
+
+function addAiRow() {
+  const row = makeAiRow({ month: calViewMonth, day: 1, text: "", repeat: -1 });
+  calAiGeneratedEvents.push(row);
+  renderAiPreview();
+  const preview = document.getElementById("cal-ai-preview");
+  const last = preview?.querySelector(
+    `.cal-ai-preview-row[data-cid="${row._cid}"] .cal-ai-edit-text`,
+  );
+  last?.focus();
 }
 
 async function applyCalendarAi(mode) {
@@ -1731,21 +1824,48 @@ async function applyCalendarAi(mode) {
     toast(t("toast_calendar_ai_empty", "AI 未生成任何有效事项"), "error");
     return;
   }
+  // 校验每一行：月份 1-12、日期 1-31、名称非空
+  const invalid = calAiGeneratedEvents.some(
+    ev =>
+      !(ev.month >= 1 && ev.month <= 12) ||
+      !(ev.day >= 1 && ev.day <= 31) ||
+      !String(ev.text || "").trim(),
+  );
+  if (invalid) {
+    toast(
+      t("toast_calendar_ai_row_invalid", "请检查事项的月份、日期与名称是否填写正确"),
+      "error",
+    );
+    return;
+  }
   if (mode === "replace") {
     const ok = await showConfirm({
-      title: t("confirm_ai_apply_title", "应用 AI 时间表"),
-      message: t(
-        "confirm_ai_apply_replace",
-        "「替换应用」将清空现有全部事项并写入本次生成的事项，是否继续？",
+      title: t("confirm_ai_apply_title", "清空并替换时间表"),
+      message: fmt(
+        t(
+          "confirm_ai_apply_replace",
+          "「清空并替换」会删除现有全部事项，仅保留下方 {count} 条生成结果，是否继续？",
+        ),
+        { count: calAiGeneratedEvents.length },
       ),
-      confirmText: t("calendar_ai_apply_replace", "替换应用"),
+      confirmText: t("calendar_ai_apply_replace", "清空并替换"),
     });
     if (!ok) return;
   }
 
   try {
+    const payload = calAiGeneratedEvents.map(ev => {
+      const out = {
+        month: ev.month,
+        day: ev.day,
+        text: String(ev.text || "").trim(),
+        repeat: ev.repeat,
+      };
+      if (ev.year != null) out.year = ev.year;
+      return out;
+    });
     const data = await bridge.apiPost("calendar/ai/apply", {
-      events: calAiGeneratedEvents,
+      events: payload,
       mode,
       locale: getLocale(),
     });
@@ -1813,6 +1933,7 @@ function bindCalendarEvents() {
   document
     .getElementById("cal-ai-generate")
     ?.addEventListener("click", generateCalendarAi);
+  document.getElementById("cal-ai-add-row")?.addEventListener("click", addAiRow);
   document
     .getElementById("cal-ai-apply-merge")
     ?.addEventListener("click", () => applyCalendarAi("merge"));
