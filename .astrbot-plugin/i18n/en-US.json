@@ -245,6 +245,8 @@
       "section_recent": "Recent overview",
       "btn_refresh": "Refresh",
       "btn_add_session": "Add session",
+      "theme_switch_to_dark": "Switch to dark mode",
+      "theme_switch_to_light": "Switch to light mode",
       "loading": "Loading…",
       "plugin_status": "Current state",
       "recent_activity": "Recent notes",

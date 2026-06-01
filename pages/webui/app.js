@@ -45,6 +45,60 @@ let calActiveTab = (() => {
   }
 })();
 
+// 主题（light / dark）。优先级：用户记忆 > 系统偏好；<head> 内联脚本已先行设置 data-theme 避免闪烁。
+const THEME_KEY = "astrbot-proactive-theme";
+function storedTheme() {
+  try {
+    const v = localStorage.getItem(THEME_KEY);
+    return v === "dark" || v === "light" ? v : null;
+  } catch {
+    return null;
+  }
+}
+function systemPrefersDark() {
+  return (
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-color-scheme: dark)").matches
+  );
+}
+function currentTheme() {
+  return document.documentElement.getAttribute("data-theme") === "dark"
+    ? "dark"
+    : "light";
+}
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  const btn = document.getElementById("btn-theme");
+  if (btn) {
+    const label =
+      theme === "dark"
+        ? t("theme_switch_to_light", "切换到浅色模式")
+        : t("theme_switch_to_dark", "切换到深色模式");
+    btn.title = label;
+    btn.setAttribute("aria-label", label);
+  }
+}
+function toggleTheme() {
+  const next = currentTheme() === "dark" ? "light" : "dark";
+  try {
+    localStorage.setItem(THEME_KEY, next);
+  } catch {
+    // 忽略隐私模式下的写入失败
+  }
+  applyTheme(next);
+}
+function initTheme() {
+  applyTheme(storedTheme() || (systemPrefersDark() ? "dark" : "light"));
+  // 未显式选择时，跟随系统主题变化
+  if (typeof window.matchMedia === "function") {
+    window
+      .matchMedia("(prefers-color-scheme: dark)")
+      .addEventListener?.("change", e => {
+        if (!storedTheme()) applyTheme(e.matches ? "dark" : "light");
+      });
+  }
+}
+
 applyVisitState();
 
 function t(key, fallback) {
@@ -165,6 +219,8 @@ function renderStatic() {
 
   applyLoadingPlaceholders();
   updateTopbarTitle(activeView);
+  // i18n 就绪后刷新主题按钮的本地化标签
+  applyTheme(currentTheme());
   renderPlaceholders();
 }
 
@@ -327,6 +383,7 @@ window.refreshDashboard = function () {
 document.getElementById("btn-refresh").addEventListener("click", () => reloadActiveView());
 document.getElementById("btn-refresh-panel").addEventListener("click", () => loadDashboard());
 document.getElementById("btn-add-session").addEventListener("click", () => showAddDialog());
+document.getElementById("btn-theme").addEventListener("click", () => toggleTheme());
 
 function renderDashboard(s) {
   const ctx = bridge.getContext();
@@ -2329,6 +2386,7 @@ function bindCalendarEvents() {
 
 bindCalendarEvents();
 bindConfigEvents();
+initTheme();
 
 if (!bridge) {
   renderStatic();

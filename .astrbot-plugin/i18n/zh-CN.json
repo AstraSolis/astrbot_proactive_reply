@@ -245,6 +245,8 @@
       "section_recent": "近期概览",
       "btn_refresh": "刷新",
       "btn_add_session": "添加会话",
+      "theme_switch_to_dark": "切换到深色模式",
+      "theme_switch_to_light": "切换到浅色模式",
       "loading": "加载中…",
       "plugin_status": "当前状态",
       "recent_activity": "最近记录",
