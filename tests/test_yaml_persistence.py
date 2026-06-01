@@ -227,5 +227,42 @@ class TestCalendarMigration(unittest.TestCase):
         self.assertIsNone(mgr.parse_import_content("key: value\n"))
 
 
+class TestRuntimeTimestampNormalization(unittest.TestCase):
+    """手动编辑 YAML 后，无引号时间戳会被 safe_load 转成 datetime，
+    需在 load_from_dict 规整回字符串，避免下游 strptime 抛 TypeError。"""
+
+    def setUp(self):
+        runtime_data.reset() if hasattr(runtime_data, "reset") else None
+
+    def test_timestamp_fields_coerced_back_to_str(self):
+        import yaml
+
+        text = (
+            "ai_last_sent_times:\n"
+            "  s1: 2025-12-29 22:00:00\n"
+            "last_sent_times:\n"
+            "  s1: 2025-12-29 22:00:00\n"
+            "session_next_fire_times:\n"
+            "  s1: 2025-12-30 09:00:00\n"
+        )
+        data = yaml.safe_load(text)
+        # 前置：safe_load 确实把无引号时间戳转成了 datetime
+        from datetime import datetime as _dt
+
+        self.assertIsInstance(data["last_sent_times"]["s1"], _dt)
+
+        runtime_data.load_from_dict(data)
+
+        for field in (
+            "ai_last_sent_times",
+            "last_sent_times",
+            "session_next_fire_times",
+        ):
+            value = getattr(runtime_data, field)["s1"]
+            self.assertIsInstance(value, str, field)
+            # 规整后应能被下游格式直接解析
+            _dt.strptime(value, "%Y-%m-%d %H:%M:%S")
+
+
 if __name__ == "__main__":
     unittest.main()

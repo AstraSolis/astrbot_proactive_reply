@@ -106,9 +106,11 @@ class RuntimeDataStore:
         """从字典加载数据
 
         对关键字段做轻量类型规整：YAML 会把形如 ``"123"`` / ``"true"`` /
-        ``"2025-01-01"`` 的无引号标量隐式转型，而用户昵称、user_id（如 QQ 号）、
+        ``"2025-01-01 09:00:00"`` 的无引号标量隐式转型，而用户昵称、user_id
+        （如 QQ 号）、各类时间戳（发送/下次触发时间，下游用 ``strptime`` 解析）、
         签名等本应是字符串。``safe_dump`` 写出的文件能正确 round-trip，此处主要
-        防御「手动编辑后类型漂移」的情况。
+        防御「手动编辑后类型漂移」的情况（无引号时间戳会被 ``safe_load`` 转成
+        ``datetime``，传给 ``strptime`` 会抛 ``TypeError``）。
 
         Args:
             data: 包含运行时数据的字典
@@ -116,11 +118,13 @@ class RuntimeDataStore:
         if "session_user_info" in data:
             self.session_user_info = _normalize_user_info(data["session_user_info"])
         if "ai_last_sent_times" in data:
-            self.ai_last_sent_times = data["ai_last_sent_times"]
+            self.ai_last_sent_times = _stringify_values(data["ai_last_sent_times"])
         if "last_sent_times" in data:
-            self.last_sent_times = data["last_sent_times"]
+            self.last_sent_times = _stringify_values(data["last_sent_times"])
         if "session_next_fire_times" in data:
-            self.session_next_fire_times = data["session_next_fire_times"]
+            self.session_next_fire_times = _stringify_values(
+                data["session_next_fire_times"]
+            )
         if "session_sleep_remaining" in data:
             self.session_sleep_remaining = data["session_sleep_remaining"]
         if "timing_config_signature" in data:
