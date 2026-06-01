@@ -11,10 +11,15 @@ import shutil
 from astrbot.api import logger
 from astrbot.api.star import StarTools
 from ..utils.validators import validate_persistent_data
+from ._datafile import atomic_write_yaml, load_mapping, migrate_json_to_yaml
 from .runtime_data import runtime_data
 
 # 插件数据目录名(与 metadata.yaml 中的 name 保持一致)
 PLUGIN_DATA_DIR_NAME = "astrbot_proactive_reply"
+
+# 持久化文件名（YAML 为当前格式，JSON 为待迁移的历史格式）
+PERSISTENT_FILE_NAME = "persistent_data.yaml"
+LEGACY_PERSISTENT_FILE_NAME = "persistent_data.json"
 
 
 class PersistenceManager:
@@ -90,40 +95,30 @@ class PersistenceManager:
                 return os.getcwd()
 
     def load_persistent_data(self):
-        """从独立的持久化文件加载用户数据"""
+        """从独立的持久化文件加载用户数据
+
+        加载顺序：
+        1. 同目录历史 ``persistent_data.json`` → ``persistent_data.yaml`` 一次性迁移。
+        2. 读取 YAML 文件并回填运行时单例。
+        3. 首次运行时尝试从旧的存储位置迁移数据。
+        """
         try:
             plugin_data_dir = self.get_plugin_data_dir()
-            persistent_file = os.path.join(plugin_data_dir, "persistent_data.json")
+            persistent_file = os.path.join(plugin_data_dir, PERSISTENT_FILE_NAME)
+            legacy_file = os.path.join(plugin_data_dir, LEGACY_PERSISTENT_FILE_NAME)
 
+            # 1) 同目录 JSON → YAML 一次性迁移（旧文件备份为 .json.bak）
+            migrate_json_to_yaml(legacy_file, persistent_file)
+
+            # 2) 读取 YAML
             if os.path.exists(persistent_file):
-                for encoding in ["utf-8-sig", "utf-8"]:
-                    try:
-                        with open(persistent_file, "r", encoding=encoding) as f:
-                            persistent_data = json.load(f)
-                        break  # 读取成功，退出编码重试循环
-                    except PermissionError:
-                        logger.error("心念 | ❌ 持久化文件读取权限不足")
-                        return
-                    except UnicodeDecodeError:
-                        continue  # 尝试下一个编码
-                    except json.JSONDecodeError:
-                        logger.error(
-                            "心念 | ❌ 持久化文件 JSON 解析失败，文件可能已损坏"
-                        )
-                        return
-                else:
-                    logger.error("心念 | ❌ 无法以任何编码读取持久化文件")
-                    return
+                persistent_data = load_mapping(persistent_file)
+                if persistent_data is not None:
+                    # 将持久化数据加载到运行时数据存储中（不是 config 对象）
+                    runtime_data.load_from_dict(persistent_data)
+                    logger.info("心念 | ✅ 从持久化文件加载数据成功")
 
-                if not isinstance(persistent_data, dict):
-                    logger.error("心念 | ❌ 持久化文件格式错误：根对象不是字典")
-                    return
-
-                # 将持久化数据加载到运行时数据存储中（不是 config 对象）
-                runtime_data.load_from_dict(persistent_data)
-                logger.info("心念 | ✅ 从新的持久化文件加载数据成功")
-
-            # 尝试从旧的持久化文件迁移数据（仅首次）
+            # 3) 尝试从旧的存储位置迁移数据（仅首次）
             migrated_marker = os.path.join(plugin_data_dir, ".migrated")
             if not os.path.exists(migrated_marker):
                 self.migrate_old_persistent_data(plugin_data_dir)
@@ -215,9 +210,12 @@ class PersistenceManager:
                             )
                             continue
 
-                        new_file = os.path.join(new_data_dir, "persistent_data.json")
-                        with open(new_file, "w", encoding="utf-8") as f:
-                            json.dump(old_data, f, ensure_ascii=False, indent=2)
+                        new_file = os.path.join(new_data_dir, PERSISTENT_FILE_NAME)
+                        atomic_write_yaml(
+                            new_file,
+                            old_data,
+                            header="心念插件持久化数据（自动生成）",
+                        )
 
                         # 加载到运行时数据存储中
                         runtime_data.load_from_dict(old_data)
@@ -284,40 +282,27 @@ class PersistenceManager:
         """
         try:
             plugin_data_dir = self.get_plugin_data_dir()
-            persistent_file = os.path.join(plugin_data_dir, "persistent_data.json")
+            persistent_file = os.path.join(plugin_data_dir, PERSISTENT_FILE_NAME)
 
             # 从运行时数据存储中获取数据
             persistent_data = runtime_data.to_dict()
             persistent_data["last_update"] = datetime.datetime.now().strftime(
                 "%Y-%m-%d %H:%M:%S"
             )
-            persistent_data["data_version"] = "2.0"
+            persistent_data["data_version"] = "3.0"
 
             if not validate_persistent_data(persistent_data):
                 logger.error("心念 | ❌ 持久化数据验证失败")
                 return False
 
-            # 原子性写入
-            temp_file = persistent_file + ".tmp"
-            try:
-                with open(temp_file, "w", encoding="utf-8") as f:
-                    json.dump(persistent_data, f, ensure_ascii=False, indent=2)
-
-                if os.name == "nt" and os.path.exists(persistent_file):
-                    os.remove(persistent_file)
-                os.rename(temp_file, persistent_file)
-
+            ok = atomic_write_yaml(
+                persistent_file,
+                persistent_data,
+                header="心念插件持久化数据（自动生成，一般无需手动编辑）",
+            )
+            if ok:
                 logger.debug(f"心念 | ✅ 持久化数据已保存到: {persistent_file}")
-                return True
-            except Exception as e:
-                logger.error(f"心念 | ❌ 保存持久化数据失败: {e}")
-                return False
-            finally:
-                if os.path.exists(temp_file):
-                    try:
-                        os.remove(temp_file)
-                    except OSError:
-                        pass
+            return ok
 
         except Exception as e:
             logger.error(f"心念 | ❌ 持久化数据保存错误: {e}")

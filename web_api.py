@@ -592,8 +592,28 @@ def register_web_apis(context, managers: dict) -> None:
             logger.error(f"心念 Web API | 更新时间表显示设置失败: {e}")
             return _internal_error_response(request_locale())
 
+    async def export_calendar():
+        """导出时间表为 YAML 文本（供 WebUI 下载）"""
+        try:
+            locale = request_locale()
+            calendar_manager = managers.get("calendar_manager")
+            if not calendar_manager:
+                return _calendar_manager_missing(locale)
+            return jsonify(
+                {
+                    "success": True,
+                    "content": calendar_manager.export_yaml(),
+                }
+            )
+        except Exception as e:
+            logger.error(f"心念 Web API | 导出时间表失败: {e}")
+            return _internal_error_response(request_locale())
+
     async def import_calendar():
-        """导入时间表事项（mode: merge/replace）"""
+        """导入时间表事项（mode: merge/replace）
+
+        请求体使用 ``content`` 字段携带 YAML 文本（弃用历史的 ``events`` 数组）。
+        """
         try:
             locale = request_locale()
             calendar_manager = managers.get("calendar_manager")
@@ -601,16 +621,17 @@ def register_web_apis(context, managers: dict) -> None:
                 return _calendar_manager_missing(locale)
 
             data = await request.get_json() or {}
-            events = data.get("events")
+            content = data.get("content")
             mode = str(data.get("mode") or "merge").strip()
-            if not isinstance(events, list):
+            events = calendar_manager.parse_import_content(content)
+            if events is None:
                 return jsonify(
                     {
                         "success": False,
                         "error": t(
                             locale,
                             "api.errors.calendar_import_invalid",
-                            "导入数据不合法（应为事项数组）",
+                            "导入数据不合法（应为合法的 YAML 时间表文件）",
                         ),
                     }
                 ), 400
@@ -718,6 +739,12 @@ def register_web_apis(context, managers: dict) -> None:
         set_calendar_settings,
         ["POST"],
         "更新时间表显示设置",
+    )
+    context.register_web_api(
+        f"/{PLUGIN_NAME}/calendar/export",
+        export_calendar,
+        ["GET"],
+        "导出时间表事项",
     )
     context.register_web_api(
         f"/{PLUGIN_NAME}/calendar/import",

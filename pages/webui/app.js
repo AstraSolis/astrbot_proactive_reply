@@ -1508,61 +1508,52 @@ async function clearCalendar(scope) {
   }
 }
 
-function exportCalendar() {
+async function exportCalendar() {
   if (!calendarEvents.length) {
     toast(t("toast_calendar_export_empty", "暂无可导出的事项"), "error");
     return;
   }
-  const payload = {
-    version: 1,
-    events: calendarEvents.map(ev => ({
-      year: ev.year,
-      month: ev.month,
-      day: ev.day,
-      text: ev.text,
-      repeat: ev.repeat,
-    })),
-  };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], {
-    type: "application/json",
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `calendar_data_${calViewYear}${String(calViewMonth).padStart(2, "0")}.json`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-  toast(t("toast_calendar_export_done", "已导出时间表"), "success");
+  try {
+    // 由后端用 PyYAML 渲染，保证与磁盘文件格式一致
+    const data = await bridge.apiGet("calendar/export", apiLocale());
+    if (!data.success || typeof data.content !== "string") {
+      throw new Error(data.error || t("toast_calendar_export_failed", "导出失败"));
+    }
+    const blob = new Blob([data.content], { type: "application/x-yaml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `calendar_data_${calViewYear}${String(calViewMonth).padStart(2, "0")}.yaml`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast(t("toast_calendar_export_done", "已导出时间表"), "success");
+  } catch (err) {
+    toast(err.message, "error");
+  }
 }
 
 async function importCalendarFile(file) {
   if (!file) return;
-  let parsed;
+  let content;
   try {
-    const text = await file.text();
-    parsed = JSON.parse(text);
+    content = await file.text();
   } catch {
     toast(t("toast_calendar_import_bad_file", "文件格式不正确，无法导入"), "error");
     return;
   }
-  const events = Array.isArray(parsed)
-    ? parsed
-    : Array.isArray(parsed?.events)
-      ? parsed.events
-      : null;
-  if (!events) {
+  if (!content.trim()) {
     toast(t("toast_calendar_import_bad_file", "文件格式不正确，无法导入"), "error");
     return;
   }
 
-  // 询问合并 / 替换：确定=替换，取消=合并
+  // 询问合并 / 替换：确定=替换，取消=合并（YAML 由后端解析，前端不再预解析计数）
   const replace = await showConfirm({
     title: t("confirm_import_title", "导入时间表"),
-    message: fmt(
-      t("confirm_import_replace", "导入文件中含 {count} 条事项。是否替换？"),
-      { count: events.length },
+    message: t(
+      "confirm_import_replace",
+      "导入文件将合并或替换现有时间表。选择「替换」将清空现有事项，选择「取消」可改用合并方式。是否替换？",
     ),
     confirmText: t("btn_replace", "替换"),
     danger: false,
@@ -1571,7 +1562,7 @@ async function importCalendarFile(file) {
 
   try {
     const data = await bridge.apiPost("calendar/import", {
-      events,
+      content,
       mode,
       locale: getLocale(),
     });

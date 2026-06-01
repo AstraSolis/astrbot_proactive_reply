@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+### 变更
+- 持久化文件由 JSON 迁移到 YAML，更直观、便于查看与手动编辑
+  - `persistent_data.json` → `persistent_data.yaml`，`calendar_data.json` → `calendar_data.yaml`
+  - 首次启动自动迁移历史 `.json` 文件，旧文件备份为 `.json.bak`（可回滚）
+  - 时间表导入/导出改用 YAML（弃用 JSON）
+  - 新增 `core/_datafile.py` 统一 YAML 读取 / 原子写入 / JSON→YAML 迁移逻辑（优先使用 libyaml C 扩展提速）
+  - 加载时对关键字段做类型规整，防止 YAML 隐式转型（如纯数字昵称 / QQ 号被误转为整数）
+  - `data_version` 升至 `3.0`；新增 `pyyaml` 依赖
+
 ### 重构
 - 抽取消息分割逻辑为独立的 `MessageSplitter`(`llm/message_splitter.py`)，精简 `message_generator.py`
 - 新增 `constants.py` 统一历史条数上限与默认/旧版时间感知提示词，消除多处硬编码

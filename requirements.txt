@@ -1,1 +1,3 @@
 # AstrBot 主动回复插件依赖
+# YAML 持久化文件读写（AstrBot 运行时通常已自带，此处显式声明以防缺失）
+pyyaml

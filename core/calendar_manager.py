@@ -1,20 +1,27 @@
 """
 时间表（日历事项）管理器
 
-负责 ``calendar_data.json`` 的读写、事项 CRUD、批量清除、导入/导出与校验。
+负责 ``calendar_data.yaml`` 的读写、事项 CRUD、批量清除、导入/导出与校验。
 读写完成后回填 ``calendar_store`` 单例，供占位符解析（``{calendar_today}``）使用。
 
 数据文件与运行时持久化数据同目录（``StarTools.get_data_dir`` 解析），全局共享
-一份时间表（不区分会话）。
+一份时间表（不区分会话）。历史 ``calendar_data.json`` 会在首次加载时自动迁移为
+YAML（旧文件备份为 ``.json.bak``）。
 """
 
 import datetime
-import json
 import os
 import uuid
 
+import yaml
 from astrbot.api import logger
 
+from ._datafile import (
+    atomic_write_yaml,
+    dump_yaml_str,
+    load_mapping,
+    migrate_json_to_yaml,
+)
 from .calendar_store import (
     MAX_EVENT_TEXT_LENGTH,
     MAX_EVENTS,
@@ -23,7 +30,8 @@ from .calendar_store import (
     valid_month_day,
 )
 
-CALENDAR_FILE_NAME = "calendar_data.json"
+CALENDAR_FILE_NAME = "calendar_data.yaml"
+LEGACY_CALENDAR_FILE_NAME = "calendar_data.json"
 CALENDAR_DATA_VERSION = 1
 # 基准年合理范围（防止非法年份）
 MIN_YEAR = 1970
@@ -46,6 +54,10 @@ class CalendarManager:
     def _calendar_file_path(self) -> str:
         plugin_data_dir = self.persistence_manager.get_plugin_data_dir()
         return os.path.join(plugin_data_dir, CALENDAR_FILE_NAME)
+
+    def _legacy_calendar_file_path(self) -> str:
+        plugin_data_dir = self.persistence_manager.get_plugin_data_dir()
+        return os.path.join(plugin_data_dir, LEGACY_CALENDAR_FILE_NAME)
 
     # ==================== 校验 / 规整 ====================
 
@@ -118,34 +130,23 @@ class CalendarManager:
     # ==================== 读 / 写 ====================
 
     def load(self) -> None:
-        """从 ``calendar_data.json`` 加载事项到内存单例（启动时调用）"""
+        """从 ``calendar_data.yaml`` 加载事项到内存单例（启动时调用）
+
+        若 YAML 不存在但存在历史 ``calendar_data.json``，先一次性迁移为 YAML。
+        """
         try:
             calendar_file = self._calendar_file_path()
+
+            # 一次性迁移：旧 JSON → 新 YAML（旧文件备份为 .json.bak）
+            migrate_json_to_yaml(self._legacy_calendar_file_path(), calendar_file)
+
             if not os.path.exists(calendar_file):
                 calendar_store.set_events([])
                 logger.info("心念 | ℹ️ 暂无时间表数据文件（首次运行）")
                 return
 
-            data = None
-            for encoding in ["utf-8-sig", "utf-8"]:
-                try:
-                    with open(calendar_file, "r", encoding=encoding) as f:
-                        data = json.load(f)
-                    break
-                except PermissionError:
-                    logger.error("心念 | ❌ 时间表文件读取权限不足")
-                    return
-                except UnicodeDecodeError:
-                    continue
-                except json.JSONDecodeError:
-                    logger.error("心念 | ❌ 时间表文件 JSON 解析失败，文件可能已损坏")
-                    return
-            else:
-                logger.error("心念 | ❌ 无法以任何编码读取时间表文件")
-                return
-
-            if not isinstance(data, dict):
-                logger.error("心念 | ❌ 时间表文件格式错误：根对象不是字典")
+            data = load_mapping(calendar_file)
+            if data is None:
                 return
 
             events = self._normalize_events(data.get("events", []))
@@ -162,33 +163,26 @@ class CalendarManager:
         """
         try:
             calendar_file = self._calendar_file_path()
-            payload = {
-                "version": CALENDAR_DATA_VERSION,
-                "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "events": calendar_store.events,
-            }
-
-            temp_file = calendar_file + ".tmp"
-            try:
-                with open(temp_file, "w", encoding="utf-8") as f:
-                    json.dump(payload, f, ensure_ascii=False, indent=2)
-                if os.name == "nt" and os.path.exists(calendar_file):
-                    os.remove(calendar_file)
-                os.rename(temp_file, calendar_file)
+            payload = self._build_payload()
+            ok = atomic_write_yaml(
+                calendar_file,
+                payload,
+                header="心念插件时间表数据（自动生成，可手动编辑）",
+            )
+            if ok:
                 logger.debug(f"心念 | ✅ 时间表已保存到: {calendar_file}")
-                return True
-            except Exception as e:
-                logger.error(f"心念 | ❌ 保存时间表失败: {e}")
-                return False
-            finally:
-                if os.path.exists(temp_file):
-                    try:
-                        os.remove(temp_file)
-                    except OSError:
-                        pass
+            return ok
         except Exception as e:
             logger.error(f"心念 | ❌ 时间表保存错误: {e}")
             return False
+
+    def _build_payload(self) -> dict:
+        """构造写入/导出用的时间表数据结构"""
+        return {
+            "version": CALENDAR_DATA_VERSION,
+            "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "events": list(calendar_store.events),
+        }
 
     # ==================== 查询 ====================
 
@@ -290,11 +284,47 @@ class CalendarManager:
 
     # ==================== 导入 / 导出 ====================
 
+    def export_yaml(self) -> str:
+        """将当前全部事项导出为 YAML 文本（供 WebUI 下载）"""
+        payload = {
+            "version": CALENDAR_DATA_VERSION,
+            "events": [
+                {
+                    "year": e.get("year"),
+                    "month": e.get("month"),
+                    "day": e.get("day"),
+                    "text": e.get("text"),
+                    "repeat": e.get("repeat"),
+                }
+                for e in calendar_store.events
+            ],
+        }
+        return dump_yaml_str(payload, header="心念插件时间表导出文件（YAML）")
+
+    @staticmethod
+    def parse_import_content(content: str):
+        """解析导入文件的 YAML 文本，返回原始事项列表
+
+        兼容两种结构：顶层为事项数组，或含 ``events`` 字段的映射。
+        解析失败或结构非法返回 ``None``（由调用方区分「空表」与「非法」）。
+        """
+        if not isinstance(content, str) or not content.strip():
+            return None
+        try:
+            parsed = yaml.safe_load(content)
+        except yaml.YAMLError:
+            return None
+        if isinstance(parsed, list):
+            return parsed
+        if isinstance(parsed, dict) and isinstance(parsed.get("events"), list):
+            return parsed["events"]
+        return None
+
     def import_events(self, raw_events, mode: str = "merge") -> int:
         """导入事项
 
         Args:
-            raw_events: 事项列表（来自 JSON 文件）。
+            raw_events: 事项列表（来自 YAML 文件解析）。
             mode: ``merge``=合并到现有；``replace``=替换全部。
 
         Returns:

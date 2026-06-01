@@ -389,7 +389,7 @@
       "confirm_clear_year": "确定清除 {year} 年的全部事项吗？",
       "confirm_clear_all": "确定清除全部时间表事项吗？此操作不可撤销。",
       "confirm_clear_title": "清除时间表事项",
-      "confirm_import_replace": "导入文件中含 {count} 条事项。选择「替换」将清空现有事项，选择「取消」可改用合并方式。是否替换？",
+      "confirm_import_replace": "导入文件将合并或替换现有时间表。选择「替换」将清空现有事项，选择「取消」可改用合并方式。是否替换？",
       "confirm_import_title": "导入时间表",
       "btn_replace": "替换",
       "btn_merge": "合并",
@@ -400,6 +400,7 @@
       "toast_calendar_import_failed": "导入失败",
       "toast_calendar_export_empty": "暂无可导出的事项",
       "toast_calendar_export_done": "已导出时间表",
+      "toast_calendar_export_failed": "导出失败",
       "toast_calendar_event_saved": "事项已保存",
       "toast_calendar_event_deleted": "事项已删除",
       "toast_calendar_cleared": "已清除",
@@ -424,7 +425,7 @@
       "calendar_manager_not_found": "时间表管理器未找到",
       "calendar_event_invalid": "事项数据不合法或已达数量上限",
       "calendar_event_not_found": "未找到该事项或数据不合法",
-      "calendar_import_invalid": "导入数据不合法（应为事项数组）"
+      "calendar_import_invalid": "导入数据不合法（应为合法的 YAML 时间表文件）"
     },
     "messages": {
       "session_added": "已添加会话: {session_id}",

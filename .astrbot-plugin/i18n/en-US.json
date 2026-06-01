@@ -389,7 +389,7 @@
       "confirm_clear_year": "Clear all events in {year}?",
       "confirm_clear_all": "Clear all calendar events? This cannot be undone.",
       "confirm_clear_title": "Clear calendar events",
-      "confirm_import_replace": "The file has {count} event(s). Choosing Replace clears existing events; Cancel keeps them and merges. Replace?",
+      "confirm_import_replace": "Importing will merge or replace your calendar. Choosing Replace clears existing events; Cancel keeps them and merges. Replace?",
       "confirm_import_title": "Import calendar",
       "btn_replace": "Replace",
       "btn_merge": "Merge",
@@ -400,6 +400,7 @@
       "toast_calendar_import_failed": "Import failed",
       "toast_calendar_export_empty": "No events to export",
       "toast_calendar_export_done": "Calendar exported",
+      "toast_calendar_export_failed": "Export failed",
       "toast_calendar_event_saved": "Event saved",
       "toast_calendar_event_deleted": "Event deleted",
       "toast_calendar_cleared": "Cleared",
@@ -424,7 +425,7 @@
       "calendar_manager_not_found": "Calendar manager not found",
       "calendar_event_invalid": "Invalid event data or event limit reached",
       "calendar_event_not_found": "Event not found or invalid data",
-      "calendar_import_invalid": "Invalid import data (expected an array of events)"
+      "calendar_import_invalid": "Invalid import data (expected a valid YAML calendar file)"
     },
     "messages": {
       "session_added": "Session added: {session_id}",
