@@ -238,7 +238,7 @@ def render_template(template: str, mapping: dict) -> str:
         替换后的字符串
     """
     if not template:
-        return template
+        return template or ""
     result = template
     for token, value in mapping.items():
         try:

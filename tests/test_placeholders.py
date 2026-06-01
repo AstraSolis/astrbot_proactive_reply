@@ -107,6 +107,10 @@ class TestRenderTemplate(unittest.TestCase):
     def test_empty_template(self):
         self.assertEqual(ph.render_template("", {"username": "x"}), "")
 
+    def test_none_template_returns_empty_string(self):
+        # template 为 None（如配置 template: null）应返回 ""，避免 None 流向下游
+        self.assertEqual(ph.render_template(None, {"username": "x"}), "")
+
 
 class TestBuildPlaceholderMap(unittest.TestCase):
     def setUp(self):
