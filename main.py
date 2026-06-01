@@ -12,6 +12,7 @@ from astrbot.api.provider import ProviderRequest
 from astrbot.api.star import Context, Star
 
 # 导入各个功能模块
+from .core.calendar_manager import CalendarManager
 from .core.config_manager import ConfigManager
 from .core.persistence_manager import PersistenceManager
 from .core.user_info_manager import UserInfoManager
@@ -69,6 +70,7 @@ class ProactiveReplyPlugin(Star):
         # 核心模块
         self.persistence_manager = PersistenceManager(self.config, self.context)
         self.config_manager = ConfigManager(self.config, self.persistence_manager)
+        self.calendar_manager = CalendarManager(self.persistence_manager)
         self.user_info_manager = UserInfoManager(
             self.config, self.config_manager, self.persistence_manager, self.context
         )
@@ -109,6 +111,7 @@ class ProactiveReplyPlugin(Star):
                 "task_manager": self.task_manager,
                 "conversation_manager": self.conversation_manager,
                 "persistence_manager": self.persistence_manager,
+                "calendar_manager": self.calendar_manager,
                 "prompt_builder": self.prompt_builder,
                 "message_generator": self.message_generator,
             },
@@ -126,6 +129,9 @@ class ProactiveReplyPlugin(Star):
 
         # 确保配置结构完整（包括加载持久化数据）
         self.config_manager.ensure_config_structure()
+
+        # 加载时间表（日历事项）数据到内存单例
+        self.calendar_manager.load()
 
         # 验证配置加载状态（必须在 ensure_config_structure 之后）
         self._verify_config_loading()

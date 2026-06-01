@@ -343,6 +343,255 @@ def register_web_apis(context, managers: dict) -> None:
                 normalize_locale(request.args.get("locale"))
             )
 
+    # ==================== 时间表（日历事项） ====================
+
+    def _calendar_manager_missing(locale):
+        return jsonify(
+            {
+                "success": False,
+                "error": t(
+                    locale,
+                    "api.errors.calendar_manager_not_found",
+                    "时间表管理器未找到",
+                ),
+            }
+        ), 500
+
+    async def get_calendar_data():
+        """获取时间表数据（开关、分隔符、空文本、全部事项）"""
+        try:
+            locale = normalize_locale(request.args.get("locale"))
+            calendar_manager = managers.get("calendar_manager")
+            if not calendar_manager:
+                return _calendar_manager_missing(locale)
+            config_manager = managers.get("config_manager")
+            config = (
+                config_manager.config
+                if config_manager and hasattr(config_manager, "config")
+                else {}
+            )
+            time_awareness = config.get("time_awareness", {})
+            return jsonify(
+                {
+                    "success": True,
+                    "enabled": bool(time_awareness.get("enable_calendar", False)),
+                    "separator": time_awareness.get("calendar_separator", "、"),
+                    "empty_text": time_awareness.get("calendar_empty_text", ""),
+                    "events": calendar_manager.get_events(),
+                }
+            )
+        except Exception as e:
+            logger.error(f"心念 Web API | 获取时间表数据失败: {e}")
+            return _internal_error_response(
+                normalize_locale(request.args.get("locale"))
+            )
+
+    async def save_calendar_event():
+        """新增或更新一条时间表事项（无 id=新增，有 id=更新）"""
+        try:
+            locale = request_locale()
+            calendar_manager = managers.get("calendar_manager")
+            if not calendar_manager:
+                return _calendar_manager_missing(locale)
+
+            data = await request.get_json() or {}
+            event_id = str(data.get("id") or "").strip()
+            if event_id:
+                event = calendar_manager.update_event(event_id, data)
+                if event is None:
+                    return jsonify(
+                        {
+                            "success": False,
+                            "error": t(
+                                locale,
+                                "api.errors.calendar_event_not_found",
+                                "未找到该事项或数据不合法",
+                            ),
+                        }
+                    ), 404
+            else:
+                event = calendar_manager.add_event(data)
+                if event is None:
+                    return jsonify(
+                        {
+                            "success": False,
+                            "error": t(
+                                locale,
+                                "api.errors.calendar_event_invalid",
+                                "事项数据不合法或已达数量上限",
+                            ),
+                        }
+                    ), 400
+
+            return jsonify(
+                {
+                    "success": True,
+                    "event": event,
+                    "message": t(
+                        locale, "api.messages.calendar_event_saved", "事项已保存"
+                    ),
+                }
+            )
+        except Exception as e:
+            logger.error(f"心念 Web API | 保存时间表事项失败: {e}")
+            return _internal_error_response(request_locale())
+
+    async def delete_calendar_event():
+        """删除一条时间表事项"""
+        try:
+            locale = request_locale()
+            calendar_manager = managers.get("calendar_manager")
+            if not calendar_manager:
+                return _calendar_manager_missing(locale)
+
+            data = await request.get_json() or {}
+            event_id = str(data.get("id") or "").strip()
+            if not calendar_manager.delete_event(event_id):
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": t(
+                            locale,
+                            "api.errors.calendar_event_not_found",
+                            "未找到该事项或数据不合法",
+                        ),
+                    }
+                ), 404
+            return jsonify(
+                {
+                    "success": True,
+                    "message": t(
+                        locale, "api.messages.calendar_event_deleted", "事项已删除"
+                    ),
+                }
+            )
+        except Exception as e:
+            logger.error(f"心念 Web API | 删除时间表事项失败: {e}")
+            return _internal_error_response(request_locale())
+
+    async def clear_calendar():
+        """批量清除时间表事项（scope: all/year/month）"""
+        try:
+            locale = request_locale()
+            calendar_manager = managers.get("calendar_manager")
+            if not calendar_manager:
+                return _calendar_manager_missing(locale)
+
+            data = await request.get_json() or {}
+            scope = str(data.get("scope") or "all").strip()
+            year = _safe_int(data.get("year"))
+            month = _safe_int(data.get("month"))
+            removed = calendar_manager.clear(scope=scope, year=year, month=month)
+            return jsonify(
+                {
+                    "success": True,
+                    "removed": removed,
+                    "message": t(
+                        locale,
+                        "api.messages.calendar_cleared",
+                        "已清除 {count} 条事项",
+                        count=removed,
+                    ),
+                }
+            )
+        except Exception as e:
+            logger.error(f"心念 Web API | 清除时间表失败: {e}")
+            return _internal_error_response(request_locale())
+
+    async def set_calendar_enabled():
+        """页内开关：写回 time_awareness.enable_calendar"""
+        try:
+            locale = request_locale()
+            config_manager = managers.get("config_manager")
+            if not config_manager:
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": t(
+                            locale,
+                            "api.errors.config_manager_not_found",
+                            "配置管理器未找到",
+                        ),
+                    }
+                ), 500
+
+            data = await request.get_json() or {}
+            enabled = bool(data.get("enabled", False))
+            config = config_manager.config if hasattr(config_manager, "config") else {}
+            config.setdefault("time_awareness", {})["enable_calendar"] = enabled
+            if not config_manager.save_config_safely():
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": t(
+                            locale, "api.errors.config_save_failed", "配置保存失败"
+                        ),
+                    }
+                ), 500
+            return jsonify(
+                {
+                    "success": True,
+                    "enabled": enabled,
+                    "message": t(
+                        locale,
+                        "api.messages.calendar_enabled_updated",
+                        "时间表开关已更新",
+                    ),
+                }
+            )
+        except Exception as e:
+            logger.error(f"心念 Web API | 更新时间表开关失败: {e}")
+            return _internal_error_response(request_locale())
+
+    async def import_calendar():
+        """导入时间表事项（mode: merge/replace）"""
+        try:
+            locale = request_locale()
+            calendar_manager = managers.get("calendar_manager")
+            if not calendar_manager:
+                return _calendar_manager_missing(locale)
+
+            data = await request.get_json() or {}
+            events = data.get("events")
+            mode = str(data.get("mode") or "merge").strip()
+            if not isinstance(events, list):
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": t(
+                            locale,
+                            "api.errors.calendar_import_invalid",
+                            "导入数据不合法（应为事项数组）",
+                        ),
+                    }
+                ), 400
+            imported = calendar_manager.import_events(events, mode=mode)
+            if imported < 0:
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": t(
+                            locale, "api.errors.config_save_failed", "配置保存失败"
+                        ),
+                    }
+                ), 500
+            return jsonify(
+                {
+                    "success": True,
+                    "imported": imported,
+                    "events": calendar_manager.get_events(),
+                    "message": t(
+                        locale,
+                        "api.messages.calendar_imported",
+                        "已导入 {count} 条事项",
+                        count=imported,
+                    ),
+                }
+            )
+        except Exception as e:
+            logger.error(f"心念 Web API | 导入时间表失败: {e}")
+            return _internal_error_response(request_locale())
+
     context.register_web_api(
         f"/{PLUGIN_NAME}/dashboard/stats",
         get_dashboard_stats,
@@ -385,8 +634,54 @@ def register_web_apis(context, managers: dict) -> None:
         ["POST"],
         "取消 AI 约定任务",
     )
+    context.register_web_api(
+        f"/{PLUGIN_NAME}/calendar/data",
+        get_calendar_data,
+        ["GET"],
+        "获取时间表数据",
+    )
+    context.register_web_api(
+        f"/{PLUGIN_NAME}/calendar/event/save",
+        save_calendar_event,
+        ["POST"],
+        "保存时间表事项",
+    )
+    context.register_web_api(
+        f"/{PLUGIN_NAME}/calendar/event/delete",
+        delete_calendar_event,
+        ["POST"],
+        "删除时间表事项",
+    )
+    context.register_web_api(
+        f"/{PLUGIN_NAME}/calendar/clear",
+        clear_calendar,
+        ["POST"],
+        "清除时间表事项",
+    )
+    context.register_web_api(
+        f"/{PLUGIN_NAME}/calendar/enabled",
+        set_calendar_enabled,
+        ["POST"],
+        "更新时间表开关",
+    )
+    context.register_web_api(
+        f"/{PLUGIN_NAME}/calendar/import",
+        import_calendar,
+        ["POST"],
+        "导入时间表事项",
+    )
 
     logger.info("心念 Web API | 所有 API 已注册")
+
+
+def _safe_int(value):
+    """将输入安全转为 int，失败返回 None"""
+    try:
+        if value is None or value == "":
+            return None
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _safe_sessions_list(config: dict) -> list:

@@ -14,6 +14,7 @@
 import datetime
 from astrbot.api import logger
 from ..core.runtime_data import runtime_data
+from ..core.calendar_store import calendar_store
 from ..utils.time_utils import get_now, get_tz
 
 DEFAULT_TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -43,6 +44,7 @@ PLACEHOLDER_GROUPS = [
             "user_last_message_time",
             "user_last_message_time_ago",
             "ai_last_sent_time",
+            "calendar_today",
         ],
     },
     {
@@ -58,6 +60,7 @@ PLACEHOLDER_GROUPS = [
             "user_last_message_time_ago",
             "ai_last_sent_time",
             "unreplied_count",
+            "calendar_today",
         ],
     },
 ]
@@ -94,6 +97,10 @@ PLACEHOLDER_DEFS = {
     "unreplied_count": {
         "desc": "用户连续未回复次数",
         "stable": "系统提供的连续未回复次数",
+    },
+    "calendar_today": {
+        "desc": "今天时间表中的所有事项（需启用时间表功能）",
+        "stable": "系统提供的当日时间表事项",
     },
 }
 
@@ -155,6 +162,31 @@ def _resolve_current_time(event, config, astrbot_config, tz, time_format) -> str
     except Exception as e:
         logger.warning(f"心念 | ⚠️ 时间格式错误 '{time_format}': {e}，使用默认格式")
         return get_now(config, astrbot_config).strftime(DEFAULT_TIME_FORMAT)
+
+
+def _resolve_calendar_today(config, now) -> str:
+    """计算 ``{calendar_today}`` 的取值
+
+    仅在 ``time_awareness.enable_calendar`` 为真时返回当天事项，否则返回空字符串
+    （即使配置了时间表也不注入）。事项文本按配置的分隔符拼接；无事项时返回
+    可配置的默认文本（默认空字符串）。
+    """
+    time_awareness = (
+        config.get("time_awareness", {}) if isinstance(config, dict) else {}
+    )
+    if not time_awareness.get("enable_calendar", False):
+        return ""
+    separator = time_awareness.get("calendar_separator", "、")
+    if not isinstance(separator, str):
+        separator = "、"
+    empty_text = time_awareness.get("calendar_empty_text", "")
+    if not isinstance(empty_text, str):
+        empty_text = ""
+    try:
+        return calendar_store.today_text(now, separator, empty_text)
+    except Exception as e:
+        logger.warning(f"心念 | ⚠️ 计算时间表当天事项失败: {e}")
+        return ""
 
 
 def build_placeholder_map(
@@ -221,6 +253,10 @@ def build_placeholder_map(
             mapping["user_context"] = build_user_context_func(session)
         except Exception as e:
             logger.warning(f"心念 | ⚠️ 构建 user_context 失败: {e}")
+
+    # calendar_today 必须作为最后一个键加入：render_template 按插入顺序替换，
+    # 此时其余占位符已替换完毕，事项文本中若含 {username} 等不会被二次展开（安全要求）。
+    mapping["calendar_today"] = _resolve_calendar_today(config, now)
 
     return mapping
 

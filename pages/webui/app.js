@@ -18,6 +18,17 @@ let refreshTimer = null;
 let dashboardPromise = null;
 let sessionsPromise = null;
 
+// 时间表（日历事项）状态
+let calendarLoaded = false;
+let calendarPromise = null;
+let calendarEvents = [];
+let calendarEnabled = false;
+const _now = new Date();
+let calViewYear = _now.getFullYear();
+let calViewMonth = _now.getMonth() + 1; // 1-12
+let calSelected = null; // { year, month, day }
+let calEditingId = null;
+
 applyVisitState();
 
 function t(key, fallback) {
@@ -132,6 +143,8 @@ function renderStatic() {
   document.getElementById("placeholders-subtitle").textContent =
     t("placeholders_subtitle", "点击任意占位符即可复制到剪贴板，粘贴进配置模板使用");
 
+  renderCalendarStatic();
+
   document.getElementById("sidebar-nav").setAttribute(
     "aria-label",
     t("aria_main_nav", "主导航"),
@@ -200,6 +213,8 @@ function updateSearchForView(view) {
       input.placeholder = t("search_hint_schedules", "此页面不支持搜索");
     } else if (view === "placeholders") {
       input.placeholder = t("search_hint_placeholders", "此页面不支持搜索");
+    } else if (view === "calendar") {
+      input.placeholder = t("search_hint_calendar", "此页面不支持搜索");
     } else {
       input.placeholder = t("search_hint_dashboard", "切换到会话页后可搜索");
     }
@@ -239,6 +254,8 @@ function switchView(view) {
     renderAiSchedules(aiSchedules);
   } else if (view === "placeholders" && !placeholdersLoaded) {
     loadPlaceholders();
+  } else if (view === "calendar" && !calendarLoaded) {
+    loadCalendar();
   }
 }
 
@@ -276,7 +293,19 @@ document.addEventListener("keydown", e => {
     hideAddDialog();
     hideSessionDetail();
     hideConfirmDialog(false);
+    hideCalendarDay();
     closeSidebar();
+  }
+  if (
+    activeView === "calendar" &&
+    calendarEnabled &&
+    !isCalendarDayOpen() &&
+    (e.key === "ArrowLeft" || e.key === "ArrowRight")
+  ) {
+    const tag = (e.target.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "select" || tag === "textarea") return;
+    e.preventDefault();
+    shiftCalendarMonth(e.key === "ArrowLeft" ? -1 : 1);
   }
 });
 
@@ -998,8 +1027,558 @@ async function reloadActiveView() {
   } else if (activeView === "placeholders") {
     placeholdersLoaded = false;
     await loadPlaceholders();
+  } else if (activeView === "calendar") {
+    calendarLoaded = false;
+    await loadCalendar();
   }
 }
+
+/* ==================== 时间表（日历事项） ==================== */
+
+const CAL_REPEAT_VALUES = [0, 1, 2, 3, 4, -1];
+
+function normRepeat(r) {
+  const v = parseInt(r, 10);
+  if (v === -1) return -1;
+  if (v >= 0 && v <= 4) return v;
+  return 0;
+}
+
+function repeatLabel(repeat) {
+  const v = normRepeat(repeat);
+  if (v === -1) return t("calendar_repeat_forever", "每年重复（永久）");
+  if (v === 0) return t("calendar_repeat_none", "不重复（仅当年）");
+  return t("calendar_repeat_" + v, `重复 ${v} 年`);
+}
+
+function eventActiveInYear(ev, year) {
+  const repeat = normRepeat(ev.repeat);
+  if (repeat === -1) return true;
+  const base = parseInt(ev.year, 10);
+  if (!Number.isFinite(base)) return false;
+  return base <= year && year <= base + repeat;
+}
+
+function fmt(template, vars) {
+  return String(template).replace(/\{(\w+)\}/g, (_, k) =>
+    Object.prototype.hasOwnProperty.call(vars, k) ? vars[k] : `{${k}}`,
+  );
+}
+
+function renderCalendarStatic() {
+  const set = (id, key, fallback) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = t(key, fallback);
+  };
+  set("nav-label-calendar", "tab_calendar", "时间表");
+  set("page-title-calendar", "tab_calendar", "时间表");
+  set("calendar-subtitle", "calendar_subtitle", "为日期添加节日或事项");
+  set("calendar-enable-label", "calendar_enable_label", "启用时间表功能");
+  set("calendar-enable-hint", "calendar_enable_hint", "");
+  set("cal-today", "calendar_today_btn", "回到今天");
+  set("cal-import", "calendar_import", "导入");
+  set("cal-export", "calendar_export", "导出");
+  set("cal-clear-month", "calendar_clear_month", "清除本月");
+  set("cal-clear-year", "calendar_clear_year", "清除本年");
+  set("cal-clear-all", "calendar_clear_all", "清除全部");
+  set("cal-day-close", "btn_close", "关闭");
+  set("cal-day-save", "btn_save", "保存");
+  set("cal-form-text-label", "calendar_event_text_label", "事项内容");
+  set("cal-form-year-label", "calendar_year_label", "基准年");
+  set("cal-form-repeat-label", "calendar_repeat_label", "重复");
+
+  const prevBtn = document.getElementById("cal-prev");
+  if (prevBtn) prevBtn.title = t("calendar_prev_month", "上个月");
+  const nextBtn = document.getElementById("cal-next");
+  if (nextBtn) nextBtn.title = t("calendar_next_month", "下个月");
+  const textInput = document.getElementById("cal-form-text");
+  if (textInput) {
+    textInput.placeholder = t("calendar_event_text_placeholder", "如：春节");
+  }
+
+  const repeatSel = document.getElementById("cal-form-repeat");
+  if (repeatSel) {
+    repeatSel.innerHTML = CAL_REPEAT_VALUES.map(
+      v => `<option value="${v}">${escHtml(repeatLabel(v))}</option>`,
+    ).join("");
+  }
+
+  // 已渲染过日历时，刷新动态文案（月份标题、星期、网格）
+  if (calendarLoaded) renderCalendar();
+}
+
+async function loadCalendar() {
+  if (calendarPromise) return calendarPromise;
+  calendarPromise = (async () => {
+    try {
+      const data = await bridge.apiGet("calendar/data", apiLocale());
+      if (!data.success) throw new Error(data.error || t("err_unknown", "未知错误"));
+      calendarEvents = Array.isArray(data.events) ? data.events : [];
+      calendarEnabled = !!data.enabled;
+      calendarLoaded = true;
+      renderCalendar();
+      hideGlobalError();
+    } catch (err) {
+      showGlobalError(t("err_calendar_load", "时间表加载失败：") + err.message);
+      console.error(err);
+    } finally {
+      calendarPromise = null;
+    }
+  })();
+  return calendarPromise;
+}
+
+function renderCalendar() {
+  const toggle = document.getElementById("calendar-enable-toggle");
+  if (toggle) toggle.checked = calendarEnabled;
+
+  const body = document.getElementById("calendar-body");
+  const disabled = document.getElementById("calendar-disabled-state");
+  if (calendarEnabled) {
+    if (body) body.style.display = "";
+    if (disabled) disabled.style.display = "none";
+    renderCalendarGrid();
+  } else {
+    if (body) body.style.display = "none";
+    if (disabled) {
+      disabled.style.display = "";
+      disabled.innerHTML = emptyStateHtml(
+        t("calendar_disabled_title", "时间表功能未启用"),
+        escHtml(t("calendar_disabled_desc", "打开上方开关即可编辑日历事项")),
+      );
+    }
+  }
+}
+
+function renderCalendarGrid() {
+  const title = document.getElementById("calendar-month-title");
+  if (title) {
+    title.textContent = fmt(t("calendar_month_label", "{year} 年 {month} 月"), {
+      year: calViewYear,
+      month: calViewMonth,
+    });
+  }
+
+  const wd = document.getElementById("calendar-weekdays");
+  if (wd) {
+    wd.innerHTML = "";
+    for (let i = 0; i < 7; i++) {
+      const cell = document.createElement("div");
+      cell.className = "calendar-weekday";
+      cell.textContent = t("calendar_weekday_" + i, String(i));
+      wd.appendChild(cell);
+    }
+  }
+
+  const grid = document.getElementById("calendar-grid");
+  if (!grid) return;
+  grid.innerHTML = "";
+
+  const y = calViewYear;
+  const m = calViewMonth;
+  const firstDow = (new Date(y, m - 1, 1).getDay() + 6) % 7; // 0=周一
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const totalCells = Math.ceil((firstDow + daysInMonth) / 7) * 7;
+
+  const today = new Date();
+  const moreText = t("calendar_more_events", "+{count}");
+
+  for (let i = 0; i < totalCells; i++) {
+    const dayNum = i - firstDow + 1;
+    if (dayNum < 1 || dayNum > daysInMonth) {
+      const empty = document.createElement("div");
+      empty.className = "calendar-cell is-outside";
+      grid.appendChild(empty);
+      continue;
+    }
+
+    const cell = document.createElement("button");
+    cell.type = "button";
+    cell.className = "calendar-cell";
+    cell.dataset.day = String(dayNum);
+    if (
+      today.getFullYear() === y &&
+      today.getMonth() + 1 === m &&
+      today.getDate() === dayNum
+    ) {
+      cell.classList.add("is-today");
+    }
+
+    const dateEl = document.createElement("div");
+    dateEl.className = "calendar-cell-date";
+    dateEl.textContent = String(dayNum);
+    cell.appendChild(dateEl);
+
+    const dayEvents = calendarEvents.filter(
+      ev => ev.month === m && ev.day === dayNum && eventActiveInYear(ev, y),
+    );
+    if (dayEvents.length) {
+      const list = document.createElement("div");
+      list.className = "calendar-cell-events";
+      dayEvents.slice(0, 2).forEach(ev => {
+        const chip = document.createElement("div");
+        chip.className = "calendar-event-chip";
+        chip.textContent = ev.text;
+        chip.title = ev.text;
+        list.appendChild(chip);
+      });
+      if (dayEvents.length > 2) {
+        const more = document.createElement("div");
+        more.className = "calendar-event-more";
+        more.textContent = fmt(moreText, { count: dayEvents.length - 2 });
+        list.appendChild(more);
+      }
+      cell.appendChild(list);
+    }
+
+    cell.addEventListener("click", () => openCalendarDay(y, m, dayNum));
+    grid.appendChild(cell);
+  }
+}
+
+function shiftCalendarMonth(delta) {
+  let m = calViewMonth + delta;
+  let y = calViewYear;
+  while (m < 1) {
+    m += 12;
+    y -= 1;
+  }
+  while (m > 12) {
+    m -= 12;
+    y += 1;
+  }
+  calViewMonth = m;
+  calViewYear = y;
+  renderCalendarGrid();
+}
+
+function gotoCalendarToday() {
+  const now = new Date();
+  calViewYear = now.getFullYear();
+  calViewMonth = now.getMonth() + 1;
+  renderCalendarGrid();
+}
+
+async function setCalendarEnabled(enabled) {
+  try {
+    const data = await bridge.apiPost("calendar/enabled", {
+      enabled,
+      locale: getLocale(),
+    });
+    if (!data.success) throw new Error(data.error || t("err_unknown", "未知错误"));
+    calendarEnabled = !!data.enabled;
+    renderCalendar();
+    if (activeView === "dashboard") loadDashboard();
+  } catch (err) {
+    toast(err.message, "error");
+    const toggle = document.getElementById("calendar-enable-toggle");
+    if (toggle) toggle.checked = calendarEnabled;
+  }
+}
+
+function isCalendarDayOpen() {
+  const dlg = document.getElementById("calendar-day-dialog");
+  return !!dlg && dlg.style.display === "flex";
+}
+
+function openCalendarDay(year, month, day) {
+  calSelected = { year, month, day };
+  calEditingId = null;
+  document.getElementById("cal-day-title").textContent = fmt(
+    t("calendar_day_title", "{month} 月 {day} 日 · 事项"),
+    { month, day },
+  );
+  renderCalDayEvents();
+  resetCalForm();
+  document.getElementById("calendar-day-dialog").style.display = "flex";
+  setTimeout(() => document.getElementById("cal-form-text")?.focus(), 50);
+}
+
+function hideCalendarDay() {
+  const dlg = document.getElementById("calendar-day-dialog");
+  if (dlg) dlg.style.display = "none";
+  calEditingId = null;
+}
+
+function dayEventsForSelected() {
+  if (!calSelected) return [];
+  const { month, day } = calSelected;
+  return calendarEvents.filter(ev => ev.month === month && ev.day === day);
+}
+
+function renderCalDayEvents() {
+  const container = document.getElementById("cal-day-events");
+  if (!container) return;
+  const events = dayEventsForSelected();
+  if (!events.length) {
+    container.innerHTML = `<div class="cal-day-empty">${escHtml(
+      t("calendar_no_events", "这一天还没有事项"),
+    )}</div>`;
+    return;
+  }
+  container.innerHTML = events
+    .map(ev => {
+      const meta = `${escHtml(String(ev.year))} · ${escHtml(repeatLabel(ev.repeat))}`;
+      return `
+        <div class="cal-day-event-row">
+          <div class="cal-day-event-main">
+            <div class="cal-day-event-text">${escHtml(ev.text)}</div>
+            <div class="cal-day-event-meta">${meta}</div>
+          </div>
+          <div class="cal-row-actions">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="editCalEvent('${escAttr(
+              ev.id,
+            )}')">${escHtml(t("btn_edit", "编辑"))}</button>
+            <button type="button" class="btn btn-danger btn-sm" onclick="deleteCalEvent('${escAttr(
+              ev.id,
+            )}')">${escHtml(t("btn_delete", "删除"))}</button>
+          </div>
+        </div>`;
+    })
+    .join("");
+}
+
+function resetCalForm() {
+  calEditingId = null;
+  const textInput = document.getElementById("cal-form-text");
+  const yearInput = document.getElementById("cal-form-year");
+  const repeatSel = document.getElementById("cal-form-repeat");
+  if (textInput) textInput.value = "";
+  if (yearInput) yearInput.value = calSelected ? calSelected.year : calViewYear;
+  if (repeatSel) repeatSel.value = "0";
+  const saveBtn = document.getElementById("cal-day-save");
+  if (saveBtn) saveBtn.textContent = t("btn_save", "保存");
+}
+
+window.editCalEvent = function (id) {
+  const ev = calendarEvents.find(e => e.id === id);
+  if (!ev) return;
+  calEditingId = id;
+  document.getElementById("cal-form-text").value = ev.text;
+  document.getElementById("cal-form-year").value = ev.year;
+  document.getElementById("cal-form-repeat").value = String(normRepeat(ev.repeat));
+  document.getElementById("cal-form-text")?.focus();
+};
+
+window.deleteCalEvent = async function (id) {
+  try {
+    const data = await bridge.apiPost("calendar/event/delete", {
+      id,
+      locale: getLocale(),
+    });
+    if (!data.success) {
+      throw new Error(data.error || t("toast_calendar_delete_failed", "删除失败"));
+    }
+    calendarEvents = calendarEvents.filter(e => e.id !== id);
+    if (calEditingId === id) resetCalForm();
+    renderCalDayEvents();
+    renderCalendarGrid();
+    toast(data.message || t("toast_calendar_delete_failed", "已删除"), "success");
+  } catch (err) {
+    toast(err.message, "error");
+  }
+};
+
+async function saveCalDayEvent() {
+  if (!calSelected) return;
+  const textInput = document.getElementById("cal-form-text");
+  const text = (textInput?.value || "").trim();
+  if (!text) {
+    toast(t("toast_event_text_required", "请输入事项内容"), "error");
+    textInput?.focus();
+    return;
+  }
+  const year = parseInt(document.getElementById("cal-form-year").value, 10);
+  const repeat = parseInt(document.getElementById("cal-form-repeat").value, 10);
+  const payload = {
+    text,
+    year: Number.isFinite(year) ? year : calSelected.year,
+    month: calSelected.month,
+    day: calSelected.day,
+    repeat,
+    locale: getLocale(),
+  };
+  if (calEditingId) payload.id = calEditingId;
+
+  try {
+    const data = await bridge.apiPost("calendar/event/save", payload);
+    if (!data.success || !data.event) {
+      throw new Error(data.error || t("toast_calendar_save_failed", "保存失败"));
+    }
+    if (calEditingId) {
+      const idx = calendarEvents.findIndex(e => e.id === calEditingId);
+      if (idx >= 0) calendarEvents[idx] = data.event;
+    } else {
+      calendarEvents.push(data.event);
+    }
+    resetCalForm();
+    renderCalDayEvents();
+    renderCalendarGrid();
+    toast(data.message || t("toast_calendar_save_failed", "已保存"), "success");
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+async function clearCalendar(scope) {
+  let message;
+  if (scope === "month") {
+    message = fmt(t("confirm_clear_month", "确定清除 {year} 年 {month} 月的全部事项吗？"), {
+      year: calViewYear,
+      month: calViewMonth,
+    });
+  } else if (scope === "year") {
+    message = fmt(t("confirm_clear_year", "确定清除 {year} 年的全部事项吗？"), {
+      year: calViewYear,
+    });
+  } else {
+    message = t("confirm_clear_all", "确定清除全部时间表事项吗？此操作不可撤销。");
+  }
+  const ok = await showConfirm({
+    title: t("confirm_clear_title", "清除时间表事项"),
+    message,
+    confirmText: t("btn_delete", "删除"),
+  });
+  if (!ok) return;
+
+  try {
+    const data = await bridge.apiPost("calendar/clear", {
+      scope,
+      year: calViewYear,
+      month: calViewMonth,
+      locale: getLocale(),
+    });
+    if (!data.success) {
+      throw new Error(data.error || t("toast_calendar_clear_failed", "清除失败"));
+    }
+    await loadCalendar();
+    toast(data.message || t("toast_calendar_clear_failed", "已清除"), "success");
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+function exportCalendar() {
+  if (!calendarEvents.length) {
+    toast(t("toast_calendar_export_empty", "暂无可导出的事项"), "error");
+    return;
+  }
+  const payload = {
+    version: 1,
+    events: calendarEvents.map(ev => ({
+      year: ev.year,
+      month: ev.month,
+      day: ev.day,
+      text: ev.text,
+      repeat: ev.repeat,
+    })),
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `calendar_data_${calViewYear}${String(calViewMonth).padStart(2, "0")}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  toast(t("toast_calendar_export_done", "已导出时间表"), "success");
+}
+
+async function importCalendarFile(file) {
+  if (!file) return;
+  let parsed;
+  try {
+    const text = await file.text();
+    parsed = JSON.parse(text);
+  } catch {
+    toast(t("toast_calendar_import_bad_file", "文件格式不正确，无法导入"), "error");
+    return;
+  }
+  const events = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray(parsed?.events)
+      ? parsed.events
+      : null;
+  if (!events) {
+    toast(t("toast_calendar_import_bad_file", "文件格式不正确，无法导入"), "error");
+    return;
+  }
+
+  // 询问合并 / 替换：确定=替换，取消=合并
+  const replace = await showConfirm({
+    title: t("confirm_import_title", "导入时间表"),
+    message: fmt(
+      t("confirm_import_replace", "导入文件中含 {count} 条事项。是否替换？"),
+      { count: events.length },
+    ),
+    confirmText: t("btn_replace", "替换"),
+    danger: false,
+  });
+  const mode = replace ? "replace" : "merge";
+
+  try {
+    const data = await bridge.apiPost("calendar/import", {
+      events,
+      mode,
+      locale: getLocale(),
+    });
+    if (!data.success) {
+      throw new Error(data.error || t("toast_calendar_import_failed", "导入失败"));
+    }
+    calendarEvents = Array.isArray(data.events) ? data.events : [];
+    renderCalendarGrid();
+    toast(data.message || t("toast_calendar_import_failed", "已导入"), "success");
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+function bindCalendarEvents() {
+  document.getElementById("cal-prev")?.addEventListener("click", () =>
+    shiftCalendarMonth(-1),
+  );
+  document.getElementById("cal-next")?.addEventListener("click", () =>
+    shiftCalendarMonth(1),
+  );
+  document.getElementById("cal-today")?.addEventListener("click", gotoCalendarToday);
+  document
+    .getElementById("calendar-enable-toggle")
+    ?.addEventListener("change", e => setCalendarEnabled(e.target.checked));
+  document.getElementById("cal-clear-month")?.addEventListener("click", () =>
+    clearCalendar("month"),
+  );
+  document.getElementById("cal-clear-year")?.addEventListener("click", () =>
+    clearCalendar("year"),
+  );
+  document.getElementById("cal-clear-all")?.addEventListener("click", () =>
+    clearCalendar("all"),
+  );
+  document.getElementById("cal-export")?.addEventListener("click", exportCalendar);
+  document.getElementById("cal-import")?.addEventListener("click", () =>
+    document.getElementById("cal-import-file")?.click(),
+  );
+  document.getElementById("cal-import-file")?.addEventListener("change", e => {
+    const file = e.target.files?.[0];
+    importCalendarFile(file);
+    e.target.value = "";
+  });
+  document.getElementById("cal-day-save")?.addEventListener("click", saveCalDayEvent);
+  document.getElementById("cal-day-close")?.addEventListener("click", hideCalendarDay);
+  document.getElementById("calendar-day-dialog")?.addEventListener("click", e => {
+    if (e.target.id === "calendar-day-dialog") hideCalendarDay();
+  });
+  document.getElementById("cal-form-text")?.addEventListener("keydown", e => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      saveCalDayEvent();
+    }
+  });
+}
+
+bindCalendarEvents();
 
 if (!bridge) {
   renderStatic();
