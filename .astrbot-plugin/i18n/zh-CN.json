@@ -259,6 +259,7 @@
       "empty_search_title": "未找到匹配会话",
       "empty_search_desc": "请尝试其他关键词",
       "load_sessions_failed": "加载失败，请切换页面后重试",
+      "load_placeholders_failed": "占位符加载失败，请切换页面后重试",
       "th_session_id": "会话 ID",
       "th_platform": "平台",
       "th_user": "用户",

@@ -12,12 +12,19 @@ from ..constants import (
     DEFAULT_TIME_GUIDANCE_PROMPT,
     LEGACY_DEFAULT_TIME_GUIDANCE_PROMPT,
 )
-from ..llm.placeholder_utils import format_time_ago, stabilize_static_prompt_template
+from ..llm.placeholder_utils import (
+    build_placeholder_map,
+    render_template,
+    resolve_event_identity,
+    stabilize_static_prompt_template,
+)
 from ..utils.time_utils import (
     get_now,
-    get_tz,
     get_sleep_prompt_if_active as _check_sleep_prompt,
 )
+
+# 用户信息模板默认值（占位符由统一注册表解析）
+DEFAULT_USER_INFO_TEMPLATE = "当前对话信息：\n用户：{username}\n时间：{time}\n平台：{platform}（{chat_type}）\n\n"
 
 
 class UserInfoManager:
@@ -59,96 +66,37 @@ class UserInfoManager:
             logger.debug("心念 | 用户信息附加功能已关闭")
             return
 
-        # 获取用户信息
-        username = ""
-        if hasattr(event.message_obj, "sender") and event.message_obj.sender:
-            username = event.message_obj.sender.nickname or "未知用户"
-        else:
-            username = event.get_sender_name() or "未知用户"
-
-        # 获取用户ID
-        user_id = ""
-        if hasattr(event.message_obj, "sender") and event.message_obj.sender:
-            user_id = (
-                event.message_obj.sender.user_id or event.get_sender_id() or "未知"
-            )
-        else:
-            user_id = event.get_sender_id() or "未知"
-
-        # 获取时间信息
+        # 获取时间格式与会话ID
         time_format = user_config.get("time_format", "%Y-%m-%d %H:%M:%S")
         astrbot_config = self._get_astrbot_config()
-        tz = get_tz(self.config, astrbot_config)
+        session_id = event.unified_msg_origin
+
+        # 构建用户信息字符串（占位符由统一注册表解析）
+        template = user_config.get("template", DEFAULT_USER_INFO_TEMPLATE)
         try:
-            if hasattr(event.message_obj, "timestamp") and event.message_obj.timestamp:
-                current_time = datetime.datetime.fromtimestamp(
-                    event.message_obj.timestamp, tz=tz
-                ).strftime(time_format)
-            else:
-                current_time = get_now(self.config, astrbot_config).strftime(
-                    time_format
-                )
-        except Exception as e:
-            logger.warning(f"心念 | ⚠️ 时间格式错误 '{time_format}': {e}，使用默认格式")
-            current_time = get_now(self.config, astrbot_config).strftime(
-                "%Y-%m-%d %H:%M:%S"
+            mapping = build_placeholder_map(
+                session_id,
+                self.config,
+                astrbot_config,
+                event=event,
+                time_format=time_format,
+                build_user_context_func=self.build_user_context_for_proactive,
             )
-
-        # 获取平台信息
-        platform_name = event.get_platform_name() or "未知平台"
-        message_type = "群聊" if event.message_obj.group_id else "私聊"
-
-        # 构建用户信息字符串
-        template = user_config.get(
-            "template",
-            "当前对话信息：\n用户：{username}\n时间：{time}\n平台：{platform}（{chat_type}）\n\n",
-        )
-        try:
-            # 获取会话ID用于获取历史数据
-            session_id = event.unified_msg_origin
-
-            # 获取用户上次发消息时间
-            stored_user_info = runtime_data.session_user_info.get(session_id, {})
-            user_last_message_time = stored_user_info.get("last_active_time", "未知")
-
-            # 获取AI上次发送时间
-            ai_last_sent_time = runtime_data.ai_last_sent_times.get(
-                session_id, "从未发送过"
-            )
-
-            # 计算相对时间
-            user_last_message_time_ago = format_time_ago(user_last_message_time, tz=tz)
-
-            # 构建占位符字典（与主动对话统一）
-            weekday_names = [
-                "星期一",
-                "星期二",
-                "星期三",
-                "星期四",
-                "星期五",
-                "星期六",
-                "星期日",
-            ]
-            placeholders = {
-                "username": username,
-                "user_id": user_id,
-                "time": current_time,
-                "platform": platform_name,
-                "chat_type": message_type,
-                "current_time": current_time,
-                "weekday": weekday_names[
-                    get_now(self.config, astrbot_config).weekday()
-                ],
-                "user_last_message_time": user_last_message_time,
-                "user_last_message_time_ago": user_last_message_time_ago,
-                "ai_last_sent_time": ai_last_sent_time,
-            }
-
-            # 使用安全的替换方式处理模板
-            user_info = self._safe_format_template(template, placeholders)
+            user_info = render_template(template, mapping)
         except Exception as e:
             logger.warning(f"心念 | ⚠️ 用户信息模板格式错误: {e}，使用默认模板")
-            user_info = f"当前对话信息：\n用户：{username}\n时间：{current_time}\n平台：{platform_name}（{message_type}）\n\n"
+            try:
+                fallback_map = build_placeholder_map(
+                    session_id,
+                    self.config,
+                    astrbot_config,
+                    event=event,
+                    time_format=time_format,
+                )
+                user_info = render_template(DEFAULT_USER_INFO_TEMPLATE, fallback_map)
+            except Exception as fallback_error:
+                logger.error(f"心念 | ❌ 构建默认用户信息失败: {fallback_error}")
+                user_info = ""
 
         # 获取时间感知增强提示词配置
         time_awareness_config = self.config.get("time_awareness", {})
@@ -177,24 +125,13 @@ class UserInfoManager:
             self._append_dynamic_user_content(req, sleep_prompt)
 
         # 记录用户信息
-        self.record_user_info(event, username, user_id, platform_name, message_type)
+        self.record_user_info(event)
 
-    def record_user_info(
-        self,
-        event: AstrMessageEvent,
-        username: str,
-        user_id: str,
-        platform_name: str,
-        message_type: str,
-    ):
-        """记录用户信息到配置文件
+    def record_user_info(self, event: AstrMessageEvent):
+        """记录用户信息到运行时数据存储
 
         Args:
-            event: 消息事件
-            username: 用户名
-            user_id: 用户ID
-            platform_name: 平台名称
-            message_type: 消息类型
+            event: 消息事件（用户名/ID/平台/聊天类型由统一身份解析得出）
         """
         try:
             session_id = event.unified_msg_origin
@@ -207,11 +144,12 @@ class UserInfoManager:
                 return
 
             # 记录用户信息到运行时数据存储
+            identity = resolve_event_identity(event)
             user_info = {
-                "username": username or "未知用户",
-                "user_id": user_id or "未知",
-                "platform": platform_name or "未知平台",
-                "chat_type": message_type or "未知",
+                "username": identity["username"],
+                "user_id": identity["user_id"],
+                "platform": identity["platform"],
+                "chat_type": identity["chat_type"],
                 "last_active_time": current_time,
             }
 
@@ -425,23 +363,6 @@ class UserInfoManager:
         if callable(mark_as_temp):
             return mark_as_temp()
         return part
-
-    def _safe_format_template(self, template: str, placeholders: dict) -> str:
-        """安全地替换模板中的占位符
-
-        使用字符串替换，避免 str.format() 和 re.sub 的特殊字符问题
-
-        Args:
-            template: 模板字符串
-            placeholders: 占位符字典
-
-        Returns:
-            替换后的字符串
-        """
-        result = template
-        for key, value in placeholders.items():
-            result = result.replace("{" + key + "}", str(value))
-        return result
 
     def _get_sleep_prompt_if_active(self) -> str:
         """检查是否处于睡眠时间，如果是则返回配置的睡眠提示

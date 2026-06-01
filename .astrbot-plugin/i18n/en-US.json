@@ -259,6 +259,7 @@
       "empty_search_title": "No matching sessions",
       "empty_search_desc": "Try a different keyword",
       "load_sessions_failed": "Load failed — switch views and try again",
+      "load_placeholders_failed": "Failed to load placeholders — switch views and try again",
       "th_session_id": "Session ID",
       "th_platform": "Platform",
       "th_user": "User",
