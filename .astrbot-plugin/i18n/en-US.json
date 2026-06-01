@@ -73,6 +73,29 @@
         ]
       }
     },
+    "calendar": {
+      "description": "Calendar settings",
+      "enable_calendar": {
+        "description": "Enable calendar (date events)",
+        "hint": "When enabled, the {calendar_today} placeholder returns today's calendar events (usable in user-info templates and proactive prompts). When disabled nothing is injected even if events exist. Edit events visually in the Calendar tab"
+      },
+      "calendar_separator": {
+        "description": "Calendar event separator",
+        "hint": "When a day has multiple events, {calendar_today} joins them with this separator, e.g. a comma"
+      },
+      "calendar_empty_text": {
+        "description": "Default text when there are no events",
+        "hint": "Text returned by {calendar_today} when the day has no events. Leave empty to return an empty string (inject nothing)"
+      },
+      "ai_generate_provider_id": {
+        "description": "Model provider for AI calendar generation (empty = main model)",
+        "hint": "Provider used by AI calendar generation. Leave empty to use the current main model"
+      },
+      "ai_generate_prompt": {
+        "description": "System prompt for AI calendar generation",
+        "hint": "Custom system prompt guiding the AI to output theme-appropriate calendar events as a JSON array"
+      }
+    },
     "proactive_reply": {
       "description": "Scheduled proactive messages",
       "enabled": {
@@ -438,7 +461,28 @@
       "toast_calendar_ai_applied": "Applied",
       "toast_calendar_ai_applied_partial": "Applied {applied}; skipped {skipped} with invalid dates",
       "toast_calendar_ai_apply_failed": "Apply failed",
-      "toast_calendar_ai_row_invalid": "Please check the month, day and name of each event"
+      "toast_calendar_ai_row_invalid": "Please check the month, day and name of each event",
+      "tab_config": "Config",
+      "search_hint_config": "Search is not available on this page",
+      "config_subtitle": "Visually edit plugin config here. Switch groups via the tabs above; click “Save changes” to apply",
+      "config_tabs_aria": "Config groups",
+      "config_reset": "Reset to defaults",
+      "config_save": "Save changes",
+      "config_saving": "Saving…",
+      "config_saved": "Configuration saved",
+      "config_save_failed": "Save failed",
+      "config_dirty_hint": "You have unsaved changes",
+      "config_clean_hint": "All changes saved",
+      "config_list_add": "Add item",
+      "config_provider_default": "(Use main model)",
+      "config_unsaved_title": "Unsaved changes",
+      "config_unsaved_message": "This group has unsaved changes that will be lost when switching. Switch anyway?",
+      "config_discard": "Discard changes",
+      "config_reset_title": "Reset to defaults",
+      "config_reset_message": "Reset all items in this group to their default values (you still need to click Save to apply). Continue?",
+      "config_reset_confirm": "Reset to defaults",
+      "config_load_failed_title": "Failed to load configuration",
+      "err_config_load": "Failed to load configuration: "
     }
   },
   "api": {
@@ -459,7 +503,9 @@
       "calendar_import_invalid": "Invalid import data (expected a valid YAML calendar file)",
       "calendar_ai_prompt_empty": "Please enter a theme prompt",
       "calendar_ai_generate_failed": "AI generation failed. Check the model config or try again later.",
-      "calendar_ai_no_events": "No events to apply"
+      "calendar_ai_no_events": "No events to apply",
+      "config_section_invalid": "Configuration group does not exist",
+      "config_value_invalid": "Invalid values for the following items: {keys}"
     },
     "messages": {
       "session_added": "Session added: {session_id}",
@@ -472,7 +518,8 @@
       "calendar_enabled_updated": "Calendar toggle updated",
       "calendar_settings_updated": "Calendar display settings updated",
       "calendar_ai_generated": "Generated {count} event(s)",
-      "calendar_ai_applied": "Applied {count} event(s)"
+      "calendar_ai_applied": "Applied {count} event(s)",
+      "config_saved": "Configuration saved"
     },
     "activity": {
       "proactive_send_user": "Sent proactive message to {username}",

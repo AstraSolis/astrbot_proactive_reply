@@ -152,6 +152,7 @@ function renderStatic() {
     t("placeholders_subtitle", "点击任意占位符即可复制到剪贴板，粘贴进配置模板使用");
 
   renderCalendarStatic();
+  renderConfigStatic();
 
   document.getElementById("sidebar-nav").setAttribute(
     "aria-label",
@@ -223,6 +224,8 @@ function updateSearchForView(view) {
       input.placeholder = t("search_hint_placeholders", "此页面不支持搜索");
     } else if (view === "calendar") {
       input.placeholder = t("search_hint_calendar", "此页面不支持搜索");
+    } else if (view === "config") {
+      input.placeholder = t("search_hint_config", "此页面不支持搜索");
     } else {
       input.placeholder = t("search_hint_dashboard", "切换到会话页后可搜索");
     }
@@ -264,6 +267,8 @@ function switchView(view) {
     loadPlaceholders();
   } else if (view === "calendar" && !calendarLoaded) {
     loadCalendar();
+  } else if (view === "config" && !configLoaded) {
+    loadConfig();
   }
 }
 
@@ -1038,7 +1043,378 @@ async function reloadActiveView() {
   } else if (activeView === "calendar") {
     calendarLoaded = false;
     await loadCalendar();
+  } else if (activeView === "config") {
+    configLoaded = false;
+    await loadConfig();
   }
+}
+
+/* ==================== 配置文件（可视化编辑） ==================== */
+
+let configLoaded = false;
+let configPromise = null;
+let configGroups = [];
+let activeConfigGroup = null;
+let configDirty = false;
+let configSaving = false;
+
+function currentConfigGroup() {
+  return configGroups.find(g => g.key === activeConfigGroup) || null;
+}
+
+async function loadConfig() {
+  if (configPromise) return configPromise;
+  configPromise = (async () => {
+    try {
+      const data = await bridge.apiGet("config/schema", apiLocale());
+      if (!data.success) throw new Error(data.error || t("err_unknown", "未知错误"));
+      configGroups = Array.isArray(data.groups) ? data.groups : [];
+      configLoaded = true;
+      if (!activeConfigGroup || !configGroups.some(g => g.key === activeConfigGroup)) {
+        activeConfigGroup = configGroups[0]?.key || null;
+      }
+      renderConfigTabs();
+      renderConfigGroup(activeConfigGroup);
+      hideGlobalError();
+    } catch (err) {
+      configGroups = [];
+      renderConfigTabs();
+      document.getElementById("config-panel").innerHTML = emptyStateHtml(
+        t("config_load_failed_title", "配置加载失败"),
+        escHtml(err.message || ""),
+      );
+      document.getElementById("config-actionbar").style.display = "none";
+      showGlobalError(t("err_config_load", "配置加载失败：") + err.message);
+      console.error(err);
+    } finally {
+      configPromise = null;
+    }
+  })();
+  return configPromise;
+}
+
+function renderConfigTabs() {
+  const tabs = document.getElementById("config-tabs");
+  if (!configGroups.length) {
+    tabs.innerHTML = "";
+    return;
+  }
+  tabs.innerHTML = configGroups
+    .map(
+      g => `
+      <button type="button" class="config-tab${g.key === activeConfigGroup ? " active" : ""}"
+        role="tab" data-group="${escAttr(g.key)}"
+        aria-selected="${g.key === activeConfigGroup ? "true" : "false"}">
+        ${escHtml(g.title || g.key)}
+      </button>`,
+    )
+    .join("");
+  tabs.querySelectorAll(".config-tab").forEach(btn => {
+    btn.addEventListener("click", () => requestSwitchConfigGroup(btn.dataset.group));
+  });
+}
+
+async function requestSwitchConfigGroup(groupKey) {
+  if (groupKey === activeConfigGroup) return;
+  if (configDirty) {
+    const ok = await showConfirm({
+      title: t("config_unsaved_title", "未保存的更改"),
+      message: t(
+        "config_unsaved_message",
+        "当前分组有未保存的更改，切换后将丢失。确定要切换吗？",
+      ),
+      confirmText: t("config_discard", "放弃更改"),
+      danger: true,
+    });
+    if (!ok) return;
+  }
+  activeConfigGroup = groupKey;
+  renderConfigTabs();
+  renderConfigGroup(groupKey);
+}
+
+function renderConfigGroup(groupKey) {
+  const group = configGroups.find(g => g.key === groupKey);
+  const panel = document.getElementById("config-panel");
+  if (!group) {
+    panel.innerHTML = "";
+    document.getElementById("config-actionbar").style.display = "none";
+    return;
+  }
+  panel.innerHTML = `<form class="config-form" id="config-form" autocomplete="off">${group.fields
+    .map(renderConfigField)
+    .join("")}</form>`;
+
+  bindConfigFieldEvents();
+  setConfigDirty(false);
+  document.getElementById("config-actionbar").style.display = "flex";
+}
+
+function renderConfigField(field) {
+  const key = escAttr(field.key);
+  const labelHtml = escHtml(field.description || field.key);
+  const hintHtml = field.hint
+    ? `<p class="config-field-hint${field.obvious_hint ? " config-field-hint--obvious" : ""}">${escHtml(field.hint)}</p>`
+    : "";
+  const wrapStart = `<div class="config-field" data-key="${key}" data-control="${escAttr(field.control)}">`;
+  const wrapEnd = `</div>`;
+
+  if (field.control === "bool") {
+    return `${wrapStart}
+      <div class="config-field-toggle-row">
+        <label class="config-field-label" for="cfg-${key}">${labelHtml}</label>
+        <label class="switch">
+          <input type="checkbox" id="cfg-${key}" data-field="${key}"${field.value ? " checked" : ""} />
+          <span class="switch-track" aria-hidden="true"></span>
+        </label>
+      </div>
+      ${hintHtml}${wrapEnd}`;
+  }
+
+  let controlHtml = "";
+  if (field.control === "select") {
+    const opts = (field.choices || [])
+      .map(
+        c =>
+          `<option value="${escAttr(c.value)}"${String(c.value) === String(field.value) ? " selected" : ""}>${escHtml(c.label)}</option>`,
+      )
+      .join("");
+    controlHtml = `<select class="config-input" id="cfg-${key}" data-field="${key}">${opts}</select>`;
+  } else if (field.control === "provider") {
+    const defaultLabel = t("config_provider_default", "（使用主模型）");
+    const matched =
+      !field.value ||
+      (field.providers || []).some(p => String(p.value) === String(field.value));
+    let opts = `<option value=""${!field.value ? " selected" : ""}>${escHtml(defaultLabel)}</option>`;
+    opts += (field.providers || [])
+      .map(
+        p =>
+          `<option value="${escAttr(p.value)}"${String(p.value) === String(field.value) ? " selected" : ""}>${escHtml(p.label)}</option>`,
+      )
+      .join("");
+    if (field.value && !matched) {
+      opts += `<option value="${escAttr(field.value)}" selected>${escHtml(field.value)}</option>`;
+    }
+    controlHtml = `<select class="config-input" id="cfg-${key}" data-field="${key}">${opts}</select>`;
+  } else if (field.control === "int") {
+    controlHtml = `<input type="number" step="1" class="config-input" id="cfg-${key}" data-field="${key}" value="${escAttr(field.value)}" />`;
+  } else if (field.control === "text") {
+    controlHtml = `<textarea class="config-input config-textarea" id="cfg-${key}" data-field="${key}" rows="3">${escHtml(field.value)}</textarea>`;
+  } else if (field.control === "list") {
+    controlHtml = renderConfigList(field);
+  } else {
+    controlHtml = `<input type="text" class="config-input" id="cfg-${key}" data-field="${key}" value="${escAttr(field.value)}" />`;
+  }
+
+  return `${wrapStart}
+    <label class="config-field-label" for="cfg-${key}">${labelHtml}</label>
+    ${controlHtml}
+    ${hintHtml}${wrapEnd}`;
+}
+
+function renderConfigList(field) {
+  const key = escAttr(field.key);
+  const items = Array.isArray(field.value) ? field.value : [];
+  const rows = items.map((item, idx) => configListRowHtml(field.key, item, idx)).join("");
+  return `<div class="config-list" data-field="${key}" data-list="1">
+      <div class="config-list-items">${rows}</div>
+      <button type="button" class="btn btn-ghost btn-sm config-list-add" data-add="${key}">
+        + ${escHtml(t("config_list_add", "添加一项"))}
+      </button>
+    </div>`;
+}
+
+function configListRowHtml(fieldKey, value, idx) {
+  const key = escAttr(fieldKey);
+  return `<div class="config-list-row" data-row="${idx}">
+      <textarea class="config-input config-list-input" data-list-field="${key}" rows="1">${escHtml(value)}</textarea>
+      <button type="button" class="config-list-remove" data-remove="${key}" title="${escAttr(t("btn_delete", "删除"))}" aria-label="${escAttr(t("btn_delete", "删除"))}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+      </button>
+    </div>`;
+}
+
+function bindConfigFieldEvents() {
+  const form = document.getElementById("config-form");
+  if (!form) return;
+  form.addEventListener("input", () => setConfigDirty(true));
+  form.addEventListener("change", () => setConfigDirty(true));
+  form.addEventListener("submit", e => e.preventDefault());
+
+  form.querySelectorAll(".config-list-add").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const list = btn.closest(".config-list");
+      const itemsBox = list.querySelector(".config-list-items");
+      const fieldKey = btn.dataset.add;
+      const idx = itemsBox.querySelectorAll(".config-list-row").length;
+      itemsBox.insertAdjacentHTML("beforeend", configListRowHtml(fieldKey, "", idx));
+      bindConfigListRow(itemsBox.lastElementChild);
+      itemsBox.lastElementChild.querySelector("textarea")?.focus();
+      setConfigDirty(true);
+    });
+  });
+  form.querySelectorAll(".config-list-row").forEach(bindConfigListRow);
+}
+
+function bindConfigListRow(row) {
+  row.querySelector(".config-list-remove")?.addEventListener("click", () => {
+    row.remove();
+    setConfigDirty(true);
+  });
+}
+
+function setConfigDirty(dirty) {
+  configDirty = dirty;
+  const saveBtn = document.getElementById("config-save");
+  const resetBtn = document.getElementById("config-reset");
+  const hint = document.getElementById("config-dirty-hint");
+  if (saveBtn) saveBtn.disabled = !dirty || configSaving;
+  if (resetBtn) resetBtn.disabled = configSaving;
+  if (hint) {
+    hint.textContent = dirty
+      ? t("config_dirty_hint", "有未保存的更改")
+      : t("config_clean_hint", "所有更改已保存");
+    hint.classList.toggle("is-dirty", dirty);
+  }
+}
+
+function collectConfigValues(group) {
+  const values = {};
+  const form = document.getElementById("config-form");
+  if (!form) return values;
+  for (const field of group.fields) {
+    const key = field.key;
+    if (field.control === "bool") {
+      values[key] = !!form.querySelector(`#cfg-${cssEscape(key)}`)?.checked;
+    } else if (field.control === "int") {
+      const raw = form.querySelector(`#cfg-${cssEscape(key)}`)?.value ?? "";
+      values[key] = raw;
+    } else if (field.control === "list") {
+      const inputs = form.querySelectorAll(
+        `.config-list-input[data-list-field="${cssEscape(key)}"]`,
+      );
+      values[key] = Array.from(inputs)
+        .map(el => el.value.trim())
+        .filter(v => v.length > 0);
+    } else {
+      values[key] = form.querySelector(`#cfg-${cssEscape(key)}`)?.value ?? "";
+    }
+  }
+  return values;
+}
+
+function cssEscape(str) {
+  if (window.CSS && typeof window.CSS.escape === "function") {
+    return window.CSS.escape(str);
+  }
+  return String(str).replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+}
+
+async function saveConfigGroup() {
+  const group = currentConfigGroup();
+  if (!group || configSaving) return;
+  const values = collectConfigValues(group);
+
+  configSaving = true;
+  const saveBtn = document.getElementById("config-save");
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = t("config_saving", "保存中…");
+  }
+  try {
+    const data = await bridge.apiPost("config/save", {
+      section: group.key,
+      values,
+      ...apiLocale(),
+    });
+    if (!data.success) {
+      toast(data.error || t("config_save_failed", "保存失败"), "error");
+      return;
+    }
+    // 用后端规整后的值刷新本地缓存，保证「恢复默认」基线与回显一致
+    if (data.values && typeof data.values === "object") {
+      for (const field of group.fields) {
+        if (field.key in data.values) field.value = data.values[field.key];
+      }
+    }
+    toast(data.message || t("config_saved", "配置已保存"), "success");
+    setConfigDirty(false);
+  } catch (err) {
+    toast(t("config_save_failed", "保存失败") + "：" + err.message, "error");
+    console.error(err);
+  } finally {
+    configSaving = false;
+    if (saveBtn) saveBtn.textContent = t("config_save", "保存更改");
+    setConfigDirty(configDirty);
+  }
+}
+
+async function resetConfigGroup() {
+  const group = currentConfigGroup();
+  if (!group || configSaving) return;
+  const ok = await showConfirm({
+    title: t("config_reset_title", "恢复默认值"),
+    message: t(
+      "config_reset_message",
+      "将当前分组的所有项恢复为默认值（需点击保存后才会写入）。继续吗？",
+    ),
+    confirmText: t("config_reset_confirm", "恢复默认"),
+    danger: true,
+  });
+  if (!ok) return;
+
+  const form = document.getElementById("config-form");
+  if (!form) return;
+  for (const field of group.fields) {
+    const key = field.key;
+    if (field.control === "bool") {
+      const el = form.querySelector(`#cfg-${cssEscape(key)}`);
+      if (el) el.checked = !!field.default;
+    } else if (field.control === "list") {
+      const list = form.querySelector(`.config-list[data-field="${cssEscape(key)}"]`);
+      const itemsBox = list?.querySelector(".config-list-items");
+      if (itemsBox) {
+        const def = Array.isArray(field.default) ? field.default : [];
+        itemsBox.innerHTML = def
+          .map((item, idx) => configListRowHtml(key, item, idx))
+          .join("");
+        itemsBox.querySelectorAll(".config-list-row").forEach(bindConfigListRow);
+      }
+    } else {
+      const el = form.querySelector(`#cfg-${cssEscape(key)}`);
+      if (el) el.value = field.default ?? "";
+    }
+  }
+  setConfigDirty(true);
+}
+
+function renderConfigStatic() {
+  document.getElementById("nav-label-config").textContent =
+    t("tab_config", "配置文件");
+  document.getElementById("page-title-config").textContent =
+    t("tab_config", "配置文件");
+  document.getElementById("config-subtitle").textContent = t(
+    "config_subtitle",
+    "在此可视化编辑插件配置，按顶部分组切换；修改后点击「保存更改」生效",
+  );
+  document.getElementById("config-tabs").setAttribute(
+    "aria-label",
+    t("config_tabs_aria", "配置分组"),
+  );
+  document.getElementById("config-reset").textContent =
+    t("config_reset", "恢复默认");
+  document.getElementById("config-save").textContent =
+    t("config_save", "保存更改");
+
+  // 语言切换后，下次进入配置页时按新语言重新拉取（避免后端文案陈旧）
+  if (configLoaded && activeView !== "config") {
+    configLoaded = false;
+  }
+}
+
+function bindConfigEvents() {
+  document.getElementById("config-save")?.addEventListener("click", saveConfigGroup);
+  document.getElementById("config-reset")?.addEventListener("click", resetConfigGroup);
 }
 
 /* ==================== 时间表（日历事项） ==================== */
@@ -2000,6 +2376,7 @@ function bindCalendarEvents() {
 }
 
 bindCalendarEvents();
+bindConfigEvents();
 
 if (!bridge) {
   renderStatic();
