@@ -1423,7 +1423,7 @@ window.deleteCalEvent = async function (id) {
     if (calEditingId === id) resetCalForm();
     renderCalDayEvents();
     renderCalendarGrid();
-    toast(data.message || t("toast_calendar_delete_failed", "已删除"), "success");
+    toast(data.message || t("toast_calendar_event_deleted", "事项已删除"), "success");
   } catch (err) {
     toast(err.message, "error");
   }
@@ -1464,7 +1464,7 @@ async function saveCalDayEvent() {
     resetCalForm();
     renderCalDayEvents();
     renderCalendarGrid();
-    toast(data.message || t("toast_calendar_save_failed", "已保存"), "success");
+    toast(data.message || t("toast_calendar_event_saved", "事项已保存"), "success");
   } catch (err) {
     toast(err.message, "error");
   }
@@ -1502,7 +1502,7 @@ async function clearCalendar(scope) {
       throw new Error(data.error || t("toast_calendar_clear_failed", "清除失败"));
     }
     await loadCalendar();
-    toast(data.message || t("toast_calendar_clear_failed", "已清除"), "success");
+    toast(data.message || t("toast_calendar_cleared", "已清除"), "success");
   } catch (err) {
     toast(err.message, "error");
   }
@@ -1580,7 +1580,7 @@ async function importCalendarFile(file) {
     }
     calendarEvents = Array.isArray(data.events) ? data.events : [];
     renderCalendarGrid();
-    toast(data.message || t("toast_calendar_import_failed", "已导入"), "success");
+    toast(data.message || t("toast_calendar_imported", "已导入"), "success");
   } catch (err) {
     toast(err.message, "error");
   }

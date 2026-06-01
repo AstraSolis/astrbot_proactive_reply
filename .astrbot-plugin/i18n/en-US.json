@@ -400,6 +400,10 @@
       "toast_calendar_import_failed": "Import failed",
       "toast_calendar_export_empty": "No events to export",
       "toast_calendar_export_done": "Calendar exported",
+      "toast_calendar_event_saved": "Event saved",
+      "toast_calendar_event_deleted": "Event deleted",
+      "toast_calendar_cleared": "Cleared",
+      "toast_calendar_imported": "Imported",
       "toast_calendar_import_bad_file": "Invalid file format, cannot import",
       "err_calendar_load": "Failed to load calendar: ",
       "load_calendar_failed": "Load failed — please refresh"
