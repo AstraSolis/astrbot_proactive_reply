@@ -10,7 +10,6 @@ let placeholdersPromise = null;
 let activeView = "dashboard";
 let sessionsLoaded = false;
 let sessions = [];
-let sessionFilter = "";
 let schedulesLoaded = false;
 let schedulesPromise = null;
 let aiSchedules = [];
@@ -34,6 +33,17 @@ let calAiOptionsLoaded = false;
 let calAiGenerating = false;
 let calAiGeneratedEvents = [];
 let calAiCidSeq = 0;
+
+// 时间表页签（calendar=月历视图 / ai=AI 生成），记忆上次选择
+const CAL_TAB_KEY = "astrbot-proactive-cal-tab";
+let calActiveTab = (() => {
+  try {
+    const v = localStorage.getItem(CAL_TAB_KEY);
+    return v === "ai" ? "ai" : "calendar";
+  } catch {
+    return "calendar";
+  }
+})();
 
 applyVisitState();
 
@@ -59,13 +69,6 @@ function applyVisitState() {
   }
 }
 
-function getInitials(name) {
-  const s = String(name || "").trim();
-  if (!s) return "?";
-  if (/[\u4e00-\u9fff]/.test(s)) return s.slice(0, 1);
-  return s.slice(0, 2).toUpperCase();
-}
-
 function renderStatic() {
   const locale = getLocale();
   const ctx = bridge?.getContext?.() || {};
@@ -77,7 +80,6 @@ function renderStatic() {
   document.getElementById("sidebar-plugin-name").textContent = pluginName;
   document.getElementById("sidebar-plugin-role").textContent =
     t("sidebar_role", "主动回复管理");
-  document.getElementById("sidebar-avatar").textContent = getInitials(pluginName);
   document.getElementById("sidebar-version").textContent = ctx?.version
     ? `v${ctx.version}`
     : t("sidebar_build", "心念 WebUI");
@@ -162,8 +164,7 @@ function renderStatic() {
   );
 
   applyLoadingPlaceholders();
-  updateSearchShortcutHint();
-  updateSearchForView(activeView);
+  updateTopbarTitle(activeView);
   renderPlaceholders();
 }
 
@@ -174,24 +175,38 @@ function applyLoadingPlaceholders() {
   });
 }
 
-function updateSearchShortcutHint() {
-  const kbd = document.getElementById("search-kbd");
-  const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent);
-  kbd.textContent = isMac ? "⌘K" : "Ctrl+K";
-  kbd.hidden = false;
+const VIEW_TITLE_KEYS = {
+  dashboard: ["tab_dashboard", "概览"],
+  sessions: ["tab_sessions", "会话"],
+  schedules: ["tab_schedules", "AI 约定"],
+  calendar: ["tab_calendar", "时间表"],
+  placeholders: ["tab_placeholders", "占位符"],
+  config: ["tab_config", "配置文件"],
+};
+
+function updateTopbarTitle(view) {
+  const el = document.getElementById("topbar-title");
+  if (!el) return;
+  const [key, fallback] = VIEW_TITLE_KEYS[view] || VIEW_TITLE_KEYS.dashboard;
+  el.textContent = t(key, fallback);
 }
 
 function loadingHtml() {
   return `<div class="loading"><div class="spinner"></div><span class="loading-text">${escHtml(t("loading", "加载中…"))}</span></div>`;
 }
 
-function metricCard(label, valueHtml) {
+function metricCard(label, valueHtml, opts = {}) {
+  const toneClass = opts.tone ? ` metric-value--${opts.tone}` : "";
+  const hintHtml = opts.hint
+    ? `<div class="metric-hint">${escHtml(opts.hint)}</div>`
+    : "";
   return `
     <div class="metric-card">
       <div class="metric-card-top">
         <span class="metric-label">${label}</span>
       </div>
-      <div class="metric-value">${valueHtml}</div>
+      <div class="metric-value${toneClass}">${valueHtml}</div>
+      ${hintHtml}
     </div>`;
 }
 
@@ -205,29 +220,6 @@ function emptyStateHtml(title, desc, actionHtml = "") {
       <p>${desc}</p>
       ${actionHtml}
     </div>`;
-}
-
-function updateSearchForView(view) {
-  const input = document.getElementById("search-input");
-  if (view === "sessions") {
-    input.disabled = false;
-    input.placeholder = t("search_sessions", "搜索会话 ID 或用户名…");
-  } else {
-    input.disabled = true;
-    input.value = "";
-    sessionFilter = "";
-    if (view === "schedules") {
-      input.placeholder = t("search_hint_schedules", "此页面不支持搜索");
-    } else if (view === "placeholders") {
-      input.placeholder = t("search_hint_placeholders", "此页面不支持搜索");
-    } else if (view === "calendar") {
-      input.placeholder = t("search_hint_calendar", "此页面不支持搜索");
-    } else if (view === "config") {
-      input.placeholder = t("search_hint_config", "此页面不支持搜索");
-    } else {
-      input.placeholder = t("search_hint_dashboard", "切换到会话页后可搜索");
-    }
-  }
 }
 
 function switchView(view) {
@@ -249,14 +241,14 @@ function switchView(view) {
   document.getElementById("btn-add-session").style.display =
     view === "sessions" ? "inline-flex" : "none";
 
-  updateSearchForView(view);
+  updateTopbarTitle(view);
   closeSidebar();
   hideGlobalError();
 
   if (view === "sessions" && !sessionsLoaded) {
     loadSessions();
   } else if (view === "sessions" && sessionsLoaded) {
-    applySessionFilter();
+    renderSessionList();
   } else if (view === "schedules" && !schedulesLoaded) {
     loadAiSchedules();
   } else if (view === "schedules" && schedulesLoaded) {
@@ -288,19 +280,7 @@ function closeSidebar() {
 document.getElementById("menu-toggle").addEventListener("click", openSidebar);
 document.getElementById("sidebar-backdrop").addEventListener("click", closeSidebar);
 
-document.getElementById("search-input").addEventListener("input", e => {
-  sessionFilter = e.target.value;
-  if (activeView === "sessions" && sessionsLoaded) {
-    applySessionFilter();
-  }
-});
-
 document.addEventListener("keydown", e => {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
-    e.preventDefault();
-    const input = document.getElementById("search-input");
-    if (!input.disabled) input.focus();
-  }
   if (e.key === "Escape") {
     hideAddDialog();
     hideSessionDetail();
@@ -311,6 +291,7 @@ document.addEventListener("keydown", e => {
   if (
     activeView === "calendar" &&
     calendarEnabled &&
+    calActiveTab === "calendar" &&
     !isCalendarDayOpen() &&
     (e.key === "ArrowLeft" || e.key === "ArrowRight")
   ) {
@@ -360,12 +341,29 @@ function renderDashboard(s) {
       ${escHtml(runLabel)}
     </span>`;
 
+  const unrepliedTotal = s.unreplied_total || 0;
   document.getElementById("dash-stats-grid").innerHTML = [
     metricCard(escHtml(t("stat_session_count", "总会话数")), s.session_count),
     metricCard(escHtml(t("stat_ai_schedules", "计划任务")), s.ai_schedules_count),
     metricCard(escHtml(t("stat_users", "记录用户")), s.user_count),
+    metricCard(
+      escHtml(t("stat_proactive_sent", "已发送")),
+      s.proactive_sent_count ?? 0,
+      { tone: "success" },
+    ),
+    metricCard(escHtml(t("stat_unreplied_total", "待回复")), unrepliedTotal, {
+      tone: unrepliedTotal > 0 ? "warning" : undefined,
+    }),
     metricCard(escHtml(t("stat_run_status", "运行状态")), statusHtml),
   ].join("");
+
+  const featureTag = (on, label) => `
+    <span class="tag ${on ? "on" : "off"}">
+      <span class="tag-dot"></span>${escHtml(label)}
+    </span>`;
+  const nextSend = s.next_send_display
+    ? escHtml(s.next_send_display)
+    : `<span class="text-muted">${escHtml(t("value_none", "—"))}</span>`;
 
   document.getElementById("plugin-status-rows").innerHTML = `
     <div class="info-row">
@@ -373,17 +371,22 @@ function renderDashboard(s) {
       <span class="info-value">${escHtml(pluginName)}</span>
     </div>
     <div class="info-row">
+      <span class="info-label">${escHtml(t("label_next_send", "下次发送"))}</span>
+      <span class="info-value">${nextSend}</span>
+    </div>
+    <div class="info-row">
+      <span class="info-label">${escHtml(t("label_calendar_events", "时间表事项"))}</span>
+      <span class="info-value">${s.calendar_enabled ? (s.calendar_event_count || 0) : `<span class="text-muted">${escHtml(t("value_disabled", "未启用"))}</span>`}</span>
+    </div>
+    <div class="info-row">
       <span class="info-label">${escHtml(t("label_feature_status", "功能状态"))}</span>
       <div class="tags">
-        <span class="tag ${s.proactive_enabled ? "on" : "off"}">
-          <span class="tag-dot"></span>${escHtml(t("tag_proactive", "主动消息"))}
-        </span>
-        <span class="tag ${s.ai_schedule_enabled ? "on" : "off"}">
-          <span class="tag-dot"></span>${escHtml(t("tag_ai_schedule", "计划任务"))}
-        </span>
-        <span class="tag ${s.proactive_running ? "on" : "off"}">
-          <span class="tag-dot"></span>${escHtml(t("tag_timer", "定时任务"))}
-        </span>
+        ${featureTag(s.proactive_enabled, t("tag_proactive", "主动消息"))}
+        ${featureTag(s.ai_schedule_enabled, t("tag_ai_schedule", "计划任务"))}
+        ${featureTag(s.proactive_running, t("tag_timer", "定时任务"))}
+        ${featureTag(s.calendar_enabled, t("tag_calendar", "时间表"))}
+        ${featureTag(s.time_guidance_enabled, t("tag_time_guidance", "时间感知"))}
+        ${featureTag(s.sleep_mode_enabled, t("tag_sleep_mode", "睡眠模式"))}
       </div>
     </div>`;
 
@@ -421,7 +424,7 @@ async function loadSessions() {
       if (!data.success) throw new Error(data.error || t("err_unknown", "未知错误"));
       sessions = data.sessions || [];
       sessionsLoaded = true;
-      applySessionFilter();
+      renderSessionList();
       hideGlobalError();
     } catch (err) {
       showGlobalError(t("err_sessions_load", "会话列表加载失败：") + err.message);
@@ -461,17 +464,9 @@ async function loadPlaceholders() {
   return placeholdersPromise;
 }
 
-function applySessionFilter() {
-  const q = sessionFilter.trim().toLowerCase();
-  const list = !q
-    ? sessions
-    : sessions.filter(
-        s =>
-          s.session_id.toLowerCase().includes(q) ||
-          (s.username && s.username.toLowerCase().includes(q)),
-      );
-  updateSessionStats(list);
-  renderSessions(list);
+function renderSessionList() {
+  updateSessionStats(sessions);
+  renderSessions(sessions);
 }
 
 function updateSessionStats(list) {
@@ -484,15 +479,10 @@ function updateSessionStats(list) {
 
 function renderSessions(list) {
   if (list.length === 0) {
-    const isFiltered = sessionFilter.trim().length > 0;
     document.getElementById("sessions-container").innerHTML = emptyStateHtml(
-      isFiltered ? t("empty_search_title", "未找到匹配会话") : t("empty_sessions_title", "还没有主动会话"),
-      isFiltered
-        ? escHtml(t("empty_search_desc", "请尝试其他关键词"))
-        : `${escHtml(t("empty_sessions_desc", "点击顶部 + 添加，或在聊天中使用"))} <code>/proactive add_session</code>`,
-      isFiltered
-        ? ""
-        : `<button type="button" class="btn btn-primary" data-action="add-session">${escHtml(t("btn_add_first", "添加第一个会话"))}</button>`,
+      t("empty_sessions_title", "还没有主动会话"),
+      `${escHtml(t("empty_sessions_desc", "点击顶部 + 添加，或在聊天中使用"))} <code>/proactive add_session</code>`,
+      `<button type="button" class="btn btn-primary" data-action="add-session">${escHtml(t("btn_add_first", "添加第一个会话"))}</button>`,
     );
     return;
   }
@@ -1466,6 +1456,8 @@ function renderCalendarStatic() {
   set("nav-label-calendar", "tab_calendar", "时间表");
   set("page-title-calendar", "tab_calendar", "时间表");
   set("calendar-subtitle", "calendar_subtitle", "为日期添加节日或事项");
+  set("cal-tab-calendar", "calendar_tab_calendar", "时间表");
+  set("cal-tab-ai", "calendar_tab_ai", "AI 生成时间表");
   set("cal-today", "calendar_today_btn", "回到今天");
   set("cal-import", "calendar_import", "导入");
   set("cal-export", "calendar_export", "导出");
@@ -1547,12 +1539,30 @@ async function loadCalendar() {
   return calendarPromise;
 }
 
+function setCalendarTab(tab) {
+  calActiveTab = tab === "ai" ? "ai" : "calendar";
+  try {
+    localStorage.setItem(CAL_TAB_KEY, calActiveTab);
+  } catch {
+    /* ignore */
+  }
+  document.querySelectorAll(".cal-tab").forEach(btn => {
+    const isActive = btn.dataset.calTab === calActiveTab;
+    btn.classList.toggle("active", isActive);
+    btn.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+  document.querySelectorAll(".cal-tabpanel").forEach(panel => {
+    panel.hidden = panel.dataset.calPanel !== calActiveTab;
+  });
+}
+
 function renderCalendar() {
   const body = document.getElementById("calendar-body");
   const disabled = document.getElementById("calendar-disabled-state");
   if (calendarEnabled) {
     if (body) body.style.display = "";
     if (disabled) disabled.style.display = "none";
+    setCalendarTab(calActiveTab);
     renderCalendarGrid();
     loadCalendarAiOptions();
   } else {
@@ -2252,6 +2262,9 @@ async function applyCalendarAi(mode) {
 }
 
 function bindCalendarEvents() {
+  document.querySelectorAll(".cal-tab").forEach(btn => {
+    btn.addEventListener("click", () => setCalendarTab(btn.dataset.calTab));
+  });
   document.getElementById("cal-prev")?.addEventListener("click", () =>
     shiftCalendarMonth(-1),
   );

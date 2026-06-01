@@ -1084,15 +1084,62 @@ def _build_dashboard_stats(managers: dict, locale: str = "zh-CN") -> dict:
             elif isinstance(tasks, dict):
                 ai_schedules_count += 1
 
+    now = get_now(config, astrbot_config).replace(tzinfo=None)
+
+    time_awareness = config.get("time_awareness", {})
+    calendar_conf = config.get("calendar", {})
+    calendar_enabled = bool(calendar_conf.get("enable_calendar", False))
+
+    calendar_event_count = 0
+    calendar_manager = managers.get("calendar_manager")
+    if calendar_manager and hasattr(calendar_manager, "get_events"):
+        try:
+            events = calendar_manager.get_events()
+            calendar_event_count = len(events) if events else 0
+        except Exception:
+            calendar_event_count = 0
+
+    unreplied_total = sum(
+        v for v in runtime_data.session_unreplied_count.values() if isinstance(v, int)
+    )
+
+    next_send_display = _next_send_display(now, locale)
+
     return {
         "session_count": len(sessions),
         "user_count": len(runtime_data.session_user_info),
         "ai_schedules_count": ai_schedules_count,
+        "proactive_sent_count": len(runtime_data.last_sent_times),
+        "unreplied_total": unreplied_total,
+        "calendar_event_count": calendar_event_count,
+        "next_send_display": next_send_display,
         "proactive_running": proactive_running,
         "proactive_enabled": config.get("proactive_reply", {}).get("enabled", False),
         "ai_schedule_enabled": config.get("ai_schedule", {}).get("enabled", False),
+        "calendar_enabled": calendar_enabled,
+        "time_guidance_enabled": bool(
+            time_awareness.get("time_guidance_enabled", False)
+        ),
+        "sleep_mode_enabled": bool(time_awareness.get("sleep_mode_enabled", False)),
         "recent_activities": _build_recent_activities(config, astrbot_config, locale),
     }
+
+
+def _next_send_display(now: datetime, locale: str = "zh-CN") -> str:
+    """返回最近一次即将到来的主动发送时间（相对描述），无则返回空串"""
+    earliest = None
+    for time_str in runtime_data.session_next_fire_times.values():
+        try:
+            fire_time = datetime.strptime(str(time_str), "%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError):
+            continue
+        if fire_time < now:
+            continue
+        if earliest is None or fire_time < earliest:
+            earliest = fire_time
+    if earliest is None:
+        return ""
+    return _format_relative_time(earliest, now, locale)
 
 
 def _build_recent_activities(
