@@ -407,7 +407,29 @@
       "toast_calendar_imported": "已导入",
       "toast_calendar_import_bad_file": "文件格式不正确，无法导入",
       "err_calendar_load": "时间表加载失败：",
-      "load_calendar_failed": "加载失败，请刷新重试"
+      "load_calendar_failed": "加载失败，请刷新重试",
+      "calendar_ai_title": "AI 生成时间表",
+      "calendar_ai_subtitle": "输入主题或世界观，让 AI 一次性生成整套节日 / 纪念日，预览后可合并或替换到时间表",
+      "calendar_ai_provider_label": "模型",
+      "calendar_ai_provider_hint": "留空使用默认（主模型）；可在插件配置中固定首选模型",
+      "calendar_ai_provider_default": "默认（主模型）",
+      "calendar_ai_prompt_label": "主题提示词",
+      "calendar_ai_prompt_placeholder": "如：异世界/魔法/节日，或 现代都市/节日",
+      "calendar_ai_prompt_hint": "描述世界观或场景，AI 会据此生成贴合主题的事项（Ctrl+Enter 快速生成）",
+      "calendar_ai_generate_btn": "生成",
+      "calendar_ai_generating": "生成中…",
+      "calendar_ai_result_title": "预览（{count} 条）",
+      "calendar_ai_preview_date": "{month}/{day}",
+      "calendar_ai_apply_merge": "合并应用",
+      "calendar_ai_apply_replace": "替换应用",
+      "confirm_ai_apply_title": "应用 AI 时间表",
+      "confirm_ai_apply_replace": "「替换应用」将清空现有全部事项并写入本次生成的事项，是否继续？",
+      "toast_calendar_ai_prompt_required": "请输入主题提示词",
+      "toast_calendar_ai_failed": "AI 生成失败",
+      "toast_calendar_ai_empty": "AI 未生成任何有效事项",
+      "toast_calendar_ai_generated": "已生成事项",
+      "toast_calendar_ai_applied": "已应用",
+      "toast_calendar_ai_apply_failed": "应用失败"
     }
   },
   "api": {
@@ -425,7 +447,10 @@
       "calendar_manager_not_found": "时间表管理器未找到",
       "calendar_event_invalid": "事项数据不合法或已达数量上限",
       "calendar_event_not_found": "未找到该事项或数据不合法",
-      "calendar_import_invalid": "导入数据不合法（应为合法的 YAML 时间表文件）"
+      "calendar_import_invalid": "导入数据不合法（应为合法的 YAML 时间表文件）",
+      "calendar_ai_prompt_empty": "请输入主题提示词",
+      "calendar_ai_generate_failed": "AI 生成失败，请检查模型配置或稍后重试",
+      "calendar_ai_no_events": "没有可应用的事项"
     },
     "messages": {
       "session_added": "已添加会话: {session_id}",
@@ -436,7 +461,9 @@
       "calendar_cleared": "已清除 {count} 条事项",
       "calendar_imported": "已导入 {count} 条事项",
       "calendar_enabled_updated": "时间表开关已更新",
-      "calendar_settings_updated": "时间表显示设置已更新"
+      "calendar_settings_updated": "时间表显示设置已更新",
+      "calendar_ai_generated": "已生成 {count} 条事项",
+      "calendar_ai_applied": "已应用 {count} 条事项"
     },
     "activity": {
       "proactive_send_user": "向 {username} 发送了主动消息",

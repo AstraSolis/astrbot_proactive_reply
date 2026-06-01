@@ -31,6 +31,11 @@ let calViewMonth = _now.getMonth() + 1; // 1-12
 let calSelected = null; // { year, month, day }
 let calEditingId = null;
 
+// 时间表 · AI 生成状态
+let calAiOptionsLoaded = false;
+let calAiGenerating = false;
+let calAiGeneratedEvents = [];
+
 applyVisitState();
 
 function t(key, fallback) {
@@ -1095,6 +1100,22 @@ function renderCalendarStatic() {
   set("cal-sep-hint", "calendar_separator_hint", "");
   set("cal-empty-hint", "calendar_empty_text_hint", "");
   set("cal-settings-save", "btn_save", "保存");
+  set("cal-ai-title", "calendar_ai_title", "AI 生成时间表");
+  set("cal-ai-subtitle", "calendar_ai_subtitle", "输入主题，让 AI 一次性生成整套节日 / 纪念日");
+  set("cal-ai-provider-label", "calendar_ai_provider_label", "模型");
+  set("cal-ai-provider-hint", "calendar_ai_provider_hint", "");
+  set("cal-ai-prompt-label", "calendar_ai_prompt_label", "主题提示词");
+  set("cal-ai-prompt-hint", "calendar_ai_prompt_hint", "");
+  set("cal-ai-generate", "calendar_ai_generate_btn", "生成");
+  set("cal-ai-apply-merge", "calendar_ai_apply_merge", "合并应用");
+  set("cal-ai-apply-replace", "calendar_ai_apply_replace", "替换应用");
+  const aiPromptInput = document.getElementById("cal-ai-prompt-input");
+  if (aiPromptInput) {
+    aiPromptInput.placeholder = t(
+      "calendar_ai_prompt_placeholder",
+      "如：异世界/魔法/节日，或 现代都市/节日",
+    );
+  }
 
   const prevBtn = document.getElementById("cal-prev");
   if (prevBtn) prevBtn.title = t("calendar_prev_month", "上个月");
@@ -1153,6 +1174,7 @@ function renderCalendar() {
     const emptyInput = document.getElementById("cal-empty-input");
     if (emptyInput) emptyInput.value = calendarEmptyText;
     renderCalendarGrid();
+    loadCalendarAiOptions();
   } else {
     if (body) body.style.display = "none";
     if (disabled) {
@@ -1577,6 +1599,171 @@ async function importCalendarFile(file) {
   }
 }
 
+async function loadCalendarAiOptions() {
+  if (calAiOptionsLoaded) return;
+  try {
+    const data = await bridge.apiGet("calendar/ai/options", apiLocale());
+    if (!data.success) throw new Error(data.error || t("err_unknown", "未知错误"));
+    calAiOptionsLoaded = true;
+    populateAiProviders(
+      Array.isArray(data.providers) ? data.providers : [],
+      typeof data.provider_id === "string" ? data.provider_id : "",
+    );
+  } catch (err) {
+    // 选项加载失败不阻塞时间表主功能，仅在控制台记录
+    console.error("加载 AI 生成选项失败", err);
+  }
+}
+
+function populateAiProviders(providers, selected) {
+  const sel = document.getElementById("cal-ai-provider");
+  if (!sel) return;
+  const defaultLabel = t("calendar_ai_provider_default", "默认（主模型）");
+  const opts = [`<option value="">${escHtml(defaultLabel)}</option>`];
+  providers.forEach(p => {
+    const id = p && typeof p.id === "string" ? p.id : "";
+    if (!id) return;
+    const model = p && typeof p.model === "string" && p.model ? ` (${p.model})` : "";
+    opts.push(
+      `<option value="${escAttr(id)}">${escHtml(id + model)}</option>`,
+    );
+  });
+  sel.innerHTML = opts.join("");
+  // 配置中指定的模型若在列表中则默认选中
+  if (selected && providers.some(p => p && p.id === selected)) {
+    sel.value = selected;
+  } else {
+    sel.value = "";
+  }
+}
+
+function setAiGenerating(on) {
+  calAiGenerating = on;
+  const btn = document.getElementById("cal-ai-generate");
+  if (btn) {
+    btn.disabled = on;
+    btn.textContent = on
+      ? t("calendar_ai_generating", "生成中…")
+      : t("calendar_ai_generate_btn", "生成");
+  }
+}
+
+async function generateCalendarAi() {
+  if (calAiGenerating) return;
+  const promptInput = document.getElementById("cal-ai-prompt-input");
+  const userPrompt = (promptInput?.value || "").trim();
+  if (!userPrompt) {
+    toast(t("toast_calendar_ai_prompt_required", "请输入主题提示词"), "error");
+    promptInput?.focus();
+    return;
+  }
+  const providerSel = document.getElementById("cal-ai-provider");
+  const providerId = providerSel ? providerSel.value : "";
+
+  setAiGenerating(true);
+  try {
+    const data = await bridge.apiPost("calendar/ai/generate", {
+      user_prompt: userPrompt,
+      provider_id: providerId,
+      locale: getLocale(),
+    });
+    if (!data.success) {
+      throw new Error(data.error || t("toast_calendar_ai_failed", "AI 生成失败"));
+    }
+    calAiGeneratedEvents = Array.isArray(data.events) ? data.events : [];
+    renderAiPreview();
+    if (!calAiGeneratedEvents.length) {
+      toast(t("toast_calendar_ai_empty", "AI 未生成任何有效事项"), "error");
+    } else {
+      toast(
+        data.message || t("toast_calendar_ai_generated", "已生成事项"),
+        "success",
+      );
+    }
+  } catch (err) {
+    toast(err.message, "error");
+  } finally {
+    setAiGenerating(false);
+  }
+}
+
+function renderAiPreview() {
+  const result = document.getElementById("cal-ai-result");
+  const preview = document.getElementById("cal-ai-preview");
+  const titleEl = document.getElementById("cal-ai-result-title");
+  if (!result || !preview) return;
+
+  if (!calAiGeneratedEvents.length) {
+    result.style.display = "none";
+    preview.innerHTML = "";
+    return;
+  }
+
+  result.style.display = "";
+  if (titleEl) {
+    titleEl.textContent = fmt(
+      t("calendar_ai_result_title", "预览（{count} 条）"),
+      { count: calAiGeneratedEvents.length },
+    );
+  }
+
+  const sorted = [...calAiGeneratedEvents].sort(
+    (a, b) => a.month - b.month || a.day - b.day,
+  );
+  preview.innerHTML = sorted
+    .map(ev => {
+      const date = fmt(t("calendar_ai_preview_date", "{month}/{day}"), {
+        month: ev.month,
+        day: ev.day,
+      });
+      return `
+        <div class="cal-ai-preview-row">
+          <span class="cal-ai-preview-date">${escHtml(date)}</span>
+          <span class="cal-ai-preview-text">${escHtml(ev.text)}</span>
+          <span class="cal-ai-preview-meta">${escHtml(repeatLabel(ev.repeat))}</span>
+        </div>`;
+    })
+    .join("");
+}
+
+async function applyCalendarAi(mode) {
+  if (!calAiGeneratedEvents.length) {
+    toast(t("toast_calendar_ai_empty", "AI 未生成任何有效事项"), "error");
+    return;
+  }
+  if (mode === "replace") {
+    const ok = await showConfirm({
+      title: t("confirm_ai_apply_title", "应用 AI 时间表"),
+      message: t(
+        "confirm_ai_apply_replace",
+        "「替换应用」将清空现有全部事项并写入本次生成的事项，是否继续？",
+      ),
+      confirmText: t("calendar_ai_apply_replace", "替换应用"),
+    });
+    if (!ok) return;
+  }
+
+  try {
+    const data = await bridge.apiPost("calendar/ai/apply", {
+      events: calAiGeneratedEvents,
+      mode,
+      locale: getLocale(),
+    });
+    if (!data.success) {
+      throw new Error(data.error || t("toast_calendar_ai_apply_failed", "应用失败"));
+    }
+    calendarEvents = Array.isArray(data.events) ? data.events : calendarEvents;
+    calAiGeneratedEvents = [];
+    renderAiPreview();
+    renderCalendarGrid();
+    const promptInput = document.getElementById("cal-ai-prompt-input");
+    if (promptInput) promptInput.value = "";
+    toast(data.message || t("toast_calendar_ai_applied", "已应用"), "success");
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
 function bindCalendarEvents() {
   document.getElementById("cal-prev")?.addEventListener("click", () =>
     shiftCalendarMonth(-1),
@@ -1623,6 +1810,23 @@ function bindCalendarEvents() {
       saveCalDayEvent();
     }
   });
+  document
+    .getElementById("cal-ai-generate")
+    ?.addEventListener("click", generateCalendarAi);
+  document
+    .getElementById("cal-ai-apply-merge")
+    ?.addEventListener("click", () => applyCalendarAi("merge"));
+  document
+    .getElementById("cal-ai-apply-replace")
+    ?.addEventListener("click", () => applyCalendarAi("replace"));
+  document
+    .getElementById("cal-ai-prompt-input")
+    ?.addEventListener("keydown", e => {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        generateCalendarAi();
+      }
+    });
 }
 
 bindCalendarEvents();

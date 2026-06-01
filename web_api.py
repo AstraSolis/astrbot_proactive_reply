@@ -11,6 +11,11 @@ from quart import jsonify, request
 from astrbot.api import logger
 
 from .core.runtime_data import runtime_data
+from .llm.calendar_generator import (
+    DEFAULT_MAX_GENERATE,
+    build_system_prompt,
+    generate_calendar_events,
+)
 from .llm.placeholder_utils import get_placeholder_catalog
 from .utils.plugin_i18n import normalize_locale, request_locale, t
 from .utils.time_utils import get_now
@@ -662,6 +667,208 @@ def register_web_apis(context, managers: dict) -> None:
             logger.error(f"心念 Web API | 导入时间表失败: {e}")
             return _internal_error_response(request_locale())
 
+    # ==================== 时间表 · AI 生成 ====================
+
+    def _calendar_ai_config():
+        """读取时间表 AI 生成相关配置，返回 (provider_id, prompt)。"""
+        config_manager = managers.get("config_manager")
+        config = (
+            config_manager.config
+            if config_manager and hasattr(config_manager, "config")
+            else {}
+        )
+        calendar_conf = config.get("calendar", {}) if isinstance(config, dict) else {}
+        provider_id = str(
+            calendar_conf.get("ai_generate_provider_id", "") or ""
+        ).strip()
+        prompt = str(calendar_conf.get("ai_generate_prompt", "") or "").strip()
+        return provider_id, prompt
+
+    def _list_providers():
+        """列出可用的文本生成提供商，供 WebUI 下拉选择。"""
+        providers = []
+        try:
+            for provider in context.get_all_providers() or []:
+                try:
+                    meta = provider.meta()
+                    pid = getattr(meta, "id", "") or ""
+                    model = getattr(meta, "model", "") or ""
+                except Exception:
+                    continue
+                if pid:
+                    providers.append({"id": pid, "model": model})
+        except Exception as e:
+            logger.warning(f"心念 Web API | 获取提供商列表失败: {e}")
+        return providers
+
+    async def get_calendar_ai_options():
+        """返回 AI 生成时间表所需的下拉/回显数据（提供商列表、已配置模型与提示词）。"""
+        try:
+            locale = normalize_locale(request.args.get("locale"))
+            _ = locale  # 预留：未来如需本地化错误
+            provider_id, prompt = _calendar_ai_config()
+            return jsonify(
+                {
+                    "success": True,
+                    "providers": _list_providers(),
+                    "provider_id": provider_id,
+                    "prompt": prompt,
+                    "max_events": DEFAULT_MAX_GENERATE,
+                }
+            )
+        except Exception as e:
+            logger.error(f"心念 Web API | 获取 AI 生成选项失败: {e}")
+            return _internal_error_response(
+                normalize_locale(request.args.get("locale"))
+            )
+
+    def _resolve_provider_id(requested: str, configured: str) -> str:
+        """解析最终使用的 provider_id：请求 > 配置 > 当前主模型。"""
+        requested = str(requested or "").strip()
+        if requested:
+            return requested
+        if configured:
+            return configured
+        try:
+            using = context.get_using_provider()
+            if using is not None:
+                return getattr(using.meta(), "id", "") or ""
+        except Exception as e:
+            logger.debug(f"心念 Web API | 获取当前主模型失败: {e}")
+        return ""
+
+    async def generate_calendar():
+        """根据主题提示词调用 LLM 生成时间表事项（仅预览，不落盘）。"""
+        try:
+            locale = request_locale()
+            calendar_manager = managers.get("calendar_manager")
+            if not calendar_manager:
+                return _calendar_manager_missing(locale)
+
+            data = await request.get_json() or {}
+            user_prompt = str(data.get("user_prompt") or "").strip()
+            if not user_prompt:
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": t(
+                            locale,
+                            "api.errors.calendar_ai_prompt_empty",
+                            "请输入主题提示词",
+                        ),
+                    }
+                ), 400
+
+            configured_provider, base_prompt = _calendar_ai_config()
+            provider_id = _resolve_provider_id(
+                data.get("provider_id"), configured_provider
+            )
+
+            config_manager = managers.get("config_manager")
+            config = (
+                config_manager.config
+                if config_manager and hasattr(config_manager, "config")
+                else {}
+            )
+            current_year = get_now(config).year
+            system_prompt = build_system_prompt(
+                base_prompt, current_year, DEFAULT_MAX_GENERATE
+            )
+
+            raw_events = await generate_calendar_events(
+                context,
+                provider_id=provider_id,
+                user_prompt=user_prompt,
+                system_prompt=system_prompt,
+                current_year=current_year,
+                max_events=DEFAULT_MAX_GENERATE,
+            )
+            if raw_events is None:
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": t(
+                            locale,
+                            "api.errors.calendar_ai_generate_failed",
+                            "AI 生成失败，请检查模型配置或稍后重试",
+                        ),
+                    }
+                ), 502
+
+            # 经 normalize_event 校验，仅返回合法事项（预览，不落盘）
+            events = []
+            for raw in raw_events:
+                event = calendar_manager.normalize_event(raw)
+                if event is not None:
+                    events.append(event)
+
+            return jsonify(
+                {
+                    "success": True,
+                    "events": events,
+                    "message": t(
+                        locale,
+                        "api.messages.calendar_ai_generated",
+                        "已生成 {count} 条事项",
+                        count=len(events),
+                    ),
+                }
+            )
+        except Exception as e:
+            logger.error(f"心念 Web API | AI 生成时间表失败: {e}")
+            return _internal_error_response(request_locale())
+
+    async def apply_calendar_ai():
+        """将 AI 生成的事项应用到时间表（mode: merge/replace）。"""
+        try:
+            locale = request_locale()
+            calendar_manager = managers.get("calendar_manager")
+            if not calendar_manager:
+                return _calendar_manager_missing(locale)
+
+            data = await request.get_json() or {}
+            events = data.get("events")
+            mode = str(data.get("mode") or "merge").strip()
+            if not isinstance(events, list) or not events:
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": t(
+                            locale,
+                            "api.errors.calendar_ai_no_events",
+                            "没有可应用的事项",
+                        ),
+                    }
+                ), 400
+
+            imported = calendar_manager.import_events(events, mode=mode)
+            if imported < 0:
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": t(
+                            locale, "api.errors.config_save_failed", "配置保存失败"
+                        ),
+                    }
+                ), 500
+
+            return jsonify(
+                {
+                    "success": True,
+                    "imported": imported,
+                    "events": calendar_manager.get_events(),
+                    "message": t(
+                        locale,
+                        "api.messages.calendar_ai_applied",
+                        "已应用 {count} 条事项",
+                        count=imported,
+                    ),
+                }
+            )
+        except Exception as e:
+            logger.error(f"心念 Web API | 应用 AI 时间表失败: {e}")
+            return _internal_error_response(request_locale())
+
     context.register_web_api(
         f"/{PLUGIN_NAME}/dashboard/stats",
         get_dashboard_stats,
@@ -751,6 +958,24 @@ def register_web_apis(context, managers: dict) -> None:
         import_calendar,
         ["POST"],
         "导入时间表事项",
+    )
+    context.register_web_api(
+        f"/{PLUGIN_NAME}/calendar/ai/options",
+        get_calendar_ai_options,
+        ["GET"],
+        "获取 AI 生成时间表选项",
+    )
+    context.register_web_api(
+        f"/{PLUGIN_NAME}/calendar/ai/generate",
+        generate_calendar,
+        ["POST"],
+        "AI 生成时间表（预览）",
+    )
+    context.register_web_api(
+        f"/{PLUGIN_NAME}/calendar/ai/apply",
+        apply_calendar_ai,
+        ["POST"],
+        "应用 AI 生成的时间表事项",
     )
 
     logger.info("心念 Web API | 所有 API 已注册")
