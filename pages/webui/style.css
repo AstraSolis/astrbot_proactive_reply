@@ -1687,4 +1687,246 @@ input[type="text"]:focus {
     flex-direction: column;
     align-items: stretch;
   }
+
+  .config-actionbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .config-actionbar-buttons {
+    justify-content: flex-end;
+  }
+}
+
+/* ==================== 配置文件（可视化编辑） ==================== */
+.config-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+  padding-bottom: 4px;
+}
+
+.config-tab {
+  appearance: none;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-secondary);
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--ease);
+  white-space: nowrap;
+}
+
+.config-tab:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.config-tab.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.config-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 8px 20px;
+}
+
+.config-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.config-field {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.config-field:last-child {
+  border-bottom: none;
+}
+
+.config-field-label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.config-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.config-field-head .config-field-label {
+  margin-bottom: 0;
+}
+
+.config-field-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.config-field-reset {
+  border: 1px solid var(--danger);
+  background: none;
+  padding: 3px 10px;
+  font-size: 0.75rem;
+  color: var(--danger);
+  cursor: pointer;
+  border-radius: 6px;
+  white-space: nowrap;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+.config-field-reset:hover {
+  color: #fff;
+  background: var(--danger);
+}
+
+.config-field-hint {
+  margin: 8px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.config-field-hint--obvious {
+  color: var(--warning);
+  background: var(--warning-soft);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.config-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  outline: none;
+  color: var(--text);
+  background: var(--surface);
+  font-size: 0.875rem;
+  font-family: var(--font);
+}
+
+.config-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+
+.config-textarea {
+  resize: vertical;
+  min-height: 64px;
+  line-height: 1.5;
+}
+
+select.config-input {
+  cursor: pointer;
+}
+
+.config-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.config-list-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.config-list-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.config-list-input {
+  flex: 1;
+  resize: vertical;
+  min-height: 40px;
+  line-height: 1.5;
+}
+
+.config-list-remove {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  border-radius: 8px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: var(--ease);
+}
+
+.config-list-remove:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.config-list-remove svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.config-list-add {
+  align-self: flex-start;
+}
+
+.config-actionbar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 16px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.config-actionbar-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.config-dirty-hint {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.config-dirty-hint.is-dirty {
+  color: var(--warning);
+  font-weight: 500;
 }

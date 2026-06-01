@@ -4,6 +4,7 @@
 向 AstrBot 注册所有插件 REST API，供 Plugin Pages 调用
 """
 
+import os
 from datetime import datetime
 
 from quart import jsonify, request
@@ -17,10 +18,31 @@ from .llm.calendar_generator import (
     generate_calendar_events,
 )
 from .llm.placeholder_utils import get_placeholder_catalog
-from .utils.plugin_i18n import normalize_locale, request_locale, t
+from .utils.config_schema import (
+    build_config_schema,
+    coerce_section_values,
+    load_conf_schema,
+)
+from .utils.plugin_i18n import normalize_locale, request_locale, t, t_list
 from .utils.time_utils import get_now
 
 PLUGIN_NAME = "astrbot_proactive_reply"
+
+# 配置 schema 缓存（首次读取后复用，避免重复磁盘 IO）
+_CONF_SCHEMA_CACHE: dict | None = None
+
+
+def _conf_schema_path() -> str:
+    """返回 ``_conf_schema.json`` 的绝对路径。"""
+    return os.path.join(os.path.dirname(__file__), "_conf_schema.json")
+
+
+def _get_conf_schema() -> dict:
+    """读取并缓存配置 schema。"""
+    global _CONF_SCHEMA_CACHE
+    if _CONF_SCHEMA_CACHE is None:
+        _CONF_SCHEMA_CACHE = load_conf_schema(_conf_schema_path())
+    return _CONF_SCHEMA_CACHE
 
 
 def _internal_error_response(locale: str):
@@ -503,100 +525,6 @@ def register_web_apis(context, managers: dict) -> None:
             logger.error(f"心念 Web API | 清除时间表失败: {e}")
             return _internal_error_response(request_locale())
 
-    async def set_calendar_enabled():
-        """页内开关：写回 calendar.enable_calendar"""
-        try:
-            locale = request_locale()
-            config_manager = managers.get("config_manager")
-            if not config_manager:
-                return jsonify(
-                    {
-                        "success": False,
-                        "error": t(
-                            locale,
-                            "api.errors.config_manager_not_found",
-                            "配置管理器未找到",
-                        ),
-                    }
-                ), 500
-
-            data = await request.get_json() or {}
-            enabled = bool(data.get("enabled", False))
-            config = config_manager.config if hasattr(config_manager, "config") else {}
-            config.setdefault("calendar", {})["enable_calendar"] = enabled
-            if not config_manager.save_config_safely():
-                return jsonify(
-                    {
-                        "success": False,
-                        "error": t(
-                            locale, "api.errors.config_save_failed", "配置保存失败"
-                        ),
-                    }
-                ), 500
-            return jsonify(
-                {
-                    "success": True,
-                    "enabled": enabled,
-                    "message": t(
-                        locale,
-                        "api.messages.calendar_enabled_updated",
-                        "时间表开关已更新",
-                    ),
-                }
-            )
-        except Exception as e:
-            logger.error(f"心念 Web API | 更新时间表开关失败: {e}")
-            return _internal_error_response(request_locale())
-
-    async def set_calendar_settings():
-        """页内显示设置：写回 calendar.calendar_separator / calendar_empty_text"""
-        try:
-            locale = request_locale()
-            config_manager = managers.get("config_manager")
-            if not config_manager:
-                return jsonify(
-                    {
-                        "success": False,
-                        "error": t(
-                            locale,
-                            "api.errors.config_manager_not_found",
-                            "配置管理器未找到",
-                        ),
-                    }
-                ), 500
-
-            data = await request.get_json() or {}
-            config = config_manager.config if hasattr(config_manager, "config") else {}
-            calendar_conf = config.setdefault("calendar", {})
-            if "separator" in data:
-                calendar_conf["calendar_separator"] = str(data.get("separator") or "")
-            if "empty_text" in data:
-                calendar_conf["calendar_empty_text"] = str(data.get("empty_text") or "")
-            if not config_manager.save_config_safely():
-                return jsonify(
-                    {
-                        "success": False,
-                        "error": t(
-                            locale, "api.errors.config_save_failed", "配置保存失败"
-                        ),
-                    }
-                ), 500
-            return jsonify(
-                {
-                    "success": True,
-                    "separator": calendar_conf.get("calendar_separator", "、"),
-                    "empty_text": calendar_conf.get("calendar_empty_text", ""),
-                    "message": t(
-                        locale,
-                        "api.messages.calendar_settings_updated",
-                        "时间表显示设置已更新",
-                    ),
-                }
-            )
-        except Exception as e:
-            logger.error(f"心念 Web API | 更新时间表显示设置失败: {e}")
-            return _internal_error_response(request_locale())
-
     async def export_calendar():
         """导出时间表为 YAML 文本（供 WebUI 下载）"""
         try:
@@ -869,11 +797,136 @@ def register_web_apis(context, managers: dict) -> None:
             logger.error(f"心念 Web API | 应用 AI 时间表失败: {e}")
             return _internal_error_response(request_locale())
 
+    # ==================== 配置文件（可视化编辑） ====================
+
+    async def get_config_schema():
+        """返回配置分组结构 + 当前值（供 WebUI 配置页渲染）。"""
+        try:
+            locale = normalize_locale(request.args.get("locale"))
+            config_manager = managers.get("config_manager")
+            config = (
+                config_manager.config
+                if config_manager and hasattr(config_manager, "config")
+                else {}
+            )
+            schema = _get_conf_schema()
+            groups = build_config_schema(
+                schema,
+                config,
+                providers=_list_providers(),
+                translate=lambda key, fallback="": t(locale, key, fallback),
+                translate_list=lambda key, fallback=None: t_list(locale, key, fallback),
+            )
+            return jsonify({"success": True, "groups": groups})
+        except Exception as e:
+            logger.error(f"心念 Web API | 获取配置 schema 失败: {e}")
+            return _internal_error_response(
+                normalize_locale(request.args.get("locale"))
+            )
+
+    async def save_config():
+        """保存某个配置分组的字段值。
+
+        请求体：``{"section": "basic_settings", "values": {...}}``
+        """
+        try:
+            locale = request_locale()
+            config_manager = managers.get("config_manager")
+            if not config_manager:
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": t(
+                            locale,
+                            "api.errors.config_manager_not_found",
+                            "配置管理器未找到",
+                        ),
+                    }
+                ), 500
+
+            data = await request.get_json() or {}
+            section = str(data.get("section") or "").strip()
+            raw_values = data.get("values")
+
+            schema = _get_conf_schema()
+            section_def = schema.get(section) if isinstance(schema, dict) else None
+            if not section or not isinstance(section_def, dict):
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": t(
+                            locale,
+                            "api.errors.config_section_invalid",
+                            "配置分组不存在",
+                        ),
+                    }
+                ), 400
+
+            cleaned, errors = coerce_section_values(section_def, raw_values)
+            if errors:
+                bad_keys = ", ".join(item["key"] for item in errors)
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": t(
+                            locale,
+                            "api.errors.config_value_invalid",
+                            "以下配置项的值无效：{keys}",
+                            keys=bad_keys,
+                        ),
+                        "errors": errors,
+                    }
+                ), 400
+
+            config = config_manager.config if hasattr(config_manager, "config") else {}
+            target = config.setdefault(section, {})
+            for key, value in cleaned.items():
+                target[key] = value
+
+            if not config_manager.save_config_safely():
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": t(
+                            locale, "api.errors.config_save_failed", "配置保存失败"
+                        ),
+                    }
+                ), 500
+
+            logger.info(f"心念 Web API | 已更新配置分组 {section}（{len(cleaned)} 项）")
+            return jsonify(
+                {
+                    "success": True,
+                    "section": section,
+                    "values": cleaned,
+                    "message": t(
+                        locale,
+                        "api.messages.config_saved",
+                        "配置已保存",
+                    ),
+                }
+            )
+        except Exception as e:
+            logger.error(f"心念 Web API | 保存配置失败: {e}")
+            return _internal_error_response(request_locale())
+
     context.register_web_api(
         f"/{PLUGIN_NAME}/dashboard/stats",
         get_dashboard_stats,
         ["GET"],
         "获取仪表板统计信息",
+    )
+    context.register_web_api(
+        f"/{PLUGIN_NAME}/config/schema",
+        get_config_schema,
+        ["GET"],
+        "获取配置分组结构与当前值",
+    )
+    context.register_web_api(
+        f"/{PLUGIN_NAME}/config/save",
+        save_config,
+        ["POST"],
+        "保存配置分组",
     )
     context.register_web_api(
         f"/{PLUGIN_NAME}/placeholders/list",
@@ -934,18 +987,6 @@ def register_web_apis(context, managers: dict) -> None:
         clear_calendar,
         ["POST"],
         "清除时间表事项",
-    )
-    context.register_web_api(
-        f"/{PLUGIN_NAME}/calendar/enabled",
-        set_calendar_enabled,
-        ["POST"],
-        "更新时间表开关",
-    )
-    context.register_web_api(
-        f"/{PLUGIN_NAME}/calendar/settings",
-        set_calendar_settings,
-        ["POST"],
-        "更新时间表显示设置",
     )
     context.register_web_api(
         f"/{PLUGIN_NAME}/calendar/export",
