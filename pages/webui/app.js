@@ -1045,6 +1045,16 @@ async function reloadActiveView() {
 
 const CAL_REPEAT_VALUES = [0, 1, 2, 3, 4, -1];
 
+// 每月最大天数（与后端 calendar_store._MONTH_MAX_DAYS 一致，2 月按 29 计以支持闰年纪念日）
+const CAL_MONTH_MAX_DAYS = {
+  1: 31, 2: 29, 3: 31, 4: 30, 5: 31, 6: 30,
+  7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31,
+};
+
+function maxDayOfMonth(month) {
+  return CAL_MONTH_MAX_DAYS[parseInt(month, 10)] || 31;
+}
+
 function normRepeat(r) {
   const v = parseInt(r, 10);
   if (v === -1) return -1;
@@ -1703,10 +1713,11 @@ async function generateCalendarAi() {
 // 将后端返回 / 新增的事项规整为可编辑行（附带稳定的客户端 id）
 function makeAiRow(ev) {
   ev = ev && typeof ev === "object" ? ev : {};
+  const month = clampInt(ev.month, 1, 12, 1);
   const row = {
     _cid: ++calAiCidSeq,
-    month: clampInt(ev.month, 1, 12, 1),
-    day: clampInt(ev.day, 1, 31, 1),
+    month,
+    day: clampInt(ev.day, 1, maxDayOfMonth(month), 1),
     text: typeof ev.text === "string" ? ev.text : "",
     repeat: CAL_REPEAT_VALUES.includes(Number(ev.repeat)) ? Number(ev.repeat) : -1,
   };
@@ -1766,7 +1777,7 @@ function renderAiPreview() {
             min="1" max="12" value="${ev.month}" aria-label="${escAttr(monthLabel)}" />
           <span class="cal-ai-edit-sep">/</span>
           <input type="number" class="cal-ai-edit cal-ai-edit-day" data-field="day"
-            min="1" max="31" value="${ev.day}" aria-label="${escAttr(dayLabel)}" />
+            min="1" max="${maxDayOfMonth(ev.month)}" value="${ev.day}" aria-label="${escAttr(dayLabel)}" />
           <input type="text" class="cal-ai-edit cal-ai-edit-text" data-field="text"
             maxlength="200" value="${escAttr(ev.text)}" placeholder="${escAttr(textPlaceholder)}" />
           <select class="cal-ai-edit cal-ai-edit-repeat" data-field="repeat">${opts}</select>
@@ -1795,8 +1806,19 @@ function updateAiRowField(cid, field, value) {
     ev.text = value;
   } else if (field === "month") {
     ev.month = clampInt(value, 1, 12, ev.month);
+    // 改月份后收敛日期上限（如 1/31 改到 2 月时收敛为 29）
+    const max = maxDayOfMonth(ev.month);
+    const rowEl = document.querySelector(
+      `.cal-ai-preview-row[data-cid="${cid}"]`,
+    );
+    const dayInput = rowEl?.querySelector(".cal-ai-edit-day");
+    if (dayInput) dayInput.max = String(max);
+    if (ev.day > max) {
+      ev.day = max;
+      if (dayInput) dayInput.value = String(max);
+    }
   } else if (field === "day") {
-    ev.day = clampInt(value, 1, 31, ev.day);
+    ev.day = clampInt(value, 1, maxDayOfMonth(ev.month), ev.day);
   } else if (field === "repeat") {
     const n = Number(value);
     if (CAL_REPEAT_VALUES.includes(n)) ev.repeat = n;
@@ -1824,11 +1846,11 @@ async function applyCalendarAi(mode) {
     toast(t("toast_calendar_ai_empty", "AI 未生成任何有效事项"), "error");
     return;
   }
-  // 校验每一行：月份 1-12、日期 1-31、名称非空
+  // 校验每一行：月份 1-12、日期符合当月实际天数、名称非空
   const invalid = calAiGeneratedEvents.some(
     ev =>
       !(ev.month >= 1 && ev.month <= 12) ||
-      !(ev.day >= 1 && ev.day <= 31) ||
+      !(ev.day >= 1 && ev.day <= maxDayOfMonth(ev.month)) ||
       !String(ev.text || "").trim(),
   );
   if (invalid) {
