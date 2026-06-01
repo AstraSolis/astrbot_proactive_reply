@@ -770,7 +770,7 @@ def register_web_apis(context, managers: dict) -> None:
                 if config_manager and hasattr(config_manager, "config")
                 else {}
             )
-            current_year = get_now(config).year
+            current_year = get_now(config, _get_astrbot_config(managers)).year
             system_prompt = build_system_prompt(
                 base_prompt, current_year, DEFAULT_MAX_GENERATE
             )
