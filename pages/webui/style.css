@@ -1782,11 +1782,11 @@ input[type="text"]:focus {
 }
 
 .config-field-reset {
-  border: none;
+  border: 1px solid var(--danger);
   background: none;
-  padding: 2px 4px;
+  padding: 3px 10px;
   font-size: 0.75rem;
-  color: var(--text-muted);
+  color: var(--danger);
   cursor: pointer;
   border-radius: 6px;
   white-space: nowrap;
@@ -1796,8 +1796,8 @@ input[type="text"]:focus {
 }
 
 .config-field-reset:hover {
-  color: var(--primary);
-  background: var(--surface-hover, rgba(99, 102, 241, 0.08));
+  color: #fff;
+  background: var(--danger);
 }
 
 .config-field-hint {

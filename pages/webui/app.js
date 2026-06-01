@@ -23,8 +23,6 @@ let calendarLoaded = false;
 let calendarPromise = null;
 let calendarEvents = [];
 let calendarEnabled = false;
-let calendarSeparator = "、";
-let calendarEmptyText = "";
 const _now = new Date();
 let calViewYear = _now.getFullYear();
 let calViewMonth = _now.getMonth() + 1; // 1-12
@@ -265,7 +263,8 @@ function switchView(view) {
     renderAiSchedules(aiSchedules);
   } else if (view === "placeholders" && !placeholdersLoaded) {
     loadPlaceholders();
-  } else if (view === "calendar" && !calendarLoaded) {
+  } else if (view === "calendar") {
+    // 每次进入时间表页都重新拉取，保证与配置文件页对启用状态的修改同步
     loadCalendar();
   } else if (view === "config" && !configLoaded) {
     loadConfig();
@@ -1467,8 +1466,6 @@ function renderCalendarStatic() {
   set("nav-label-calendar", "tab_calendar", "时间表");
   set("page-title-calendar", "tab_calendar", "时间表");
   set("calendar-subtitle", "calendar_subtitle", "为日期添加节日或事项");
-  set("calendar-enable-label", "calendar_enable_label", "启用时间表功能");
-  set("calendar-enable-hint", "calendar_enable_hint", "");
   set("cal-today", "calendar_today_btn", "回到今天");
   set("cal-import", "calendar_import", "导入");
   set("cal-export", "calendar_export", "导出");
@@ -1481,12 +1478,6 @@ function renderCalendarStatic() {
   set("cal-form-year-label", "calendar_year_label", "基准年");
   set("cal-form-repeat-label", "calendar_repeat_label", "重复");
   set("cal-form-year-hint", "calendar_year_forever_hint", "");
-  set("calendar-display-title", "calendar_display_settings", "显示设置");
-  set("cal-sep-label", "calendar_separator_label", "事项分隔符");
-  set("cal-empty-label", "calendar_empty_text_label", "无事项默认文本");
-  set("cal-sep-hint", "calendar_separator_hint", "");
-  set("cal-empty-hint", "calendar_empty_text_hint", "");
-  set("cal-settings-save", "btn_save", "保存");
   set("cal-ai-title", "calendar_ai_title", "AI 生成时间表");
   set(
     "cal-ai-subtitle",
@@ -1543,8 +1534,6 @@ async function loadCalendar() {
       if (!data.success) throw new Error(data.error || t("err_unknown", "未知错误"));
       calendarEvents = Array.isArray(data.events) ? data.events : [];
       calendarEnabled = !!data.enabled;
-      calendarSeparator = typeof data.separator === "string" ? data.separator : "、";
-      calendarEmptyText = typeof data.empty_text === "string" ? data.empty_text : "";
       calendarLoaded = true;
       renderCalendar();
       hideGlobalError();
@@ -1559,18 +1548,11 @@ async function loadCalendar() {
 }
 
 function renderCalendar() {
-  const toggle = document.getElementById("calendar-enable-toggle");
-  if (toggle) toggle.checked = calendarEnabled;
-
   const body = document.getElementById("calendar-body");
   const disabled = document.getElementById("calendar-disabled-state");
   if (calendarEnabled) {
     if (body) body.style.display = "";
     if (disabled) disabled.style.display = "none";
-    const sepInput = document.getElementById("cal-sep-input");
-    if (sepInput) sepInput.value = calendarSeparator;
-    const emptyInput = document.getElementById("cal-empty-input");
-    if (emptyInput) emptyInput.value = calendarEmptyText;
     renderCalendarGrid();
     loadCalendarAiOptions();
   } else {
@@ -1579,7 +1561,9 @@ function renderCalendar() {
       disabled.style.display = "";
       disabled.innerHTML = emptyStateHtml(
         t("calendar_disabled_title", "时间表功能未启用"),
-        escHtml(t("calendar_disabled_desc", "打开上方开关即可编辑日历事项")),
+        escHtml(
+          t("calendar_disabled_desc", "请在「配置文件」页启用时间表功能后再编辑事项"),
+        ),
       );
     }
   }
@@ -1694,23 +1678,6 @@ function gotoCalendarToday() {
   renderCalendarGrid();
 }
 
-async function setCalendarEnabled(enabled) {
-  try {
-    const data = await bridge.apiPost("calendar/enabled", {
-      enabled,
-      locale: getLocale(),
-    });
-    if (!data.success) throw new Error(data.error || t("err_unknown", "未知错误"));
-    calendarEnabled = !!data.enabled;
-    renderCalendar();
-    if (activeView === "dashboard") loadDashboard();
-  } catch (err) {
-    toast(err.message, "error");
-    const toggle = document.getElementById("calendar-enable-toggle");
-    if (toggle) toggle.checked = calendarEnabled;
-  }
-}
-
 function isCalendarDayOpen() {
   const dlg = document.getElementById("calendar-day-dialog");
   return !!dlg && dlg.style.display === "flex";
@@ -1807,28 +1774,6 @@ window.editCalEvent = function (id) {
   applyRepeatYearState();
   document.getElementById("cal-form-text")?.focus();
 };
-
-async function saveCalendarSettings() {
-  const sepInput = document.getElementById("cal-sep-input");
-  const emptyInput = document.getElementById("cal-empty-input");
-  try {
-    const data = await bridge.apiPost("calendar/settings", {
-      separator: sepInput ? sepInput.value : calendarSeparator,
-      empty_text: emptyInput ? emptyInput.value : calendarEmptyText,
-      locale: getLocale(),
-    });
-    if (!data.success) {
-      throw new Error(
-        data.error || t("toast_calendar_settings_failed", "显示设置保存失败"),
-      );
-    }
-    calendarSeparator = typeof data.separator === "string" ? data.separator : "";
-    calendarEmptyText = typeof data.empty_text === "string" ? data.empty_text : "";
-    toast(t("toast_calendar_settings_saved", "显示设置已保存"), "success");
-  } catch (err) {
-    toast(err.message, "error");
-  }
-}
 
 window.deleteCalEvent = async function (id) {
   try {
@@ -2314,9 +2259,6 @@ function bindCalendarEvents() {
     shiftCalendarMonth(1),
   );
   document.getElementById("cal-today")?.addEventListener("click", gotoCalendarToday);
-  document
-    .getElementById("calendar-enable-toggle")
-    ?.addEventListener("change", e => setCalendarEnabled(e.target.checked));
   document.getElementById("cal-clear-month")?.addEventListener("click", () =>
     clearCalendar("month"),
   );
@@ -2340,9 +2282,6 @@ function bindCalendarEvents() {
   document
     .getElementById("cal-form-repeat")
     ?.addEventListener("change", applyRepeatYearState);
-  document
-    .getElementById("cal-settings-save")
-    ?.addEventListener("click", saveCalendarSettings);
   document.getElementById("calendar-day-dialog")?.addEventListener("click", e => {
     if (e.target.id === "calendar-day-dialog") hideCalendarDay();
   });

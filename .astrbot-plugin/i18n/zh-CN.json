@@ -73,6 +73,29 @@
         ]
       }
     },
+    "calendar": {
+      "description": "时间表设置",
+      "enable_calendar": {
+        "description": "启用时间表（日历事项）功能",
+        "hint": "启用后，{calendar_today} 占位符会返回「当天」时间表中的事项（可用于用户信息模板与主动对话提示词）。关闭时即使配置了事项也不注入（占位符返回空）。事项请在「时间表」页签中可视化编辑"
+      },
+      "calendar_separator": {
+        "description": "时间表事项分隔符",
+        "hint": "当天有多条事项时，{calendar_today} 使用此分隔符拼接。例如「、」或「，」"
+      },
+      "calendar_empty_text": {
+        "description": "时间表无事项时的默认文本",
+        "hint": "当天没有任何事项时，{calendar_today} 返回的文本。留空表示返回空字符串（不注入任何内容）"
+      },
+      "ai_generate_provider_id": {
+        "description": "AI 生成时间表使用的模型提供商（留空使用主模型）",
+        "hint": "指定用于「AI 生成时间表」的模型提供商。留空则使用当前正在使用的主模型"
+      },
+      "ai_generate_prompt": {
+        "description": "AI 生成时间表的系统提示词",
+        "hint": "自定义「AI 生成时间表」的系统提示词，用于指导 AI 按 JSON 数组格式输出贴合主题的日历事项"
+      }
+    },
     "proactive_reply": {
       "description": "定时主动发送消息设置",
       "enabled": {
@@ -316,6 +339,23 @@
       "tab_placeholders": "占位符",
       "search_hint_placeholders": "此页面不支持搜索",
       "placeholders_subtitle": "点击任意占位符即可复制到剪贴板，粘贴进配置模板使用",
+      "tab_config": "配置文件",
+      "search_hint_config": "此页面不支持搜索",
+      "config_subtitle": "在此可视化编辑插件配置，按顶部分组切换；修改后点击「保存更改」生效",
+      "config_tabs_aria": "配置分组",
+      "config_save": "保存更改",
+      "config_saving": "保存中…",
+      "config_saved": "配置已保存",
+      "config_save_failed": "保存失败",
+      "config_dirty_hint": "有未保存的更改",
+      "config_list_add": "添加一项",
+      "config_provider_default": "（使用主模型）",
+      "config_unsaved_title": "未保存的更改",
+      "config_unsaved_message": "当前分组有未保存的更改，切换后将丢失。确定要切换吗？",
+      "config_discard": "放弃更改",
+      "config_reset": "恢复默认",
+      "config_load_failed_title": "配置加载失败",
+      "err_config_load": "配置加载失败：",
       "placeholders_group_user_info": "用户信息模板",
       "placeholders_group_user_info_hint": "追加到用户消息后，描述当前对话的用户与上下文",
       "placeholders_group_proactive": "主动提示词",
@@ -342,7 +382,7 @@
       "calendar_enable_label": "启用时间表功能",
       "calendar_enable_hint": "关闭时即使配置了事项，{calendar_today} 也返回空字符串",
       "calendar_disabled_title": "时间表功能未启用",
-      "calendar_disabled_desc": "打开上方开关即可编辑日历事项",
+      "calendar_disabled_desc": "请在「配置文件」页启用时间表功能后再编辑事项",
       "calendar_prev_month": "上个月",
       "calendar_next_month": "下个月",
       "calendar_today_btn": "回到今天",
@@ -438,24 +478,7 @@
       "toast_calendar_ai_applied": "已应用",
       "toast_calendar_ai_applied_partial": "已应用 {applied} 条，{skipped} 条因日期非法被跳过",
       "toast_calendar_ai_apply_failed": "应用失败",
-      "toast_calendar_ai_row_invalid": "请检查事项的月份、日期与名称是否填写正确",
-      "tab_config": "配置文件",
-      "search_hint_config": "此页面不支持搜索",
-      "config_subtitle": "在此可视化编辑插件配置，按顶部分组切换；修改后点击「保存更改」生效",
-      "config_tabs_aria": "配置分组",
-      "config_reset": "恢复默认",
-      "config_save": "保存更改",
-      "config_saving": "保存中…",
-      "config_saved": "配置已保存",
-      "config_save_failed": "保存失败",
-      "config_dirty_hint": "有未保存的更改",
-      "config_list_add": "添加一项",
-      "config_provider_default": "（使用主模型）",
-      "config_unsaved_title": "未保存的更改",
-      "config_unsaved_message": "当前分组有未保存的更改，切换后将丢失。确定要切换吗？",
-      "config_discard": "放弃更改",
-      "config_load_failed_title": "配置加载失败",
-      "err_config_load": "配置加载失败："
+      "toast_calendar_ai_row_invalid": "请检查事项的月份、日期与名称是否填写正确"
     }
   },
   "api": {
@@ -465,6 +488,8 @@
       "session_id_invalid": "会话 ID 格式不正确，应为 platform:type:id",
       "session_exists": "该会话已存在",
       "config_save_failed": "配置保存失败",
+      "config_section_invalid": "配置分组不存在",
+      "config_value_invalid": "以下配置项的值无效：{keys}",
       "session_not_found": "未找到该会话",
       "schedule_not_found": "未找到该约定任务",
       "internal_error": "服务器内部错误，请稍后重试",
@@ -476,13 +501,12 @@
       "calendar_import_invalid": "导入数据不合法（应为合法的 YAML 时间表文件）",
       "calendar_ai_prompt_empty": "请输入主题提示词",
       "calendar_ai_generate_failed": "AI 生成失败，请检查模型配置或稍后重试",
-      "calendar_ai_no_events": "没有可应用的事项",
-      "config_section_invalid": "配置分组不存在",
-      "config_value_invalid": "以下配置项的值无效：{keys}"
+      "calendar_ai_no_events": "没有可应用的事项"
     },
     "messages": {
       "session_added": "已添加会话: {session_id}",
       "session_removed": "已移除会话: {session_id}",
+      "config_saved": "配置已保存",
       "schedule_cancelled": "已取消约定任务",
       "calendar_event_saved": "事项已保存",
       "calendar_event_deleted": "事项已删除",
@@ -491,8 +515,7 @@
       "calendar_enabled_updated": "时间表开关已更新",
       "calendar_settings_updated": "时间表显示设置已更新",
       "calendar_ai_generated": "已生成 {count} 条事项",
-      "calendar_ai_applied": "已应用 {count} 条事项",
-      "config_saved": "配置已保存"
+      "calendar_ai_applied": "已应用 {count} 条事项"
     },
     "activity": {
       "proactive_send_user": "向 {username} 发送了主动消息",

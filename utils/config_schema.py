@@ -16,9 +16,6 @@ from typing import Any, Callable, Optional
 # 这些字段属于运行时数据或不应在配置页展示，统一隐藏
 RUNTIME_DATA_KEYS = {"session_user_info", "last_sent_times", "ai_last_sent_times"}
 
-# 这些分组在 WebUI 有专门页签管理（如「时间表」页），不在配置页重复展示
-EXCLUDED_SECTIONS = {"calendar"}
-
 # 受支持的字段类型（其余类型按字符串处理）
 _KNOWN_TYPES = {"bool", "int", "string", "text", "list"}
 
@@ -194,8 +191,6 @@ def build_config_schema(
     groups = []
 
     for section_key, section_def in schema.items():
-        if section_key in EXCLUDED_SECTIONS:
-            continue
         if not isinstance(section_def, dict):
             continue
         if section_def.get("type") != "object":
