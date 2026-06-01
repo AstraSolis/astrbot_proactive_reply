@@ -11,6 +11,7 @@ from quart import jsonify, request
 from astrbot.api import logger
 
 from .core.runtime_data import runtime_data
+from .llm.placeholder_utils import get_placeholder_catalog
 from .utils.plugin_i18n import normalize_locale, request_locale, t
 from .utils.time_utils import get_now
 
@@ -332,11 +333,27 @@ def register_web_apis(context, managers: dict) -> None:
             logger.error(f"心念 Web API | 取消 AI 约定任务失败: {e}")
             return _internal_error_response(request_locale())
 
+    async def get_placeholders():
+        """获取占位符目录（唯一真相源，供前端速查面板渲染）"""
+        try:
+            return jsonify({"success": True, "groups": get_placeholder_catalog()})
+        except Exception as e:
+            logger.error(f"心念 Web API | 获取占位符目录失败: {e}")
+            return _internal_error_response(
+                normalize_locale(request.args.get("locale"))
+            )
+
     context.register_web_api(
         f"/{PLUGIN_NAME}/dashboard/stats",
         get_dashboard_stats,
         ["GET"],
         "获取仪表板统计信息",
+    )
+    context.register_web_api(
+        f"/{PLUGIN_NAME}/placeholders/list",
+        get_placeholders,
+        ["GET"],
+        "获取占位符目录",
     )
     context.register_web_api(
         f"/{PLUGIN_NAME}/sessions/list",

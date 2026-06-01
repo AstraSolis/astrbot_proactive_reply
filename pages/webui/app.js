@@ -2,59 +2,10 @@ const bridge = window.AstrBotPluginPage || null;
 const I18N = "pages.webui.";
 const VISIT_KEY = "astrbot-proactive-webui-seen";
 
-const PLACEHOLDER_GROUPS = [
-  {
-    titleKey: "placeholders_group_user_info",
-    titleFallback: "用户信息模板",
-    hintKey: "placeholders_group_user_info_hint",
-    hintFallback: "追加到用户消息后，描述当前对话的用户与上下文",
-    tokens: [
-      "username",
-      "user_id",
-      "time",
-      "current_time",
-      "weekday",
-      "platform",
-      "chat_type",
-      "user_last_message_time",
-      "user_last_message_time_ago",
-      "ai_last_sent_time",
-    ],
-  },
-  {
-    titleKey: "placeholders_group_proactive",
-    titleFallback: "主动提示词",
-    hintKey: "placeholders_group_proactive_hint",
-    hintFallback: "随机选用，用于生成主动发起的消息",
-    tokens: [
-      "user_context",
-      "username",
-      "platform",
-      "chat_type",
-      "current_time",
-      "weekday",
-      "user_last_message_time",
-      "user_last_message_time_ago",
-      "ai_last_sent_time",
-      "unreplied_count",
-    ],
-  },
-];
-
-const PLACEHOLDER_DESC_FALLBACK = {
-  user_context: "完整的用户上下文信息（含用户名、平台、时间等）",
-  username: "用户昵称",
-  user_id: "用户 ID",
-  time: "消息时间",
-  current_time: "当前时间",
-  weekday: "当前星期（如“星期一”）",
-  platform: "平台名称（如 aiocqhttp、telegram）",
-  chat_type: "聊天类型（群聊/私聊）",
-  user_last_message_time: "用户上次发消息的时间",
-  user_last_message_time_ago: "用户上次发消息的相对时间（如“5分钟前”）",
-  ai_last_sent_time: "AI 上次发送消息的时间",
-  unreplied_count: "用户连续未回复次数",
-};
+// 占位符目录由后端注册表提供（placeholders/list），前端不再硬编码 token 清单。
+let placeholderGroups = [];
+let placeholdersLoaded = false;
+let placeholdersPromise = null;
 
 let activeView = "dashboard";
 let sessionsLoaded = false;
@@ -286,6 +237,8 @@ function switchView(view) {
     loadAiSchedules();
   } else if (view === "schedules" && schedulesLoaded) {
     renderAiSchedules(aiSchedules);
+  } else if (view === "placeholders" && !placeholdersLoaded) {
+    loadPlaceholders();
   }
 }
 
@@ -440,6 +393,31 @@ async function loadSessions() {
     }
   })();
   return sessionsPromise;
+}
+
+async function loadPlaceholders() {
+  if (placeholdersPromise) return placeholdersPromise;
+  placeholdersPromise = (async () => {
+    const container = document.getElementById("placeholders-container");
+    if (container && !placeholdersLoaded) container.innerHTML = loadingHtml();
+    try {
+      const data = await bridge.apiGet("placeholders/list", apiLocale());
+      if (!data.success) throw new Error(data.error || t("err_unknown", "未知错误"));
+      placeholderGroups = data.groups || [];
+      placeholdersLoaded = true;
+      renderPlaceholders();
+    } catch (err) {
+      if (container) {
+        container.innerHTML = `
+        <div class="empty-state">
+          <p>${escHtml(t("load_placeholders_failed", "占位符加载失败，请切换页面后重试"))}</p>
+        </div>`;
+      }
+    } finally {
+      placeholdersPromise = null;
+    }
+  })();
+  return placeholdersPromise;
 }
 
 function applySessionFilter() {
@@ -703,10 +681,18 @@ function renderPlaceholders() {
   const container = document.getElementById("placeholders-container");
   if (!container) return;
 
+  if (!placeholdersLoaded) {
+    container.innerHTML = loadingHtml();
+    return;
+  }
+
   const copyHint = t("placeholders_copy_hint", "点击复制");
-  const groupsHtml = PLACEHOLDER_GROUPS.map(group => {
-    const chips = group.tokens.map(token => {
-      const desc = t("ph_desc_" + token, PLACEHOLDER_DESC_FALLBACK[token] || "");
+  const groupsHtml = placeholderGroups.map(group => {
+    const titleKey = "placeholders_group_" + group.key;
+    const hintKey = titleKey + "_hint";
+    const chips = (group.tokens || []).map(item => {
+      const token = item.token;
+      const desc = t("ph_desc_" + token, item.desc || "");
       const full = `{${token}}`;
       return `
         <button type="button" class="ph-chip" data-token="${escAttr(token)}" title="${escAttr(copyHint + " " + full)}">
@@ -718,8 +704,8 @@ function renderPlaceholders() {
     return `
       <article class="panel ph-group">
         <header class="panel-head ph-group-head">
-          <h3 class="panel-title">${escHtml(t(group.titleKey, group.titleFallback))}</h3>
-          <span class="ph-group-hint">${escHtml(t(group.hintKey, group.hintFallback))}</span>
+          <h3 class="panel-title">${escHtml(t(titleKey, group.key))}</h3>
+          <span class="ph-group-hint">${escHtml(t(hintKey, ""))}</span>
         </header>
         <div class="panel-body ph-chip-grid">${chips}</div>
       </article>`;
@@ -1009,6 +995,9 @@ async function reloadActiveView() {
   } else if (activeView === "schedules") {
     schedulesLoaded = false;
     await loadAiSchedules();
+  } else if (activeView === "placeholders") {
+    placeholdersLoaded = false;
+    await loadPlaceholders();
   }
 }
 
