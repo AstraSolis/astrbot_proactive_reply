@@ -1762,15 +1762,42 @@ input[type="text"]:focus {
   margin-bottom: 8px;
 }
 
-.config-field-toggle-row {
+.config-field-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
+  margin-bottom: 8px;
 }
 
-.config-field-toggle-row .config-field-label {
+.config-field-head .config-field-label {
   margin-bottom: 0;
+}
+
+.config-field-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.config-field-reset {
+  border: none;
+  background: none;
+  padding: 2px 4px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 6px;
+  white-space: nowrap;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+.config-field-reset:hover {
+  color: var(--primary);
+  background: var(--surface-hover, rgba(99, 102, 241, 0.08));
 }
 
 .config-field-hint {

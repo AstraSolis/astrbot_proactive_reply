@@ -73,29 +73,6 @@
         ]
       }
     },
-    "calendar": {
-      "description": "Calendar settings",
-      "enable_calendar": {
-        "description": "Enable calendar (date events)",
-        "hint": "When enabled, the {calendar_today} placeholder returns today's calendar events (usable in user-info templates and proactive prompts). When disabled nothing is injected even if events exist. Edit events visually in the Calendar tab"
-      },
-      "calendar_separator": {
-        "description": "Calendar event separator",
-        "hint": "When a day has multiple events, {calendar_today} joins them with this separator, e.g. a comma"
-      },
-      "calendar_empty_text": {
-        "description": "Default text when there are no events",
-        "hint": "Text returned by {calendar_today} when the day has no events. Leave empty to return an empty string (inject nothing)"
-      },
-      "ai_generate_provider_id": {
-        "description": "Model provider for AI calendar generation (empty = main model)",
-        "hint": "Provider used by AI calendar generation. Leave empty to use the current main model"
-      },
-      "ai_generate_prompt": {
-        "description": "System prompt for AI calendar generation",
-        "hint": "Custom system prompt guiding the AI to output theme-appropriate calendar events as a JSON array"
-      }
-    },
     "proactive_reply": {
       "description": "Scheduled proactive messages",
       "enabled": {
@@ -472,15 +449,11 @@
       "config_saved": "Configuration saved",
       "config_save_failed": "Save failed",
       "config_dirty_hint": "You have unsaved changes",
-      "config_clean_hint": "All changes saved",
       "config_list_add": "Add item",
       "config_provider_default": "(Use main model)",
       "config_unsaved_title": "Unsaved changes",
       "config_unsaved_message": "This group has unsaved changes that will be lost when switching. Switch anyway?",
       "config_discard": "Discard changes",
-      "config_reset_title": "Reset to defaults",
-      "config_reset_message": "Reset all items in this group to their default values (you still need to click Save to apply). Continue?",
-      "config_reset_confirm": "Reset to defaults",
       "config_load_failed_title": "Failed to load configuration",
       "err_config_load": "Failed to load configuration: "
     }

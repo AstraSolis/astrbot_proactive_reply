@@ -1147,7 +1147,10 @@ function renderConfigGroup(groupKey) {
 
   bindConfigFieldEvents();
   setConfigDirty(false);
-  document.getElementById("config-actionbar").style.display = "flex";
+}
+
+function configResetBtnHtml(key) {
+  return `<button type="button" class="config-field-reset" data-reset-field="${key}">${escHtml(t("config_reset", "恢复默认"))}</button>`;
 }
 
 function renderConfigField(field) {
@@ -1156,17 +1159,21 @@ function renderConfigField(field) {
   const hintHtml = field.hint
     ? `<p class="config-field-hint${field.obvious_hint ? " config-field-hint--obvious" : ""}">${escHtml(field.hint)}</p>`
     : "";
+  const resetHtml = configResetBtnHtml(key);
   const wrapStart = `<div class="config-field" data-key="${key}" data-control="${escAttr(field.control)}">`;
   const wrapEnd = `</div>`;
 
   if (field.control === "bool") {
     return `${wrapStart}
-      <div class="config-field-toggle-row">
+      <div class="config-field-head">
         <label class="config-field-label" for="cfg-${key}">${labelHtml}</label>
-        <label class="switch">
-          <input type="checkbox" id="cfg-${key}" data-field="${key}"${field.value ? " checked" : ""} />
-          <span class="switch-track" aria-hidden="true"></span>
-        </label>
+        <div class="config-field-head-actions">
+          ${resetHtml}
+          <label class="switch">
+            <input type="checkbox" id="cfg-${key}" data-field="${key}"${field.value ? " checked" : ""} />
+            <span class="switch-track" aria-hidden="true"></span>
+          </label>
+        </div>
       </div>
       ${hintHtml}${wrapEnd}`;
   }
@@ -1207,7 +1214,10 @@ function renderConfigField(field) {
   }
 
   return `${wrapStart}
-    <label class="config-field-label" for="cfg-${key}">${labelHtml}</label>
+    <div class="config-field-head">
+      <label class="config-field-label" for="cfg-${key}">${labelHtml}</label>
+      <div class="config-field-head-actions">${resetHtml}</div>
+    </div>
     ${controlHtml}
     ${hintHtml}${wrapEnd}`;
 }
@@ -1254,6 +1264,39 @@ function bindConfigFieldEvents() {
     });
   });
   form.querySelectorAll(".config-list-row").forEach(bindConfigListRow);
+
+  form.querySelectorAll(".config-field-reset").forEach(btn => {
+    btn.addEventListener("click", () => resetConfigField(btn.dataset.resetField));
+  });
+}
+
+function resetConfigField(fieldKey) {
+  const group = currentConfigGroup();
+  if (!group) return;
+  const field = group.fields.find(f => f.key === fieldKey);
+  const form = document.getElementById("config-form");
+  if (!field || !form) return;
+
+  if (field.control === "bool") {
+    const el = form.querySelector(`#cfg-${cssEscape(fieldKey)}`);
+    if (el) el.checked = !!field.default;
+  } else if (field.control === "list") {
+    const list = form.querySelector(
+      `.config-list[data-field="${cssEscape(fieldKey)}"]`,
+    );
+    const itemsBox = list?.querySelector(".config-list-items");
+    if (itemsBox) {
+      const def = Array.isArray(field.default) ? field.default : [];
+      itemsBox.innerHTML = def
+        .map((item, idx) => configListRowHtml(fieldKey, item, idx))
+        .join("");
+      itemsBox.querySelectorAll(".config-list-row").forEach(bindConfigListRow);
+    }
+  } else {
+    const el = form.querySelector(`#cfg-${cssEscape(fieldKey)}`);
+    if (el) el.value = field.default ?? "";
+  }
+  setConfigDirty(true);
 }
 
 function bindConfigListRow(row) {
@@ -1266,14 +1309,13 @@ function bindConfigListRow(row) {
 function setConfigDirty(dirty) {
   configDirty = dirty;
   const saveBtn = document.getElementById("config-save");
-  const resetBtn = document.getElementById("config-reset");
   const hint = document.getElementById("config-dirty-hint");
+  const actionbar = document.getElementById("config-actionbar");
+  // 保存条仅在有未保存改动时出现
+  if (actionbar) actionbar.style.display = dirty ? "flex" : "none";
   if (saveBtn) saveBtn.disabled = !dirty || configSaving;
-  if (resetBtn) resetBtn.disabled = configSaving;
   if (hint) {
-    hint.textContent = dirty
-      ? t("config_dirty_hint", "有未保存的更改")
-      : t("config_clean_hint", "所有更改已保存");
+    hint.textContent = t("config_dirty_hint", "有未保存的更改");
     hint.classList.toggle("is-dirty", dirty);
   }
 }
@@ -1349,45 +1391,6 @@ async function saveConfigGroup() {
   }
 }
 
-async function resetConfigGroup() {
-  const group = currentConfigGroup();
-  if (!group || configSaving) return;
-  const ok = await showConfirm({
-    title: t("config_reset_title", "恢复默认值"),
-    message: t(
-      "config_reset_message",
-      "将当前分组的所有项恢复为默认值（需点击保存后才会写入）。继续吗？",
-    ),
-    confirmText: t("config_reset_confirm", "恢复默认"),
-    danger: true,
-  });
-  if (!ok) return;
-
-  const form = document.getElementById("config-form");
-  if (!form) return;
-  for (const field of group.fields) {
-    const key = field.key;
-    if (field.control === "bool") {
-      const el = form.querySelector(`#cfg-${cssEscape(key)}`);
-      if (el) el.checked = !!field.default;
-    } else if (field.control === "list") {
-      const list = form.querySelector(`.config-list[data-field="${cssEscape(key)}"]`);
-      const itemsBox = list?.querySelector(".config-list-items");
-      if (itemsBox) {
-        const def = Array.isArray(field.default) ? field.default : [];
-        itemsBox.innerHTML = def
-          .map((item, idx) => configListRowHtml(key, item, idx))
-          .join("");
-        itemsBox.querySelectorAll(".config-list-row").forEach(bindConfigListRow);
-      }
-    } else {
-      const el = form.querySelector(`#cfg-${cssEscape(key)}`);
-      if (el) el.value = field.default ?? "";
-    }
-  }
-  setConfigDirty(true);
-}
-
 function renderConfigStatic() {
   document.getElementById("nav-label-config").textContent =
     t("tab_config", "配置文件");
@@ -1401,8 +1404,6 @@ function renderConfigStatic() {
     "aria-label",
     t("config_tabs_aria", "配置分组"),
   );
-  document.getElementById("config-reset").textContent =
-    t("config_reset", "恢复默认");
   document.getElementById("config-save").textContent =
     t("config_save", "保存更改");
 
@@ -1414,7 +1415,6 @@ function renderConfigStatic() {
 
 function bindConfigEvents() {
   document.getElementById("config-save")?.addEventListener("click", saveConfigGroup);
-  document.getElementById("config-reset")?.addEventListener("click", resetConfigGroup);
 }
 
 /* ==================== 时间表（日历事项） ==================== */

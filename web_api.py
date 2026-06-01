@@ -19,6 +19,7 @@ from .llm.calendar_generator import (
 )
 from .llm.placeholder_utils import get_placeholder_catalog
 from .utils.config_schema import (
+    EXCLUDED_SECTIONS,
     build_config_schema,
     coerce_section_values,
     load_conf_schema,
@@ -943,7 +944,11 @@ def register_web_apis(context, managers: dict) -> None:
 
             schema = _get_conf_schema()
             section_def = schema.get(section) if isinstance(schema, dict) else None
-            if not section or not isinstance(section_def, dict):
+            if (
+                not section
+                or section in EXCLUDED_SECTIONS
+                or not isinstance(section_def, dict)
+            ):
                 return jsonify(
                     {
                         "success": False,

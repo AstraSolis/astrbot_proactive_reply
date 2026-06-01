@@ -95,6 +95,22 @@ class TestBuildConfigSchema(unittest.TestCase):
         interval = next(f for f in pr["fields"] if f["key"] == "interval_minutes")
         self.assertEqual(interval["value"], 30)
 
+    def test_excluded_sections_skipped(self):
+        schema = {
+            "basic_settings": SCHEMA["basic_settings"],
+            "calendar": {
+                "description": "时间表设置",
+                "type": "object",
+                "items": {
+                    "enable_calendar": {"type": "bool", "default": False},
+                },
+            },
+        }
+        groups = build_config_schema(schema, {})
+        keys = [g["key"] for g in groups]
+        self.assertIn("basic_settings", keys)
+        self.assertNotIn("calendar", keys)
+
     def test_control_types(self):
         groups = build_config_schema(SCHEMA, {})
         by_key = {g["key"]: g for g in groups}
