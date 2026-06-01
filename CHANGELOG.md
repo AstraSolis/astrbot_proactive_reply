@@ -5,6 +5,11 @@
 ## [Unreleased]
 
 ### 变更
+- 持久化文件 `persistent_data.yaml` 重排为 **session-major（按会话聚合）** 布局，更直观美观
+  - 顶层拆为 `meta`（全局：`data_version` / `last_update` / `timezone_signature` / `timing_config_signature`）与 `sessions`（按会话 UMO 聚合）
+  - 每个会话固定分块：`user`（用户信息）/ `timers`（计时器）/ `activity`（活动统计）/ `ai_scheduled`（AI 约定）/ `last_proactive_message`（最近一条主动消息）
+  - 长主动消息在无行尾空白时以字面量块样式（`|`）写出，中文与 emoji 不转义；含行尾空白时自动回退为引号样式以保证无损
+  - 兼容读取旧的扁平格式（首次保存时自动升级为新布局）；`data_version` 升至 `3.1`
 - 持久化文件由 JSON 迁移到 YAML，更直观、便于查看与手动编辑
   - `persistent_data.json` → `persistent_data.yaml`，`calendar_data.json` → `calendar_data.yaml`
   - 首次启动自动迁移历史 `.json` 文件，旧文件备份为 `.json.bak`（可回滚）

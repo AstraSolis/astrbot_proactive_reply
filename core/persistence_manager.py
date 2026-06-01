@@ -284,12 +284,12 @@ class PersistenceManager:
             plugin_data_dir = self.get_plugin_data_dir()
             persistent_file = os.path.join(plugin_data_dir, PERSISTENT_FILE_NAME)
 
-            # 从运行时数据存储中获取数据
-            persistent_data = runtime_data.to_dict()
-            persistent_data["last_update"] = datetime.datetime.now().strftime(
+            # 从运行时数据存储中获取数据（session-major 嵌套格式，更直观）
+            persistent_data = runtime_data.to_persistent_dict()
+            persistent_data["meta"]["last_update"] = datetime.datetime.now().strftime(
                 "%Y-%m-%d %H:%M:%S"
             )
-            persistent_data["data_version"] = "3.0"
+            persistent_data["meta"]["data_version"] = "3.1"
 
             if not validate_persistent_data(persistent_data):
                 logger.error("心念 | ❌ 持久化数据验证失败")
