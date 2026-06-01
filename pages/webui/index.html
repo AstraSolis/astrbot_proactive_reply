@@ -37,6 +37,12 @@
             </span>
             <span class="nav-label" id="nav-label-schedules"></span>
           </button>
+          <button type="button" class="nav-item" data-view="calendar" id="nav-calendar">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            </span>
+            <span class="nav-label" id="nav-label-calendar"></span>
+          </button>
           <button type="button" class="nav-item" data-view="placeholders" id="nav-placeholders">
             <span class="nav-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
@@ -136,6 +142,78 @@
             <div id="placeholders-container"></div>
           </div>
 
+          <div class="view" id="view-calendar" data-view="calendar">
+            <header class="page-header">
+              <h1 class="page-title" id="page-title-calendar"></h1>
+              <p class="page-subtitle" id="calendar-subtitle"></p>
+            </header>
+
+            <section class="content-section">
+              <div class="calendar-toggle-row">
+                <label class="switch">
+                  <input type="checkbox" id="calendar-enable-toggle" />
+                  <span class="switch-track" aria-hidden="true"></span>
+                </label>
+                <div class="calendar-toggle-text">
+                  <span class="calendar-toggle-label" id="calendar-enable-label"></span>
+                  <span class="calendar-toggle-hint" id="calendar-enable-hint"></span>
+                </div>
+              </div>
+            </section>
+
+            <div id="calendar-disabled-state" style="display:none;"></div>
+
+            <section class="content-section" id="calendar-body" style="display:none;">
+              <article class="panel" style="margin-bottom:16px;">
+                <header class="panel-head">
+                  <h3 class="panel-title" id="calendar-display-title"></h3>
+                </header>
+                <div class="panel-body">
+                  <div class="cal-settings-row">
+                    <div class="cal-form-field">
+                      <label id="cal-sep-label" for="cal-sep-input"></label>
+                      <input type="text" id="cal-sep-input" maxlength="20" />
+                      <span class="cal-field-hint" id="cal-sep-hint"></span>
+                    </div>
+                    <div class="cal-form-field">
+                      <label id="cal-empty-label" for="cal-empty-input"></label>
+                      <input type="text" id="cal-empty-input" maxlength="200" />
+                      <span class="cal-field-hint" id="cal-empty-hint"></span>
+                    </div>
+                    <button type="button" class="btn btn-ghost btn-sm" id="cal-settings-save"></button>
+                  </div>
+                </div>
+              </article>
+
+              <article class="panel">
+                <header class="panel-head calendar-head">
+                  <div class="calendar-nav">
+                    <button type="button" class="tool-btn" id="cal-prev" title="">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                    </button>
+                    <h3 class="panel-title calendar-month-title" id="calendar-month-title"></h3>
+                    <button type="button" class="tool-btn" id="cal-next" title="">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                    <button type="button" class="btn btn-ghost btn-sm" id="cal-today"></button>
+                  </div>
+                  <div class="calendar-tools">
+                    <button type="button" class="btn btn-ghost btn-sm" id="cal-import"></button>
+                    <button type="button" class="btn btn-ghost btn-sm" id="cal-export"></button>
+                    <button type="button" class="btn btn-ghost btn-sm" id="cal-clear-month"></button>
+                    <button type="button" class="btn btn-ghost btn-sm" id="cal-clear-year"></button>
+                    <button type="button" class="btn btn-danger btn-sm" id="cal-clear-all"></button>
+                    <input type="file" id="cal-import-file" accept="application/json,.json" hidden />
+                  </div>
+                </header>
+                <div class="panel-body">
+                  <div class="calendar-weekdays" id="calendar-weekdays"></div>
+                  <div class="calendar-grid" id="calendar-grid"></div>
+                </div>
+              </article>
+            </section>
+          </div>
+
           <div class="view" id="view-sessions" data-view="sessions">
             <header class="page-header">
               <h1 class="page-title" id="page-title-sessions"></h1>
@@ -211,6 +289,34 @@
         <footer class="dialog-footer">
           <button type="button" class="btn btn-ghost" id="btn-confirm-cancel"></button>
           <button type="button" class="btn btn-danger" id="btn-confirm-ok"></button>
+        </footer>
+      </div>
+    </div>
+
+    <div class="dialog-overlay" id="calendar-day-dialog" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="cal-day-title">
+      <div class="dialog dialog-lg">
+        <header class="dialog-header" id="cal-day-title"></header>
+        <div class="dialog-body dialog-body-scroll">
+          <div id="cal-day-events"></div>
+          <div class="cal-event-form">
+            <label id="cal-form-text-label" for="cal-form-text"></label>
+            <input type="text" id="cal-form-text" maxlength="200" />
+            <div class="cal-form-row">
+              <div class="cal-form-field">
+                <label id="cal-form-year-label" for="cal-form-year"></label>
+                <input type="number" id="cal-form-year" min="1970" max="9999" step="1" />
+                <span class="cal-field-hint" id="cal-form-year-hint" style="display:none;"></span>
+              </div>
+              <div class="cal-form-field">
+                <label id="cal-form-repeat-label" for="cal-form-repeat"></label>
+                <select id="cal-form-repeat"></select>
+              </div>
+            </div>
+          </div>
+        </div>
+        <footer class="dialog-footer">
+          <button type="button" class="btn btn-ghost" id="cal-day-close"></button>
+          <button type="button" class="btn btn-primary" id="cal-day-save"></button>
         </footer>
       </div>
     </div>
