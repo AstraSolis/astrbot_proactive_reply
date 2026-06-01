@@ -425,6 +425,7 @@
       "calendar_ai_text_placeholder": "Event name",
       "calendar_ai_delete_row": "Delete",
       "calendar_ai_add_row": "Add row",
+      "calendar_ai_clear_all": "Clear all",
       "calendar_ai_apply_merge": "Append to existing",
       "calendar_ai_apply_replace": "Clear & replace",
       "calendar_ai_apply_hint": "Append to existing keeps all current events and adds the results below; Clear & replace deletes all existing events and keeps only the generated results",
@@ -435,6 +436,7 @@
       "toast_calendar_ai_empty": "AI did not generate any valid events",
       "toast_calendar_ai_generated": "Events generated",
       "toast_calendar_ai_applied": "Applied",
+      "toast_calendar_ai_applied_partial": "Applied {applied}; skipped {skipped} with invalid dates",
       "toast_calendar_ai_apply_failed": "Apply failed",
       "toast_calendar_ai_row_invalid": "Please check the month, day and name of each event"
     }

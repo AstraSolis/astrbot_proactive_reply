@@ -1123,6 +1123,7 @@ function renderCalendarStatic() {
   set("cal-ai-prompt-hint", "calendar_ai_prompt_hint", "");
   set("cal-ai-generate", "calendar_ai_generate_btn", "生成");
   set("cal-ai-add-row", "calendar_ai_add_row", "新增一行");
+  set("cal-ai-clear-all", "calendar_ai_clear_all", "全部清空");
   set("cal-ai-apply-merge", "calendar_ai_apply_merge", "追加到现有");
   set("cal-ai-apply-replace", "calendar_ai_apply_replace", "清空并替换");
   set(
@@ -1830,6 +1831,12 @@ function deleteAiRow(cid) {
   renderAiPreview();
 }
 
+function clearAiPreview() {
+  if (!calAiGeneratedEvents.length) return;
+  calAiGeneratedEvents = [];
+  renderAiPreview();
+}
+
 function addAiRow() {
   const row = makeAiRow({ month: calViewMonth, day: 1, text: "", repeat: -1 });
   calAiGeneratedEvents.push(row);
@@ -1895,12 +1902,29 @@ async function applyCalendarAi(mode) {
       throw new Error(data.error || t("toast_calendar_ai_apply_failed", "应用失败"));
     }
     calendarEvents = Array.isArray(data.events) ? data.events : calendarEvents;
+    const submitted = payload.length;
+    const applied = Number.isInteger(data.imported) ? data.imported : submitted;
+    const skipped = Math.max(0, submitted - applied);
     calAiGeneratedEvents = [];
     renderAiPreview();
     renderCalendarGrid();
     const promptInput = document.getElementById("cal-ai-prompt-input");
     if (promptInput) promptInput.value = "";
-    toast(data.message || t("toast_calendar_ai_applied", "已应用"), "success");
+    if (skipped > 0) {
+      // 双保险：理论上前端已按当月天数校验，仍兜底提示后端跳过的非法事项
+      toast(
+        fmt(
+          t(
+            "toast_calendar_ai_applied_partial",
+            "已应用 {applied} 条，{skipped} 条因日期非法被跳过",
+          ),
+          { applied, skipped },
+        ),
+        "warning",
+      );
+    } else {
+      toast(data.message || t("toast_calendar_ai_applied", "已应用"), "success");
+    }
   } catch (err) {
     toast(err.message, "error");
   }
@@ -1956,6 +1980,9 @@ function bindCalendarEvents() {
     .getElementById("cal-ai-generate")
     ?.addEventListener("click", generateCalendarAi);
   document.getElementById("cal-ai-add-row")?.addEventListener("click", addAiRow);
+  document
+    .getElementById("cal-ai-clear-all")
+    ?.addEventListener("click", clearAiPreview);
   document
     .getElementById("cal-ai-apply-merge")
     ?.addEventListener("click", () => applyCalendarAi("merge"));

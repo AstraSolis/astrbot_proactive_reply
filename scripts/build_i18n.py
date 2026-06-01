@@ -289,6 +289,7 @@ def _zh_pages() -> dict:
         "calendar_ai_text_placeholder": "事项名称",
         "calendar_ai_delete_row": "删除",
         "calendar_ai_add_row": "新增一行",
+        "calendar_ai_clear_all": "全部清空",
         "calendar_ai_apply_merge": "追加到现有",
         "calendar_ai_apply_replace": "清空并替换",
         "calendar_ai_apply_hint": "「追加到现有」保留当前全部事项并加入下方结果；「清空并替换」会先删除全部现有事项，仅保留本次生成的结果",
@@ -299,6 +300,7 @@ def _zh_pages() -> dict:
         "toast_calendar_ai_empty": "AI 未生成任何有效事项",
         "toast_calendar_ai_generated": "已生成事项",
         "toast_calendar_ai_applied": "已应用",
+        "toast_calendar_ai_applied_partial": "已应用 {applied} 条，{skipped} 条因日期非法被跳过",
         "toast_calendar_ai_apply_failed": "应用失败",
         "toast_calendar_ai_row_invalid": "请检查事项的月份、日期与名称是否填写正确",
     }
@@ -523,6 +525,7 @@ def _en_pages() -> dict:
         "calendar_ai_text_placeholder": "Event name",
         "calendar_ai_delete_row": "Delete",
         "calendar_ai_add_row": "Add row",
+        "calendar_ai_clear_all": "Clear all",
         "calendar_ai_apply_merge": "Append to existing",
         "calendar_ai_apply_replace": "Clear & replace",
         "calendar_ai_apply_hint": "Append to existing keeps all current events and adds the results below; Clear & replace deletes all existing events and keeps only the generated results",
@@ -533,6 +536,7 @@ def _en_pages() -> dict:
         "toast_calendar_ai_empty": "AI did not generate any valid events",
         "toast_calendar_ai_generated": "Events generated",
         "toast_calendar_ai_applied": "Applied",
+        "toast_calendar_ai_applied_partial": "Applied {applied}; skipped {skipped} with invalid dates",
         "toast_calendar_ai_apply_failed": "Apply failed",
         "toast_calendar_ai_row_invalid": "Please check the month, day and name of each event",
     }

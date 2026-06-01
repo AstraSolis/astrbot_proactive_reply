@@ -971,6 +971,11 @@ code {
   background: var(--danger-soft);
 }
 
+.toast-warning {
+  border-color: #fde68a;
+  background: var(--warning-soft, #fffbeb);
+}
+
 @keyframes toast-in {
   from {
     opacity: 0;
@@ -1586,6 +1591,11 @@ input[type="text"]:focus {
   font-size: 0.875rem;
   font-weight: 600;
   color: var(--text-secondary);
+}
+
+.cal-ai-result-head-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .cal-ai-result-actions {
