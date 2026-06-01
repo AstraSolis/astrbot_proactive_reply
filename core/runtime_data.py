@@ -61,6 +61,93 @@ def _normalize_user_info(mapping) -> dict:
     return result
 
 
+def _ordered_user_info(info: dict) -> dict:
+    """按固定字段顺序重排单个会话的用户信息（未知字段追加在后，顺序稳定）"""
+    if not isinstance(info, dict):
+        return {}
+    ordered = {field: info[field] for field in _USER_INFO_STR_FIELDS if field in info}
+    for key, value in info.items():
+        if key not in ordered:
+            ordered[key] = value
+    return ordered
+
+
+def _is_nested_format(data: dict) -> bool:
+    """判断持久化数据是否为 session-major 嵌套格式
+
+    新格式以 ``sessions`` 为顶层键聚合每个会话的数据；旧的扁平格式以
+    ``session_user_info`` 等字段为顶层键。以结构而非 ``data_version`` 判定，
+    对历史文件与手动编辑更健壮。
+    """
+    return isinstance(data.get("sessions"), dict) and "session_user_info" not in data
+
+
+def _unnest_persistent(data: dict) -> dict:
+    """将 session-major 嵌套格式展开回扁平的运行时字段映射
+
+    与 :meth:`RuntimeDataStore.load_from_dict` 期望的扁平结构对齐，便于复用既有
+    的类型规整逻辑。缺失 / ``None`` 的子字段直接跳过（保持映射精简）。
+    """
+    meta = data.get("meta") or {}
+    sessions = data.get("sessions") or {}
+
+    session_user_info: dict = {}
+    ai_last_sent_times: dict = {}
+    last_sent_times: dict = {}
+    session_next_fire_times: dict = {}
+    session_sleep_remaining: dict = {}
+    session_last_proactive_message: dict = {}
+    session_unreplied_count: dict = {}
+    session_consecutive_failures: dict = {}
+    session_ai_scheduled: dict = {}
+
+    for umo, block in sessions.items():
+        if not isinstance(block, dict):
+            continue
+
+        user = block.get("user")
+        if isinstance(user, dict):
+            session_user_info[umo] = user
+
+        timers = block.get("timers") or {}
+        if timers.get("next_fire_time") is not None:
+            session_next_fire_times[umo] = timers["next_fire_time"]
+        if timers.get("sleep_remaining") is not None:
+            session_sleep_remaining[umo] = timers["sleep_remaining"]
+
+        activity = block.get("activity") or {}
+        if activity.get("last_sent_time") is not None:
+            last_sent_times[umo] = activity["last_sent_time"]
+        if activity.get("ai_last_sent_time") is not None:
+            ai_last_sent_times[umo] = activity["ai_last_sent_time"]
+        if activity.get("unreplied_count") is not None:
+            session_unreplied_count[umo] = activity["unreplied_count"]
+        if activity.get("consecutive_failures") is not None:
+            session_consecutive_failures[umo] = activity["consecutive_failures"]
+
+        scheduled = block.get("ai_scheduled")
+        if scheduled:
+            session_ai_scheduled[umo] = scheduled
+
+        message = block.get("last_proactive_message")
+        if message is not None:
+            session_last_proactive_message[umo] = message
+
+    return {
+        "session_user_info": session_user_info,
+        "ai_last_sent_times": ai_last_sent_times,
+        "last_sent_times": last_sent_times,
+        "session_next_fire_times": session_next_fire_times,
+        "session_sleep_remaining": session_sleep_remaining,
+        "timing_config_signature": meta.get("timing_config_signature", ""),
+        "session_last_proactive_message": session_last_proactive_message,
+        "session_unreplied_count": session_unreplied_count,
+        "session_consecutive_failures": session_consecutive_failures,
+        "session_ai_scheduled": session_ai_scheduled,
+        "timezone_signature": meta.get("timezone_signature", ""),
+    }
+
+
 class RuntimeDataStore:
     """运行时数据存储类
 
@@ -113,8 +200,13 @@ class RuntimeDataStore:
         ``datetime``，传给 ``strptime`` 会抛 ``TypeError``）。
 
         Args:
-            data: 包含运行时数据的字典
+            data: 包含运行时数据的字典（兼容 session-major 嵌套格式与旧的扁平格式）
         """
+        if not isinstance(data, dict):
+            return
+        # 兼容新的 session-major 嵌套格式：先展开回扁平结构再做类型规整
+        if _is_nested_format(data):
+            data = _unnest_persistent(data)
         if "session_user_info" in data:
             self.session_user_info = _normalize_user_info(data["session_user_info"])
         if "ai_last_sent_times" in data:
@@ -164,6 +256,65 @@ class RuntimeDataStore:
             "session_consecutive_failures": self.session_consecutive_failures,
             "session_ai_scheduled": self.session_ai_scheduled,
             "timezone_signature": self.timezone_signature,
+        }
+
+    def to_persistent_dict(self) -> dict:
+        """导出为 session-major 嵌套字典（持久化文件的当前磁盘格式）
+
+        将分散在各字段映射里的数据按「会话」聚合，并把全局状态收纳进 ``meta``，
+        使持久化文件直观、便于查阅与 diff。``meta`` 中的 ``last_update`` 由
+        :class:`PersistenceManager` 在写盘时填充。
+
+        Returns:
+            形如 ``{"meta": {...}, "sessions": {umo: {...}}}`` 的字典
+        """
+        # 收集所有出现过的会话 UMO，保持插入顺序（diff 稳定，避免无谓churn）
+        ordered_umos: list = []
+        seen: set = set()
+        for mapping in (
+            self.session_user_info,
+            self.session_next_fire_times,
+            self.session_sleep_remaining,
+            self.last_sent_times,
+            self.ai_last_sent_times,
+            self.session_unreplied_count,
+            self.session_consecutive_failures,
+            self.session_ai_scheduled,
+            self.session_last_proactive_message,
+        ):
+            for umo in mapping:
+                if umo not in seen:
+                    seen.add(umo)
+                    ordered_umos.append(umo)
+
+        sessions: dict = {}
+        for umo in ordered_umos:
+            sessions[umo] = {
+                "user": _ordered_user_info(self.session_user_info.get(umo, {})),
+                "timers": {
+                    "next_fire_time": self.session_next_fire_times.get(umo),
+                    "sleep_remaining": self.session_sleep_remaining.get(umo),
+                },
+                "activity": {
+                    "last_sent_time": self.last_sent_times.get(umo),
+                    "ai_last_sent_time": self.ai_last_sent_times.get(umo),
+                    "unreplied_count": int(self.session_unreplied_count.get(umo, 0)),
+                    "consecutive_failures": int(
+                        self.session_consecutive_failures.get(umo, 0)
+                    ),
+                },
+                "ai_scheduled": self.session_ai_scheduled.get(umo, []),
+                "last_proactive_message": self.session_last_proactive_message.get(umo),
+            }
+
+        return {
+            "meta": {
+                "data_version": "3.1",
+                "last_update": "",
+                "timezone_signature": self.timezone_signature,
+                "timing_config_signature": self.timing_config_signature,
+            },
+            "sessions": sessions,
         }
 
     def clear_all(self):

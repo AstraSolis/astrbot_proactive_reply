@@ -10,7 +10,10 @@
 - 写入采用 ``allow_unicode=True``（中文不转义）、``sort_keys=False``（保持插入顺序，
   diff 友好）、``default_flow_style=False``（块状缩进，最直观）。
 - 写入沿用「``.tmp`` + ``os.rename``」原子替换，并在 Windows 下先删旧文件。
-- 若运行环境装有 libyaml C 扩展，则优先使用 ``CSafeLoader`` / ``CSafeDumper`` 提速。
+- 读取优先使用 libyaml C 扩展（``CSafeLoader``）提速；写出固定使用纯 Python
+  ``SafeDumper``：libyaml 的 C emitter 会忽略按节点设置的块样式（``|``）并转义
+  星平面 Unicode（如 emoji），使长消息可读性变差。持久化文件体量小、写盘不频繁，
+  用 Python dumper 换取「块样式 + 不转义」的可读性更划算。
 """
 
 import json
@@ -19,16 +22,36 @@ import os
 import yaml
 from astrbot.api import logger
 
-# 优先使用 libyaml C 扩展（更快），不可用时回退到纯 Python 实现
+# 读取优先使用 libyaml C 扩展（更快），不可用时回退到纯 Python 实现
 try:  # pragma: no cover - 取决于运行环境是否带 libyaml
-    from yaml import CSafeDumper as _SafeDumper
     from yaml import CSafeLoader as _SafeLoader
 except ImportError:  # pragma: no cover
-    from yaml import SafeDumper as _SafeDumper
     from yaml import SafeLoader as _SafeLoader
 
 # 读取时依次尝试的编码（兼容带 BOM 的历史文件）
 _READ_ENCODINGS = ("utf-8-sig", "utf-8")
+
+
+def _represent_str(dumper, data):
+    """多行字符串用字面量块样式（``|``）输出，单行保持默认
+
+    主动消息（``last_proactive_message``）等长文本含换行，块样式比折行 / 转义更
+    直观、可读。若文本无法以块样式无损表示（如行尾含空白），PyYAML 会自动回退到
+    引号样式，不会丢失内容。
+    """
+    if "\n" in data:
+        return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
+    return dumper.represent_scalar("tag:yaml.org,2002:str", data)
+
+
+class _SafeDumper(yaml.SafeDumper):
+    """纯 Python SafeDumper 子类，挂载多行字符串块样式 representer
+
+    用子类而非直接改 ``yaml.SafeDumper``，避免污染进程内其他使用方的全局 Dumper。
+    """
+
+
+_SafeDumper.add_representer(str, _represent_str)
 
 
 def dump_yaml_str(data: dict, header: str | None = None) -> str:

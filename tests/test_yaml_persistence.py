@@ -159,7 +159,8 @@ class TestPersistentMigration(unittest.TestCase):
             self.assertEqual(runtime_data.session_last_proactive_message["s1"], "no")
             self.assertEqual(runtime_data.session_unreplied_count["s1"], 3)
 
-    def test_save_writes_yaml_with_version_3(self):
+    def test_save_writes_session_major_yaml(self):
+        """保存应写出 session-major 嵌套格式：meta.data_version 为 3.1，含 sessions"""
         with tempfile.TemporaryDirectory() as d:
             pm = pm_mod.PersistenceManager(config={}, context=MagicMock())
             pm.get_plugin_data_dir = lambda: d
@@ -167,7 +168,114 @@ class TestPersistentMigration(unittest.TestCase):
             yaml_path = os.path.join(d, "persistent_data.yaml")
             self.assertTrue(os.path.exists(yaml_path))
             data = datafile.load_mapping(yaml_path)
-            self.assertEqual(data["data_version"], "3.0")
+            self.assertIn("meta", data)
+            self.assertIn("sessions", data)
+            self.assertIsInstance(data["sessions"], dict)
+            self.assertEqual(data["meta"]["data_version"], "3.1")
+            # 旧的扁平字段不再出现在顶层
+            self.assertNotIn("session_user_info", data)
+
+    def test_session_major_roundtrip_preserves_runtime_data(self):
+        """内存 → session-major 文件 → 内存 应保持各会话数据一致"""
+        runtime_data.clear_all()
+        session = "aiocqhttp:FriendMessage:10086"
+        runtime_data.session_user_info[session] = {
+            "username": "小李",
+            "user_id": "10086",
+            "platform": "aiocqhttp",
+            "chat_type": "私聊",
+            "last_active_time": "2026-01-01 09:00:00",
+        }
+        runtime_data.ai_last_sent_times[session] = "2026-01-01 09:05:00"
+        runtime_data.last_sent_times[session] = "2026-01-01 09:04:00"
+        runtime_data.session_next_fire_times[session] = "2026-01-01 10:00:00"
+        runtime_data.session_last_proactive_message[session] = "在吗？\n想你了～"
+        runtime_data.session_unreplied_count[session] = 2
+        runtime_data.timezone_signature = "Asia/Shanghai"
+        runtime_data.timing_config_signature = "fixed_interval|300"
+
+        with tempfile.TemporaryDirectory() as d:
+            pm = pm_mod.PersistenceManager(config={}, context=MagicMock())
+            pm.get_plugin_data_dir = lambda: d
+            self.assertTrue(pm.save_persistent_data())
+
+            runtime_data.clear_all()
+            pm.load_persistent_data()
+
+        info = runtime_data.session_user_info[session]
+        self.assertEqual(info["username"], "小李")
+        self.assertEqual(info["user_id"], "10086")
+        self.assertEqual(
+            runtime_data.ai_last_sent_times[session], "2026-01-01 09:05:00"
+        )
+        self.assertEqual(runtime_data.last_sent_times[session], "2026-01-01 09:04:00")
+        self.assertEqual(
+            runtime_data.session_next_fire_times[session], "2026-01-01 10:00:00"
+        )
+        self.assertEqual(
+            runtime_data.session_last_proactive_message[session], "在吗？\n想你了～"
+        )
+        self.assertEqual(runtime_data.session_unreplied_count[session], 2)
+        self.assertEqual(runtime_data.timezone_signature, "Asia/Shanghai")
+        self.assertEqual(runtime_data.timing_config_signature, "fixed_interval|300")
+
+    def test_multiline_message_uses_block_scalar(self):
+        """无行尾空白的多行消息应以字面量块样式（|）写出，提升可读性"""
+        runtime_data.clear_all()
+        session = "aiocqhttp:FriendMessage:42"
+        runtime_data.session_last_proactive_message[session] = "第一行\n第二行 😄"
+
+        with tempfile.TemporaryDirectory() as d:
+            pm = pm_mod.PersistenceManager(config={}, context=MagicMock())
+            pm.get_plugin_data_dir = lambda: d
+            self.assertTrue(pm.save_persistent_data())
+            yaml_path = os.path.join(d, "persistent_data.yaml")
+            with open(yaml_path, encoding="utf-8") as f:
+                text = f.read()
+        self.assertIn("last_proactive_message: |", text)
+        # 块样式下中文与 emoji 不应被转义
+        self.assertIn("第二行 😄", text)
+
+    def test_load_legacy_flat_format_still_supported(self):
+        """读取旧的扁平格式应仍然正常（向后兼容）"""
+        runtime_data.clear_all()
+        with tempfile.TemporaryDirectory() as d:
+            yaml_path = os.path.join(d, "persistent_data.yaml")
+            flat = {
+                "session_user_info": {
+                    "aiocqhttp:FriendMessage:1": {
+                        "username": "老张",
+                        "user_id": "1",
+                    }
+                },
+                "ai_last_sent_times": {
+                    "aiocqhttp:FriendMessage:1": "2026-01-01 09:00:00"
+                },
+                "last_sent_times": {},
+                "session_next_fire_times": {},
+                "session_sleep_remaining": {},
+                "timing_config_signature": "sig",
+                "session_last_proactive_message": {"aiocqhttp:FriendMessage:1": "hi"},
+                "session_unreplied_count": {"aiocqhttp:FriendMessage:1": 5},
+                "session_consecutive_failures": {},
+                "session_ai_scheduled": {},
+                "timezone_signature": "Asia/Shanghai",
+                "data_version": "3.0",
+            }
+            self.assertTrue(datafile.atomic_write_yaml(yaml_path, flat))
+
+            pm = pm_mod.PersistenceManager(config={}, context=MagicMock())
+            pm.get_plugin_data_dir = lambda: d
+            pm.load_persistent_data()
+
+        self.assertEqual(
+            runtime_data.session_user_info["aiocqhttp:FriendMessage:1"]["username"],
+            "老张",
+        )
+        self.assertEqual(
+            runtime_data.session_unreplied_count["aiocqhttp:FriendMessage:1"], 5
+        )
+        self.assertEqual(runtime_data.timezone_signature, "Asia/Shanghai")
 
 
 class TestCalendarMigration(unittest.TestCase):
