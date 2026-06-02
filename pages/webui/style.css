@@ -637,6 +637,65 @@ svg {
   background: currentColor;
 }
 
+/* —— Changelog (About page) —— */
+.changelog-body {
+  font-size: 0.875rem;
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+
+.changelog-body .cl-h {
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.changelog-body .cl-h-major {
+  margin: 22px 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.changelog-body .cl-h-major:first-child {
+  margin-top: 0;
+}
+
+.changelog-body .cl-h-minor {
+  margin: 14px 0 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.changelog-body .cl-p {
+  margin: 6px 0;
+}
+
+.changelog-body .cl-list {
+  margin: 4px 0;
+  padding-left: 1.3em;
+  list-style: disc;
+}
+
+.changelog-body .cl-list .cl-list {
+  margin: 2px 0;
+  list-style: circle;
+}
+
+.changelog-body li {
+  margin: 3px 0;
+}
+
+.changelog-body a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.changelog-body a:hover {
+  text-decoration: underline;
+}
+
 /* —— Activity list —— */
 .activity-list {
   display: flex;

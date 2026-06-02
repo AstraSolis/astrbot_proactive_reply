@@ -16,6 +16,9 @@ let aiSchedules = [];
 let refreshTimer = null;
 let dashboardPromise = null;
 let sessionsPromise = null;
+let aboutLoaded = false;
+let aboutPromise = null;
+let aboutData = null;
 
 // 时间表（日历事项）状态
 let calendarLoaded = false;
@@ -205,8 +208,20 @@ function renderStatic() {
   document.getElementById("placeholders-subtitle").textContent =
     t("placeholders_subtitle", "点击任意占位符即可复制到剪贴板，粘贴进配置模板使用");
 
+  document.getElementById("nav-label-about").textContent =
+    t("tab_about", "关于");
+  document.getElementById("page-title-about").textContent =
+    t("tab_about", "关于");
+  document.getElementById("about-subtitle").textContent =
+    t("about_subtitle", "查看当前版本号与更新日志（来自根目录 metadata.yaml 与 CHANGELOG.md）");
+  document.getElementById("hdr-about-version").textContent =
+    t("about_version_title", "版本信息");
+  document.getElementById("hdr-about-changelog").textContent =
+    t("about_changelog_title", "更新日志");
+
   renderCalendarStatic();
   renderConfigStatic();
+  if (aboutLoaded) renderAbout();
 
   document.getElementById("sidebar-nav").setAttribute(
     "aria-label",
@@ -238,6 +253,7 @@ const VIEW_TITLE_KEYS = {
   calendar: ["tab_calendar", "时间表"],
   placeholders: ["tab_placeholders", "占位符"],
   config: ["tab_config", "配置文件"],
+  about: ["tab_about", "关于"],
 };
 
 function updateTopbarTitle(view) {
@@ -316,6 +332,8 @@ function switchView(view) {
     loadCalendar();
   } else if (view === "config" && !configLoaded) {
     loadConfig();
+  } else if (view === "about" && !aboutLoaded) {
+    loadAbout();
   }
 }
 
@@ -519,6 +537,127 @@ async function loadPlaceholders() {
     }
   })();
   return placeholdersPromise;
+}
+
+async function loadAbout() {
+  if (aboutPromise) return aboutPromise;
+  aboutPromise = (async () => {
+    try {
+      const data = await bridge.apiGet("about", apiLocale());
+      if (!data.success) throw new Error(data.error || t("err_unknown", "未知错误"));
+      aboutData = data;
+      aboutLoaded = true;
+      renderAbout();
+    } catch (err) {
+      const rows = document.getElementById("about-version-rows");
+      const log = document.getElementById("about-changelog");
+      const msg = escHtml(t("err_about_load", "关于信息加载失败：") + err.message);
+      if (rows) rows.innerHTML = `<div class="empty-state"><p>${msg}</p></div>`;
+      if (log) log.innerHTML = "";
+    } finally {
+      aboutPromise = null;
+    }
+  })();
+  return aboutPromise;
+}
+
+function renderAbout() {
+  const rows = document.getElementById("about-version-rows");
+  const log = document.getElementById("about-changelog");
+  if (!rows || !log) return;
+  if (!aboutLoaded || !aboutData) {
+    rows.innerHTML = loadingHtml();
+    log.innerHTML = loadingHtml();
+    return;
+  }
+
+  const meta = aboutData.metadata || {};
+  const version = aboutData.version || "";
+  const none = `<span class="text-muted">${escHtml(t("value_none", "—"))}</span>`;
+  const repoVal = meta.repo
+    ? `<a href="${escAttr(meta.repo)}" target="_blank" rel="noopener noreferrer">${escHtml(meta.repo)}</a>`
+    : none;
+
+  const infoRows = [
+    [t("about_label_version", "版本号"), version ? `<span class="badge badge-info">v${escHtml(version.replace(/^v/, ""))}</span>` : none],
+    [t("about_label_name", "插件名称"), meta.display_name ? escHtml(meta.display_name) : none],
+    [t("about_label_author", "作者"), meta.author ? escHtml(meta.author) : none],
+    [t("about_label_astrbot", "AstrBot 版本要求"), meta.astrbot_version ? `<code>${escHtml(meta.astrbot_version)}</code>` : none],
+    [t("about_label_repo", "项目仓库"), repoVal],
+  ];
+  rows.innerHTML = infoRows
+    .map(
+      ([label, valueHtml]) => `
+    <div class="info-row">
+      <span class="info-label">${escHtml(label)}</span>
+      <span class="info-value">${valueHtml}</span>
+    </div>`,
+    )
+    .join("");
+
+  // 去掉文首的一级标题（如「# 更新日志」），避免与面板标题重复
+  const changelog = (aboutData.changelog || "").replace(/^\uFEFF?\s*#\s+.*(\n|$)/, "");
+  log.innerHTML = changelog.trim()
+    ? renderMarkdown(changelog)
+    : `<div class="empty-state"><p>${escHtml(t("about_changelog_empty", "暂无更新日志"))}</p></div>`;
+}
+
+// 轻量 Markdown 渲染：仅覆盖 CHANGELOG.md 用到的语法（标题 / 列表 / 链接 / 加粗 / 行内代码）。
+function renderMarkdownInline(text) {
+  let s = escHtml(text);
+  s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, label, url) => {
+    const safe = /^https?:\/\//i.test(url);
+    return safe
+      ? `<a href="${escAttr(url)}" target="_blank" rel="noopener noreferrer">${label}</a>`
+      : `${label} (${escHtml(url)})`;
+  });
+  s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
+  return s;
+}
+
+function renderMarkdown(md) {
+  const lines = String(md).replace(/\r\n/g, "\n").split("\n");
+  const out = [];
+  let depth = 0; // 当前打开的 <ul> 层数
+  const closeTo = d => {
+    while (depth > d) {
+      out.push("</ul>");
+      depth -= 1;
+    }
+  };
+  for (const raw of lines) {
+    const line = raw.replace(/\s+$/, "");
+    if (!line.trim()) {
+      closeTo(0);
+      continue;
+    }
+    const heading = line.match(/^(#{1,6})\s+(.*)$/);
+    if (heading) {
+      closeTo(0);
+      const level = heading[1].length;
+      const tag = level <= 1 ? "h3" : level === 2 ? "h4" : "h5";
+      const cls = level <= 2 ? "cl-h cl-h-major" : "cl-h cl-h-minor";
+      out.push(`<${tag} class="${cls}">${renderMarkdownInline(heading[2])}</${tag}>`);
+      continue;
+    }
+    const item = line.match(/^(\s*)[-*]\s+(.*)$/);
+    if (item) {
+      const indent = item[1].replace(/\t/g, "  ").length;
+      const want = Math.floor(indent / 2) + 1;
+      while (depth < want) {
+        out.push('<ul class="cl-list">');
+        depth += 1;
+      }
+      closeTo(want);
+      out.push(`<li>${renderMarkdownInline(item[2])}</li>`);
+      continue;
+    }
+    closeTo(0);
+    out.push(`<p class="cl-p">${renderMarkdownInline(line)}</p>`);
+  }
+  closeTo(0);
+  return out.join("\n");
 }
 
 function renderSessionList() {
@@ -1092,6 +1231,9 @@ async function reloadActiveView() {
   } else if (activeView === "config") {
     configLoaded = false;
     await loadConfig();
+  } else if (activeView === "about") {
+    aboutLoaded = false;
+    await loadAbout();
   }
 }
 

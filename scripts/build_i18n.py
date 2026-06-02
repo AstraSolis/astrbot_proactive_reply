@@ -327,6 +327,17 @@ def _zh_pages() -> dict:
         "toast_calendar_ai_applied_partial": "已应用 {applied} 条，{skipped} 条因日期非法被跳过",
         "toast_calendar_ai_apply_failed": "应用失败",
         "toast_calendar_ai_row_invalid": "请检查事项的月份、日期与名称是否填写正确",
+        "tab_about": "关于",
+        "about_subtitle": "查看当前版本号与更新日志（来自根目录 metadata.yaml 与 CHANGELOG.md）",
+        "about_version_title": "版本信息",
+        "about_changelog_title": "更新日志",
+        "about_label_version": "版本号",
+        "about_label_name": "插件名称",
+        "about_label_author": "作者",
+        "about_label_astrbot": "AstrBot 版本要求",
+        "about_label_repo": "项目仓库",
+        "about_changelog_empty": "暂无更新日志",
+        "err_about_load": "关于信息加载失败：",
     }
 
 
@@ -587,6 +598,17 @@ def _en_pages() -> dict:
         "toast_calendar_ai_applied_partial": "Applied {applied}; skipped {skipped} with invalid dates",
         "toast_calendar_ai_apply_failed": "Apply failed",
         "toast_calendar_ai_row_invalid": "Please check the month, day and name of each event",
+        "tab_about": "About",
+        "about_subtitle": "View the current version and changelog (read from metadata.yaml and CHANGELOG.md in the project root)",
+        "about_version_title": "Version Info",
+        "about_changelog_title": "Changelog",
+        "about_label_version": "Version",
+        "about_label_name": "Plugin Name",
+        "about_label_author": "Author",
+        "about_label_astrbot": "Required AstrBot Version",
+        "about_label_repo": "Repository",
+        "about_changelog_empty": "No changelog available",
+        "err_about_load": "Failed to load about info: ",
     }
 
 

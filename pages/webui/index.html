@@ -75,6 +75,12 @@
             </span>
             <span class="nav-label" id="nav-label-config"></span>
           </button>
+          <button type="button" class="nav-item" data-view="about" id="nav-about">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            </span>
+            <span class="nav-label" id="nav-label-about"></span>
+          </button>
         </nav>
 
         <div class="sidebar-footer">
@@ -310,6 +316,35 @@
                 <div class="loading"><div class="spinner"></div><span class="loading-text"></span></div>
               </div>
             </article>
+          </div>
+
+          <div class="view" id="view-about" data-view="about">
+            <header class="page-header">
+              <h1 class="page-title" id="page-title-about"></h1>
+              <p class="page-subtitle" id="about-subtitle"></p>
+            </header>
+
+            <section class="content-section">
+              <article class="panel">
+                <header class="panel-head">
+                  <h3 class="panel-title" id="hdr-about-version"></h3>
+                </header>
+                <div class="panel-body" id="about-version-rows">
+                  <div class="loading"><div class="spinner"></div><span class="loading-text"></span></div>
+                </div>
+              </article>
+            </section>
+
+            <section class="content-section">
+              <article class="panel">
+                <header class="panel-head">
+                  <h3 class="panel-title" id="hdr-about-changelog"></h3>
+                </header>
+                <div class="panel-body changelog-body" id="about-changelog">
+                  <div class="loading"><div class="spinner"></div><span class="loading-text"></span></div>
+                </div>
+              </article>
+            </section>
           </div>
         </main>
       </div>

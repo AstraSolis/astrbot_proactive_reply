@@ -485,7 +485,18 @@
       "toast_calendar_ai_applied": "Applied",
       "toast_calendar_ai_applied_partial": "Applied {applied}; skipped {skipped} with invalid dates",
       "toast_calendar_ai_apply_failed": "Apply failed",
-      "toast_calendar_ai_row_invalid": "Please check the month, day and name of each event"
+      "toast_calendar_ai_row_invalid": "Please check the month, day and name of each event",
+      "tab_about": "About",
+      "about_subtitle": "View the current version and changelog (read from metadata.yaml and CHANGELOG.md in the project root)",
+      "about_version_title": "Version Info",
+      "about_changelog_title": "Changelog",
+      "about_label_version": "Version",
+      "about_label_name": "Plugin Name",
+      "about_label_author": "Author",
+      "about_label_astrbot": "Required AstrBot Version",
+      "about_label_repo": "Repository",
+      "about_changelog_empty": "No changelog available",
+      "err_about_load": "Failed to load about info: "
     }
   },
   "api": {
