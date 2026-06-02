@@ -1109,6 +1109,12 @@ let configSaving = false;
 // 结构：{ [分组key]: { [从属字段key]: [{ field: 控制字段key, values: [生效取值] }, ...] } }
 // 同一从属字段的多个条件为「与」关系，需全部满足才显示。
 const CONFIG_FIELD_DEPENDENCIES = {
+  calendar: {
+    calendar_separator: [{ field: "enable_calendar", values: [true] }],
+    calendar_empty_text: [{ field: "enable_calendar", values: [true] }],
+    ai_generate_provider_id: [{ field: "enable_calendar", values: [true] }],
+    ai_generate_prompt: [{ field: "enable_calendar", values: [true] }],
+  },
   proactive_reply: {
     interval_minutes: [{ field: "timing_mode", values: ["fixed_interval"] }],
     random_delay_enabled: [{ field: "timing_mode", values: ["fixed_interval"] }],
