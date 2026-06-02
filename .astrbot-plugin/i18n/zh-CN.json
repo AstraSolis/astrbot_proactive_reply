@@ -485,7 +485,18 @@
       "toast_calendar_ai_applied": "已应用",
       "toast_calendar_ai_applied_partial": "已应用 {applied} 条，{skipped} 条因日期非法被跳过",
       "toast_calendar_ai_apply_failed": "应用失败",
-      "toast_calendar_ai_row_invalid": "请检查事项的月份、日期与名称是否填写正确"
+      "toast_calendar_ai_row_invalid": "请检查事项的月份、日期与名称是否填写正确",
+      "tab_about": "关于",
+      "about_subtitle": "查看当前版本号与更新日志（来自根目录 metadata.yaml 与 CHANGELOG.md）",
+      "about_version_title": "版本信息",
+      "about_changelog_title": "更新日志",
+      "about_label_version": "版本号",
+      "about_label_name": "插件名称",
+      "about_label_author": "作者",
+      "about_label_astrbot": "AstrBot 版本要求",
+      "about_label_repo": "项目仓库",
+      "about_changelog_empty": "暂无更新日志",
+      "err_about_load": "关于信息加载失败："
     }
   },
   "api": {

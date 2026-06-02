@@ -7,6 +7,7 @@
 import os
 from datetime import datetime
 
+import yaml
 from quart import jsonify, request
 
 from astrbot.api import logger
@@ -32,9 +33,37 @@ PLUGIN_NAME = "astrbot_proactive_reply"
 _CONF_SCHEMA_CACHE: dict | None = None
 
 
+def _plugin_root() -> str:
+    """插件根目录（``metadata.yaml`` / ``CHANGELOG.md`` 所在位置）。"""
+    return os.path.dirname(os.path.abspath(__file__))
+
+
 def _conf_schema_path() -> str:
     """返回 ``_conf_schema.json`` 的绝对路径。"""
-    return os.path.join(os.path.dirname(__file__), "_conf_schema.json")
+    return os.path.join(_plugin_root(), "_conf_schema.json")
+
+
+def _read_plugin_metadata() -> dict:
+    """读取根目录 ``metadata.yaml``，失败时返回空字典。"""
+    path = os.path.join(_plugin_root(), "metadata.yaml")
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, yaml.YAMLError) as e:
+        logger.warning(f"心念 Web API | 读取 metadata.yaml 失败: {e}")
+        return {}
+
+
+def _read_changelog() -> str:
+    """读取根目录 ``CHANGELOG.md``，失败时返回空字符串。"""
+    path = os.path.join(_plugin_root(), "CHANGELOG.md")
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read()
+    except OSError as e:
+        logger.warning(f"心念 Web API | 读取 CHANGELOG.md 失败: {e}")
+        return ""
 
 
 def _get_conf_schema() -> dict:
@@ -366,6 +395,30 @@ def register_web_apis(context, managers: dict) -> None:
             return jsonify({"success": True, "groups": get_placeholder_catalog()})
         except Exception as e:
             logger.error(f"心念 Web API | 获取占位符目录失败: {e}")
+            return _internal_error_response(
+                normalize_locale(request.args.get("locale"))
+            )
+
+    async def get_about():
+        """返回版本号与更新日志（动态读取根目录 metadata.yaml 与 CHANGELOG.md）。"""
+        try:
+            meta = _read_plugin_metadata()
+            return jsonify(
+                {
+                    "success": True,
+                    "version": str(meta.get("version") or ""),
+                    "metadata": {
+                        "name": str(meta.get("name") or ""),
+                        "display_name": str(meta.get("display_name") or ""),
+                        "author": str(meta.get("author") or ""),
+                        "repo": str(meta.get("repo") or ""),
+                        "astrbot_version": str(meta.get("astrbot_version") or ""),
+                    },
+                    "changelog": _read_changelog(),
+                }
+            )
+        except Exception as e:
+            logger.error(f"心念 Web API | 获取关于信息失败: {e}")
             return _internal_error_response(
                 normalize_locale(request.args.get("locale"))
             )
@@ -933,6 +986,12 @@ def register_web_apis(context, managers: dict) -> None:
         get_placeholders,
         ["GET"],
         "获取占位符目录",
+    )
+    context.register_web_api(
+        f"/{PLUGIN_NAME}/about",
+        get_about,
+        ["GET"],
+        "获取版本号与更新日志",
     )
     context.register_web_api(
         f"/{PLUGIN_NAME}/sessions/list",
