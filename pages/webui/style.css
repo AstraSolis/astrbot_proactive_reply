@@ -1917,6 +1917,25 @@ input[type="text"]:focus {
   box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
+/* 联动隐藏：不满足显示条件的从属字段 */
+.config-field--hidden {
+  display: none;
+}
+
+/* 正则即时校验：编译失败的输入框标红 */
+.config-input--invalid,
+.config-input--invalid:focus {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-soft);
+}
+
+.config-field-error {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--danger);
+}
+
 .config-textarea {
   resize: vertical;
   min-height: 64px;

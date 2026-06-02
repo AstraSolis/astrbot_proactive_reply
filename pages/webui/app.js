@@ -1104,6 +1104,49 @@ let activeConfigGroup = null;
 let configDirty = false;
 let configSaving = false;
 
+// 配置字段联动：当「控制字段」取特定值时才显示对应「从属字段」，
+// 避免分割模式 / 时间模式的所有子字段平铺，降低误配概率。
+// 结构：{ [分组key]: { [从属字段key]: [{ field: 控制字段key, values: [生效取值] }, ...] } }
+// 同一从属字段的多个条件为「与」关系，需全部满足才显示。
+const CONFIG_FIELD_DEPENDENCIES = {
+  calendar: {
+    calendar_separator: [{ field: "enable_calendar", values: [true] }],
+    calendar_empty_text: [{ field: "enable_calendar", values: [true] }],
+    ai_generate_provider_id: [{ field: "enable_calendar", values: [true] }],
+    ai_generate_prompt: [{ field: "enable_calendar", values: [true] }],
+  },
+  proactive_reply: {
+    interval_minutes: [{ field: "timing_mode", values: ["fixed_interval"] }],
+    random_delay_enabled: [{ field: "timing_mode", values: ["fixed_interval"] }],
+    min_random_minutes: [
+      { field: "timing_mode", values: ["fixed_interval"] },
+      { field: "random_delay_enabled", values: [true] },
+    ],
+    max_random_minutes: [
+      { field: "timing_mode", values: ["fixed_interval"] },
+      { field: "random_delay_enabled", values: [true] },
+    ],
+    random_min_minutes: [{ field: "timing_mode", values: ["random_interval"] }],
+    random_max_minutes: [{ field: "timing_mode", values: ["random_interval"] }],
+    custom_history_prompt: [{ field: "history_save_mode", values: ["custom"] }],
+  },
+  message_split: {
+    custom_pattern: [{ field: "mode", values: ["custom"] }],
+    regex: [{ field: "mode", values: ["regex"] }],
+    split_words: [{ field: "mode", values: ["words"] }],
+  },
+  time_awareness: {
+    sleep_hours: [{ field: "sleep_mode_enabled", values: [true] }],
+    sleep_prompt: [{ field: "sleep_mode_enabled", values: [true] }],
+    wake_send_mode: [{ field: "send_on_wake_enabled", values: [true] }],
+  },
+};
+
+// 需要做「正则即时校验」的字段（失焦时用 new RegExp 试编译，无效则标红）。
+const CONFIG_REGEX_FIELDS = {
+  message_split: ["custom_pattern", "regex"],
+};
+
 function currentConfigGroup() {
   return configGroups.find(g => g.key === activeConfigGroup) || null;
 }
@@ -1192,7 +1235,68 @@ function renderConfigGroup(groupKey) {
     .join("")}</form>`;
 
   bindConfigFieldEvents();
+  applyConfigFieldVisibility();
   setConfigDirty(false);
+}
+
+// 读取表单中某字段的当前值（布尔取 checked，其余取 value）。
+function readConfigControlValue(fieldKey) {
+  const form = document.getElementById("config-form");
+  const el = form?.querySelector(`#cfg-${cssEscape(fieldKey)}`);
+  if (!el) return undefined;
+  return el.type === "checkbox" ? el.checked : el.value;
+}
+
+// 依据 CONFIG_FIELD_DEPENDENCIES 显隐当前分组的从属字段。
+function applyConfigFieldVisibility() {
+  const group = currentConfigGroup();
+  const form = document.getElementById("config-form");
+  if (!group || !form) return;
+  const deps = CONFIG_FIELD_DEPENDENCIES[group.key];
+  if (!deps) return;
+  for (const [depKey, conditions] of Object.entries(deps)) {
+    const wrap = form.querySelector(
+      `.config-field[data-key="${cssEscape(depKey)}"]`,
+    );
+    if (!wrap) continue;
+    const visible = conditions.every(cond => {
+      const actual = readConfigControlValue(cond.field);
+      return cond.values.some(v => String(v) === String(actual));
+    });
+    wrap.classList.toggle("config-field--hidden", !visible);
+  }
+}
+
+// 失焦时校验正则字段：空值视为有效；否则尝试 new RegExp，失败则标红并提示。
+function validateConfigRegexField(input) {
+  const wrap = input.closest(".config-field");
+  if (!wrap) return true;
+  const value = input.value;
+  let valid = true;
+  let detail = "";
+  if (value.trim() !== "") {
+    try {
+      new RegExp(value);
+    } catch (err) {
+      valid = false;
+      detail = err.message || "";
+    }
+  }
+  input.classList.toggle("config-input--invalid", !valid);
+  input.setAttribute("aria-invalid", valid ? "false" : "true");
+  let errEl = wrap.querySelector(".config-field-error");
+  if (!valid) {
+    if (!errEl) {
+      errEl = document.createElement("p");
+      errEl.className = "config-field-error";
+      input.insertAdjacentElement("afterend", errEl);
+    }
+    errEl.textContent =
+      t("config_regex_invalid", "正则表达式无效") + (detail ? "：" + detail : "");
+  } else if (errEl) {
+    errEl.remove();
+  }
+  return valid;
 }
 
 function configResetBtnHtml(key) {
@@ -1294,8 +1398,20 @@ function bindConfigFieldEvents() {
   const form = document.getElementById("config-form");
   if (!form) return;
   form.addEventListener("input", () => setConfigDirty(true));
-  form.addEventListener("change", () => setConfigDirty(true));
+  form.addEventListener("change", () => {
+    setConfigDirty(true);
+    applyConfigFieldVisibility();
+  });
   form.addEventListener("submit", e => e.preventDefault());
+
+  const group = currentConfigGroup();
+  const regexKeys = (group && CONFIG_REGEX_FIELDS[group.key]) || [];
+  regexKeys.forEach(fieldKey => {
+    const input = form.querySelector(`#cfg-${cssEscape(fieldKey)}`);
+    if (input) {
+      input.addEventListener("blur", () => validateConfigRegexField(input));
+    }
+  });
 
   form.querySelectorAll(".config-list-add").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -1340,8 +1456,14 @@ function resetConfigField(fieldKey) {
     }
   } else {
     const el = form.querySelector(`#cfg-${cssEscape(fieldKey)}`);
-    if (el) el.value = field.default ?? "";
+    if (el) {
+      el.value = field.default ?? "";
+      if ((CONFIG_REGEX_FIELDS[group.key] || []).includes(fieldKey)) {
+        validateConfigRegexField(el);
+      }
+    }
   }
+  applyConfigFieldVisibility();
   setConfigDirty(true);
 }
 
@@ -1425,7 +1547,12 @@ async function saveConfigGroup() {
         if (field.key in data.values) field.value = data.values[field.key];
       }
     }
-    toast(data.message || t("config_saved", "配置已保存"), "success");
+    const baseMsg = data.message || t("config_saved", "配置已保存");
+    const scope = group.title || group.key;
+    toast(
+      `${baseMsg} · ${t("config_saved_scope", "生效范围")}：${scope}`,
+      "success",
+    );
     setConfigDirty(false);
   } catch (err) {
     toast(t("config_save_failed", "保存失败") + "：" + err.message, "error");
