@@ -3,39 +3,15 @@
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 from ..core.runtime_data import runtime_data
+from .command_catalog import build_help_text
 
 
 class GeneralHandlersMixin:
     """通用命令（帮助/重启/配置）"""
 
     async def help_command(self, event: AstrMessageEvent):
-        """显示帮助信息"""
-        help_text = """🤖 AstrBot 主动回复插件
-
-基础命令:
-- `/proactive status` - 查看状态
-- `/proactive add_session` - 添加会话
-- `/proactive remove_session` - 移除会话
-
-管理员命令 (仅管理员可用):
-- `/proactive config` - 查看配置
-- `/proactive restart` - 重启任务
-
-测试命令 (仅管理员可用):
-- `/proactive test [类型]` - 测试功能
-  类型: basic, llm, generation, prompt, placeholders, history, save, schedule
-
-显示命令 (仅管理员可用):
-- `/proactive show [类型]` - 显示信息
-  类型: prompt, users
-
-管理命令 (仅管理员可用):
-- `/proactive manage [操作]` - 管理功能
-  操作: clear, task_status, force_stop, force_start, save_config
-  调试: debug_info, debug_send, debug_times
-
-💡 详细配置请在 AstrBot 配置面板中修改"""
-        yield event.plain_result(help_text)
+        """显示帮助信息（由命令目录动态生成，避免与实际命令漂移）"""
+        yield event.plain_result(build_help_text())
 
     async def restart(self, event: AstrMessageEvent):
         """重启定时任务"""
