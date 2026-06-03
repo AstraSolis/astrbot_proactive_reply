@@ -911,6 +911,102 @@ code {
   color: var(--success);
 }
 
+/* ==================== 命令页 ==================== */
+.cmd-group + .cmd-group {
+  margin-top: 20px;
+}
+
+.cmd-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cmd-item {
+  padding: 12px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.cmd-item-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cmd-usage {
+  color: var(--primary);
+  background: var(--primary-soft);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.cmd-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+.cmd-badge-admin {
+  color: var(--warning, #b45309);
+  background: var(--warning-soft, rgba(245, 158, 11, 0.14));
+}
+
+.cmd-desc {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.cmd-subs {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border-strong);
+}
+
+.cmd-subs-label {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.cmd-subs-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 6px 16px;
+}
+
+.cmd-sub {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.cmd-sub-name {
+  color: var(--primary);
+  background: transparent;
+  padding: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cmd-sub-desc {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
 .text-muted {
   color: var(--text-muted);
 }

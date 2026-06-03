@@ -3,6 +3,7 @@
 import asyncio
 from astrbot.api.event import AstrMessageEvent
 from ..core.runtime_data import runtime_data
+from .command_catalog import build_subcommand_help_text
 
 
 class ManageHandlersMixin:
@@ -54,15 +55,7 @@ class ManageHandlersMixin:
                 yield result
 
         else:
-            yield event.plain_result("""管理操作:
-• clear - 清除用户信息
-• task_status - 任务状态
-• force_stop - 强制停止
-• force_start - 强制启动
-• save_config - 保存配置
-• debug_info - 调试信息
-• debug_send - 调试发送
-• debug_times - 调试时间""")
+            yield event.plain_result(build_subcommand_help_text("manage"))
 
     async def _manage_clear(self, event: AstrMessageEvent):
         """清除记录"""

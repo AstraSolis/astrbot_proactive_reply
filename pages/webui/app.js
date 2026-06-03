@@ -7,6 +7,11 @@ let placeholderGroups = [];
 let placeholdersLoaded = false;
 let placeholdersPromise = null;
 
+// 命令目录由后端唯一真相源提供（commands/list），前端不再硬编码命令清单。
+let commandCategories = [];
+let commandsLoaded = false;
+let commandsPromise = null;
+
 let activeView = "dashboard";
 let sessionsLoaded = false;
 let sessions = [];
@@ -208,6 +213,13 @@ function renderStatic() {
   document.getElementById("placeholders-subtitle").textContent =
     t("placeholders_subtitle", "点击任意占位符即可复制到剪贴板，粘贴进配置模板使用");
 
+  document.getElementById("nav-label-commands").textContent =
+    t("tab_commands", "命令");
+  document.getElementById("page-title-commands").textContent =
+    t("tab_commands", "命令");
+  document.getElementById("commands-subtitle").textContent =
+    t("commands_subtitle", "插件支持的全部聊天命令一览（在聊天中输入即可使用）");
+
   document.getElementById("nav-label-about").textContent =
     t("tab_about", "关于");
   document.getElementById("page-title-about").textContent =
@@ -237,6 +249,7 @@ function renderStatic() {
   // i18n 就绪后刷新主题按钮的本地化标签
   applyTheme(currentTheme());
   renderPlaceholders();
+  renderCommands();
 }
 
 function applyLoadingPlaceholders() {
@@ -252,6 +265,7 @@ const VIEW_TITLE_KEYS = {
   schedules: ["tab_schedules", "AI 约定"],
   calendar: ["tab_calendar", "时间表"],
   placeholders: ["tab_placeholders", "占位符"],
+  commands: ["tab_commands", "命令"],
   config: ["tab_config", "配置文件"],
   about: ["tab_about", "关于"],
 };
@@ -327,6 +341,8 @@ function switchView(view) {
     renderAiSchedules(aiSchedules);
   } else if (view === "placeholders" && !placeholdersLoaded) {
     loadPlaceholders();
+  } else if (view === "commands" && !commandsLoaded) {
+    loadCommands();
   } else if (view === "calendar") {
     // 每次进入时间表页都重新拉取，保证与配置文件页对启用状态的修改同步
     loadCalendar();
@@ -537,6 +553,31 @@ async function loadPlaceholders() {
     }
   })();
   return placeholdersPromise;
+}
+
+async function loadCommands() {
+  if (commandsPromise) return commandsPromise;
+  commandsPromise = (async () => {
+    const container = document.getElementById("commands-container");
+    if (container && !commandsLoaded) container.innerHTML = loadingHtml();
+    try {
+      const data = await bridge.apiGet("commands/list", apiLocale());
+      if (!data.success) throw new Error(data.error || t("err_unknown", "未知错误"));
+      commandCategories = data.categories || [];
+      commandsLoaded = true;
+      renderCommands();
+    } catch (err) {
+      if (container) {
+        container.innerHTML = `
+        <div class="empty-state">
+          <p>${escHtml(t("load_commands_failed", "命令列表加载失败，请切换页面后重试"))}</p>
+        </div>`;
+      }
+    } finally {
+      commandsPromise = null;
+    }
+  })();
+  return commandsPromise;
 }
 
 async function loadAbout() {
@@ -941,6 +982,63 @@ function renderPlaceholders() {
   container.innerHTML = groupsHtml;
 }
 
+function renderCommands() {
+  const container = document.getElementById("commands-container");
+  if (!container) return;
+
+  if (!commandsLoaded) {
+    container.innerHTML = loadingHtml();
+    return;
+  }
+
+  const adminBadge = t("cmd_badge_admin", "管理员");
+  const subLabel = t("cmd_sub_label", "子命令");
+
+  const categoriesHtml = commandCategories.map(category => {
+    const catTitle = t("cmd_cat_" + category.key, category.title || category.key);
+    const cmdsHtml = (category.commands || []).map(cmd => {
+      const desc = t("cmd_desc_" + cmd.name, cmd.desc || "");
+      const adminTag = cmd.admin
+        ? `<span class="cmd-badge cmd-badge-admin">${escHtml(adminBadge)}</span>`
+        : "";
+      const subs = cmd.subcommands || [];
+      const subsHtml = subs.length
+        ? `<div class="cmd-subs">
+             <div class="cmd-subs-label">${escHtml(subLabel)}</div>
+             <div class="cmd-subs-list">
+               ${subs.map(sub => {
+                 const subDesc = t("cmd_sub_" + cmd.name + "_" + sub.name, sub.desc || "");
+                 return `<div class="cmd-sub">
+                     <code class="cmd-sub-name">${escHtml(sub.name)}</code>
+                     <span class="cmd-sub-desc">${escHtml(subDesc)}</span>
+                   </div>`;
+               }).join("")}
+             </div>
+           </div>`
+        : "";
+      return `
+        <div class="cmd-item">
+          <div class="cmd-item-head">
+            <code class="cmd-usage">${escHtml(cmd.usage)}</code>
+            ${adminTag}
+          </div>
+          <p class="cmd-desc">${escHtml(desc)}</p>
+          ${subsHtml}
+        </div>`;
+    }).join("");
+
+    return `
+      <article class="panel cmd-group">
+        <header class="panel-head cmd-group-head">
+          <h3 class="panel-title">${escHtml(catTitle)}</h3>
+        </header>
+        <div class="panel-body cmd-list">${cmdsHtml}</div>
+      </article>`;
+  }).join("");
+
+  container.innerHTML = categoriesHtml;
+}
+
 document.getElementById("placeholders-container").addEventListener("click", e => {
   const chip = e.target.closest("[data-token]");
   if (chip) copyPlaceholder(chip);
@@ -1225,6 +1323,9 @@ async function reloadActiveView() {
   } else if (activeView === "placeholders") {
     placeholdersLoaded = false;
     await loadPlaceholders();
+  } else if (activeView === "commands") {
+    commandsLoaded = false;
+    await loadCommands();
   } else if (activeView === "calendar") {
     calendarLoaded = false;
     await loadCalendar();

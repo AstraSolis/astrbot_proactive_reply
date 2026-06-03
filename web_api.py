@@ -12,6 +12,7 @@ from quart import jsonify, request
 
 from astrbot.api import logger
 
+from .commands.command_catalog import get_command_catalog
 from .core.runtime_data import runtime_data
 from .llm.calendar_generator import (
     DEFAULT_MAX_GENERATE,
@@ -395,6 +396,16 @@ def register_web_apis(context, managers: dict) -> None:
             return jsonify({"success": True, "groups": get_placeholder_catalog()})
         except Exception as e:
             logger.error(f"心念 Web API | 获取占位符目录失败: {e}")
+            return _internal_error_response(
+                normalize_locale(request.args.get("locale"))
+            )
+
+    async def get_commands():
+        """返回命令目录（唯一真相源，供 WebUI「命令」页动态渲染）。"""
+        try:
+            return jsonify({"success": True, "categories": get_command_catalog()})
+        except Exception as e:
+            logger.error(f"心念 Web API | 获取命令目录失败: {e}")
             return _internal_error_response(
                 normalize_locale(request.args.get("locale"))
             )
@@ -986,6 +997,12 @@ def register_web_apis(context, managers: dict) -> None:
         get_placeholders,
         ["GET"],
         "获取占位符目录",
+    )
+    context.register_web_api(
+        f"/{PLUGIN_NAME}/commands/list",
+        get_commands,
+        ["GET"],
+        "获取命令目录",
     )
     context.register_web_api(
         f"/{PLUGIN_NAME}/about",

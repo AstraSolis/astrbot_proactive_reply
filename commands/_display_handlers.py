@@ -2,6 +2,7 @@
 
 from astrbot.api.event import AstrMessageEvent
 from ..core.runtime_data import runtime_data
+from .command_catalog import build_subcommand_help_text
 
 
 class DisplayHandlersMixin:
@@ -39,6 +40,4 @@ class DisplayHandlersMixin:
             yield event.plain_result(text)
 
         else:
-            yield event.plain_result(
-                "可用的显示命令:\n- `/proactive show prompt` - 显示提示词\n- `/proactive show users` - 显示用户信息"
-            )
+            yield event.plain_result(build_subcommand_help_text("show"))

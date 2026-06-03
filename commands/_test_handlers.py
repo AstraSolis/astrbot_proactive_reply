@@ -4,6 +4,7 @@ from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 from ..constants import MAX_HISTORY_MESSAGE_COUNT, MIN_HISTORY_MESSAGE_COUNT
 from ..core.runtime_data import runtime_data
+from .command_catalog import build_subcommand_help_text
 
 
 class TestHandlersMixin:
@@ -50,16 +51,7 @@ class TestHandlersMixin:
             async for result in self._test_schedule(event):
                 yield result
         else:
-            help_text = """可用的测试命令:
--  `/proactive test basic` - 测试基本发送功能
-- `/proactive test llm` - 测试LLM连接
-- `/proactive test generation` - 测试LLM生成
-- `/proactive test prompt` - 测试提示词构建
-- `/proactive test placeholders` - 测试占位符替换
-- `/proactive test history` - 测试对话历史
-- `/proactive test save` - 测试对话保存
-- `/proactive test schedule` - 测试AI调度任务（注入+诊断）"""
-            yield event.plain_result(help_text)
+            yield event.plain_result(build_subcommand_help_text("test"))
 
     async def _test_basic(self, event: AstrMessageEvent):
         """基础测试发送"""
