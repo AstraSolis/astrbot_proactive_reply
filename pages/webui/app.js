@@ -993,6 +993,7 @@ function renderCommands() {
 
   const adminBadge = t("cmd_badge_admin", "管理员");
   const subLabel = t("cmd_sub_label", "子命令");
+  const copyHint = t("cmd_copy_hint", "点击复制完整命令");
 
   const categoriesHtml = commandCategories.map(category => {
     const catTitle = t("cmd_cat_" + category.key, category.title || category.key);
@@ -1001,6 +1002,8 @@ function renderCommands() {
       const adminTag = cmd.admin
         ? `<span class="cmd-badge cmd-badge-admin">${escHtml(adminBadge)}</span>`
         : "";
+      // 命令本体复制值去掉参数占位（如 [类型]），仅复制可直接执行的部分。
+      const cmdCopy = cmd.usage.replace(/\s*\[[^\]]*\]\s*$/, "").trim();
       const subs = cmd.subcommands || [];
       const subsHtml = subs.length
         ? `<div class="cmd-subs">
@@ -1008,10 +1011,11 @@ function renderCommands() {
              <div class="cmd-subs-list">
                ${subs.map(sub => {
                  const subDesc = t("cmd_sub_" + cmd.name + "_" + sub.name, sub.desc || "");
-                 return `<div class="cmd-sub">
+                 const subCopy = `${cmdCopy} ${sub.name}`;
+                 return `<button type="button" class="cmd-sub cmd-copy" data-copy="${escAttr(subCopy)}" title="${escAttr(copyHint + " " + subCopy)}">
                      <code class="cmd-sub-name">${escHtml(sub.name)}</code>
                      <span class="cmd-sub-desc">${escHtml(subDesc)}</span>
-                   </div>`;
+                   </button>`;
                }).join("")}
              </div>
            </div>`
@@ -1019,7 +1023,7 @@ function renderCommands() {
       return `
         <div class="cmd-item">
           <div class="cmd-item-head">
-            <code class="cmd-usage">${escHtml(cmd.usage)}</code>
+            <button type="button" class="cmd-usage cmd-copy" data-copy="${escAttr(cmdCopy)}" title="${escAttr(copyHint + " " + cmdCopy)}">${escHtml(cmd.usage)}</button>
             ${adminTag}
           </div>
           <p class="cmd-desc">${escHtml(desc)}</p>
@@ -1043,6 +1047,30 @@ document.getElementById("placeholders-container").addEventListener("click", e =>
   const chip = e.target.closest("[data-token]");
   if (chip) copyPlaceholder(chip);
 });
+
+document.getElementById("commands-container").addEventListener("click", e => {
+  const el = e.target.closest("[data-copy]");
+  if (el) copyCommand(el);
+});
+
+async function copyCommand(el) {
+  const value = el.dataset.copy;
+  if (!value) return;
+  let copied = false;
+  try {
+    await navigator.clipboard.writeText(value);
+    copied = true;
+  } catch {
+    copied = fallbackCopyText(value);
+  }
+  if (copied) {
+    toast(t("toast_copied", "已复制 {token}").replace("{token}", value), "success");
+    el.classList.add("cmd-copied");
+    setTimeout(() => el.classList.remove("cmd-copied"), 900);
+  } else {
+    toast(t("toast_copy_failed", "复制失败，请手动选择"), "error");
+  }
+}
 
 async function copyPlaceholder(chip) {
   const token = chip.dataset.token;

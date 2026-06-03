@@ -502,6 +502,7 @@
       "load_commands_failed": "命令列表加载失败，请切换页面后重试",
       "cmd_badge_admin": "管理员",
       "cmd_sub_label": "子命令",
+      "cmd_copy_hint": "点击复制完整命令",
       "cmd_cat_basic": "基础命令",
       "cmd_cat_admin": "管理员命令",
       "cmd_cat_test": "测试命令",

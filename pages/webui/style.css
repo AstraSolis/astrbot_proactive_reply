@@ -939,10 +939,23 @@ code {
 .cmd-usage {
   color: var(--primary);
   background: var(--primary-soft);
-  padding: 2px 8px;
+  padding: 3px 10px;
+  border: 1px solid transparent;
   border-radius: var(--radius-sm, 6px);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 0.8125rem;
   font-weight: 600;
+  cursor: pointer;
+  transition: border-color var(--ease), background var(--ease), transform var(--ease);
+}
+
+.cmd-usage:hover {
+  border-color: var(--primary);
+  transform: translateY(-1px);
+}
+
+.cmd-usage:active {
+  transform: translateY(0);
 }
 
 .cmd-badge {
@@ -990,12 +1003,26 @@ code {
   display: flex;
   align-items: baseline;
   gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--ease), background var(--ease);
+}
+
+.cmd-sub:hover {
+  border-color: var(--primary);
+  background: var(--primary-soft);
 }
 
 .cmd-sub-name {
   color: var(--primary);
   background: transparent;
   padding: 0;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 0.75rem;
   font-weight: 600;
   white-space: nowrap;
@@ -1005,6 +1032,16 @@ code {
   color: var(--text-secondary);
   font-size: 0.75rem;
   line-height: 1.4;
+}
+
+.cmd-copied {
+  border-color: var(--success) !important;
+  background: var(--success-soft) !important;
+}
+
+.cmd-copied,
+.cmd-copied .cmd-sub-name {
+  color: var(--success);
 }
 
 .text-muted {

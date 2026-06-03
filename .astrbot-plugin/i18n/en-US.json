@@ -502,6 +502,7 @@
       "load_commands_failed": "Failed to load commands, please switch pages and retry",
       "cmd_badge_admin": "Admin",
       "cmd_sub_label": "Subcommands",
+      "cmd_copy_hint": "Click to copy the full command",
       "cmd_cat_basic": "Basic Commands",
       "cmd_cat_admin": "Admin Commands",
       "cmd_cat_test": "Test Commands",
