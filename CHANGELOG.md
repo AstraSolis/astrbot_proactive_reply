@@ -4,7 +4,12 @@
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-06-09
+
+## 本次更新经历较大重构,如有问题请反映到 https://github.com/AstraSolis/astrbot_proactive_reply/issues
+
 ### 新增
+- webui面板
 - 智能时间表（日历事项）与 `{calendar_today}` 占位符(需要开启时间表功能,然后在webui配置) (#16)
   - WebUI 新增「时间表」页签：以月历视图为任意日期添加「节日」/「事项」，每条可设重复规则（不重复仅当年 / 重复 1–4 年 / 每年永久）
   - 新增 `core/calendar_store.py` 与全局共享的 `calendar_data.yaml`（所有会话共用，完全本地），支持导入 / 导出（合并 / 替换两种模式）与清空
@@ -14,8 +19,6 @@
   - WebUI 新增「AI 生成」面板：模型下拉 + 主题输入框 + 生成按钮；生成结果先以**可编辑预览**呈现（每条可改月/日/名称/重复规则、逐条删除、手动新增一行），确认后再选择「追加到现有」或「清空并替换」
   - 新增后端 `llm/calendar_generator.py`（提示词组织 + LLM 调用 + JSON 事项解析）与 3 个 API：`/calendar/ai/options`、`/calendar/ai/generate`、`/calendar/ai/apply`
   - 生成事项经 `normalize_event` 校验，应用复用 `import_events`（自动分配 id、受数量上限约束）
-- WebUI 新增「配置文件」页 (#20)：以可视化表单编辑插件全部配置分组（基础设置、用户信息、时间感知、时间表、主动对话、消息分割、AI 调度），保存后即时生效
-- WebUI 新增「占位符」速查与一键复制面板：按「用户信息」「主动对话」分组列出全部可用占位符及说明
 
 ### 变更
 - 持久化文件 `persistent_data.yaml` 重排为 **session-major（按会话聚合）** 布局，更直观美观 (#18)
@@ -30,8 +33,6 @@
   - 新增 `core/_datafile.py` 统一 YAML 读取 / 原子写入 / JSON→YAML 迁移逻辑（优先使用 libyaml C 扩展提速）
   - 加载时对关键字段做类型规整，防止 YAML 隐式转型（如纯数字昵称 / QQ 号被误转为整数）
   - `data_version` 升至 `3.0`；新增 `pyyaml` 依赖
-- WebUI 整体 UI/UX 优化 (#21)：视觉、布局与交互细节打磨
-- WebUI 用统一的确认对话框替换浏览器原生 `confirm()` (#14)，移除 / 取消等破坏性操作提示更一致美观
 
 ### 重构
 - 占位符统一为单一注册表 + 解析器 (#15)：在 `llm/placeholder_utils.py` 集中声明所有占位符的分组与说明，用户信息模板、主动提示词、前端速查面板与 Web API 均从该注册表派生，避免多处定义漂移
