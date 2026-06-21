@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  快速上手：<a href="https://blog.astrasolis.top/posts/tutorial/astrbot_proactive_reply">AstrBot「心念」插件使用指南</a>
+  快速上手：<a href="https://blog.astrasolis.top/posts/astrbot_proactive_reply">AstrBot「心念」插件使用指南</a>
 </p>
 
 ---
