@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/AstraSolis/astrbot_proactive_reply"><img alt="version" src="https://img.shields.io/badge/version-2.2.0-blue"></a>
+  <a href="https://github.com/AstraSolis/astrbot_proactive_reply"><img alt="version" src="https://img.shields.io/badge/version-2.4.0-blue"></a>
   <a href="#"><img alt="AstrBot" src="https://img.shields.io/badge/AstrBot-%3E%3D4.24.0-7C4DFF"></a>
   <a href="#"><img alt="python" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white"></a>
   <a href="./LICENSE"><img alt="license" src="https://img.shields.io/badge/license-see%20LICENSE-green"></a>
@@ -138,7 +138,7 @@
 ### AI 自主调度
 
 - **智能时间约定检测**：AI 在对话中提到时间约定时（如「40 分钟后找你」），插件会自动分析并设置一次性定时任务。
-- **关键词预检测**：使用轻量级关键词匹配，避免不必要的 LLM 调用。
+- **轻量级预检测**：先匹配时间表达与联系/提醒动作，避免日常寒暄触发不必要的 LLM 调度分析。
 - **独立模型选择**：支持为调度分析指定不同的模型提供商，可使用更便宜或更快的模型节省成本。
 - **重复检测**：自动注入已有待执行的约定，避免重复创建相同任务。
 - **自定义分析提示词**：可配置 AI 调度分析的系统提示词。
@@ -516,7 +516,8 @@
 
 **说明**：
 - 持久化数据与时间表已采用 **YAML 存储**，更直观、便于查看与手动编辑；持久化文件按**会话聚合**布局（`meta` + `sessions`，每个会话分为 `user` / `timers` / `activity` / `ai_scheduled` / `last_proactive_message`）。
-- 历史 `.json` 文件会在首次启动时自动迁移为 `.yaml`，旧文件备份为 `.json.bak`（如需回滚旧版本插件，可将其改回 `.json`）。
+- 历史 `.json` 文件会在首次启动时自动迁移为 `.yaml`，旧文件备份为 `.json.bak`（如需回滚旧版本插件，可将其改回 `.json`）；迁移成功后会记录标记，避免旧 JSON 在后续启动中覆盖新 YAML。
+- 数据写入使用原子替换与 flush；若 YAML 文件损坏或结构非法，会先改名留档再重建，尽量避免静默覆盖可恢复数据。
 - 加载时会对关键字段做类型规整，防止 YAML 隐式转型（如纯数字昵称 / QQ 号被误转为整数）。
 
 ---
