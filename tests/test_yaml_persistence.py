@@ -418,6 +418,9 @@ class TestDebouncedPersistence(unittest.IsolatedAsyncioTestCase):
 
 
 class TestCalendarMigration(unittest.TestCase):
+    def setUp(self):
+        cal_mod.calendar_store.set_events([])
+
     def test_corrupt_calendar_yaml_is_archived_on_load(self):
         with tempfile.TemporaryDirectory() as d:
             yaml_path = os.path.join(d, "calendar_data.yaml")
@@ -429,6 +432,56 @@ class TestCalendarMigration(unittest.TestCase):
 
             self.assertFalse(os.path.exists(yaml_path))
             self.assertTrue(os.path.exists(yaml_path + ".corrupt"))
+            self.assertTrue(os.path.exists(os.path.join(d, ".calendar_migrated")))
+
+    def test_corrupt_calendar_yaml_does_not_fall_back_to_legacy_json_next_start(self):
+        with tempfile.TemporaryDirectory() as d:
+            yaml_path = os.path.join(d, "calendar_data.yaml")
+            legacy_path = os.path.join(d, "calendar_data.json")
+            with open(yaml_path, "w", encoding="utf-8") as f:
+                f.write("events: [\n")
+            with open(legacy_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "version": 1,
+                        "events": [
+                            {
+                                "id": "old",
+                                "year": 2026,
+                                "month": 1,
+                                "day": 1,
+                                "text": "旧日历",
+                                "repeat": 0,
+                            }
+                        ],
+                    },
+                    f,
+                    ensure_ascii=False,
+                )
+
+            mgr = cal_mod.CalendarManager(_FakePM(d))
+            mgr.load()
+            self.assertFalse(os.path.exists(yaml_path))
+            self.assertTrue(os.path.exists(yaml_path + ".corrupt"))
+            self.assertTrue(os.path.exists(os.path.join(d, ".calendar_migrated")))
+
+            cal_mod.calendar_store.set_events(
+                [
+                    {
+                        "id": "sentinel",
+                        "year": 2026,
+                        "month": 2,
+                        "day": 2,
+                        "text": "内存哨兵",
+                        "repeat": 0,
+                    }
+                ]
+            )
+            mgr.load()
+
+            self.assertFalse(os.path.exists(yaml_path))
+            self.assertTrue(os.path.exists(legacy_path))
+            self.assertEqual(cal_mod.calendar_store.events, [])
 
     def test_legacy_calendar_json_migrates(self):
         with tempfile.TemporaryDirectory() as d:

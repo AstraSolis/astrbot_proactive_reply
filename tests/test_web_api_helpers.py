@@ -137,6 +137,69 @@ class TestWebApiHelpers(unittest.TestCase):
             self.web_api._config_version(right),
         )
 
+    def test_save_config_false_rolls_back_existing_section(self):
+        config = {"proactive_reply": {"sessions": ["old"], "enabled": True}}
+        existed, snapshot = self.web_api._snapshot_config_section(
+            config, "proactive_reply"
+        )
+        config["proactive_reply"]["sessions"] = ["new"]
+        manager = types.SimpleNamespace(
+            save_config_safely=MagicMock(return_value=False)
+        )
+
+        self.assertFalse(
+            self.web_api._save_config_or_rollback(
+                manager, config, "proactive_reply", existed, snapshot
+            )
+        )
+
+        self.assertEqual(
+            config["proactive_reply"], {"sessions": ["old"], "enabled": True}
+        )
+
+    def test_save_config_false_removes_created_section(self):
+        config = {}
+        existed, snapshot = self.web_api._snapshot_config_section(
+            config, "proactive_reply"
+        )
+        self.web_api._ensure_config_section(config, "proactive_reply")[
+            "sessions"
+        ] = ["new"]
+        manager = types.SimpleNamespace(
+            save_config_safely=MagicMock(return_value=False)
+        )
+
+        self.assertFalse(
+            self.web_api._save_config_or_rollback(
+                manager, config, "proactive_reply", existed, snapshot
+            )
+        )
+
+        self.assertNotIn("proactive_reply", config)
+
+    def test_save_config_exception_rolls_back_before_reraising(self):
+        config = {"proactive_reply": {"sessions": ["old"]}}
+        existed, snapshot = self.web_api._snapshot_config_section(
+            config, "proactive_reply"
+        )
+        config["proactive_reply"]["sessions"] = ["new"]
+        manager = types.SimpleNamespace(
+            save_config_safely=MagicMock(side_effect=RuntimeError("disk full"))
+        )
+
+        with self.assertRaises(RuntimeError):
+            self.web_api._save_config_or_rollback(
+                manager, config, "proactive_reply", existed, snapshot
+            )
+
+        self.assertEqual(config["proactive_reply"], {"sessions": ["old"]})
+
+    def test_ensure_config_section_rejects_unreplaceable_bad_section(self):
+        config = DictLikeConfig({"proactive_reply": "bad"})
+
+        with self.assertRaises(TypeError):
+            self.web_api._ensure_config_section(config, "proactive_reply")
+
 
 if __name__ == "__main__":
     unittest.main()

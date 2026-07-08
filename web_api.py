@@ -4,6 +4,7 @@
 向 AstrBot 注册所有插件 REST API，供 Plugin Pages 调用
 """
 
+import copy
 import hashlib
 import json
 import os
@@ -36,6 +37,7 @@ PLUGIN_NAME = "astrbot_proactive_reply"
 
 # 配置 schema 缓存（首次读取后复用，避免重复磁盘 IO）
 _CONF_SCHEMA_CACHE: dict | None = None
+_CONFIG_MISSING = object()
 
 
 def _plugin_root() -> str:
@@ -110,6 +112,94 @@ def _get_config(managers: dict) -> dict:
         if hasattr(config, "get") and hasattr(config, "setdefault"):
             return config
     return {}
+
+
+def _snapshot_config_section(config: dict, section: str) -> tuple[bool, object]:
+    """保存配置分组快照，供保存失败时回滚内存态。"""
+    value = config.get(section, _CONFIG_MISSING)
+    if value is _CONFIG_MISSING:
+        return False, None
+    try:
+        return True, copy.deepcopy(value)
+    except Exception:
+        # 配置项应是 JSON-like 结构；异常时退一步使用可序列化规整结果。
+        return True, _jsonable_config(value)
+
+
+def _assign_config_section(config: dict, section: str, value) -> None:
+    """尽力设置配置分组，兼容 dict 与 AstrBotConfig 风格对象。"""
+    try:
+        config[section] = value
+        return
+    except Exception:
+        pass
+
+    target = config.get(section, _CONFIG_MISSING)
+    if target is _CONFIG_MISSING:
+        target = config.setdefault(section, value)
+    if target is value or config.get(section, _CONFIG_MISSING) is value:
+        return
+
+    if isinstance(target, dict) and isinstance(value, dict):
+        target.clear()
+        target.update(value)
+        return
+
+    raise TypeError(f"配置对象不支持替换配置分组: {section}")
+
+
+def _remove_config_section(config: dict, section: str) -> None:
+    """尽力删除配置分组；无法删除时清空其 dict 内容作为降级。"""
+    try:
+        config.pop(section, None)
+        return
+    except Exception:
+        pass
+
+    try:
+        del config[section]
+        return
+    except Exception:
+        pass
+
+    target = config.get(section)
+    if isinstance(target, dict):
+        target.clear()
+
+
+def _restore_config_section(
+    config: dict, section: str, existed: bool, snapshot
+) -> None:
+    """保存失败后回滚内存配置，避免“保存失败但本轮已生效”。"""
+    if existed:
+        _assign_config_section(config, section, copy.deepcopy(snapshot))
+    else:
+        _remove_config_section(config, section)
+
+
+def _ensure_config_section(config: dict, section: str) -> dict:
+    """取得可写配置分组；原值不是 dict 时替换为新 dict。"""
+    target = config.get(section, _CONFIG_MISSING)
+    if isinstance(target, dict):
+        return target
+
+    target = {}
+    _assign_config_section(config, section, target)
+    return target
+
+
+def _save_config_or_rollback(
+    config_manager, config: dict, section: str, existed: bool, snapshot
+) -> bool:
+    """保存配置；失败或异常时恢复保存前的内存配置。"""
+    try:
+        ok = config_manager.save_config_safely()
+    except Exception:
+        _restore_config_section(config, section, existed, snapshot)
+        raise
+    if not ok:
+        _restore_config_section(config, section, existed, snapshot)
+    return ok
 
 
 def _config_version(config: dict) -> str:
@@ -222,9 +312,18 @@ def register_web_apis(context, managers: dict) -> None:
                     }
                 ), 400
 
+            section_existed, section_snapshot = _snapshot_config_section(
+                config, "proactive_reply"
+            )
             existing.append(session_id)
-            config.setdefault("proactive_reply", {})["sessions"] = existing
-            if not config_manager.save_config_safely():
+            _ensure_config_section(config, "proactive_reply")["sessions"] = existing
+            if not _save_config_or_rollback(
+                config_manager,
+                config,
+                "proactive_reply",
+                section_existed,
+                section_snapshot,
+            ):
                 return jsonify(
                     {
                         "success": False,
@@ -289,8 +388,17 @@ def register_web_apis(context, managers: dict) -> None:
                     }
                 ), 404
 
-            config.setdefault("proactive_reply", {})["sessions"] = updated
-            if not config_manager.save_config_safely():
+            section_existed, section_snapshot = _snapshot_config_section(
+                config, "proactive_reply"
+            )
+            _ensure_config_section(config, "proactive_reply")["sessions"] = updated
+            if not _save_config_or_rollback(
+                config_manager,
+                config,
+                "proactive_reply",
+                section_existed,
+                section_snapshot,
+            ):
                 return jsonify(
                     {
                         "success": False,
@@ -970,11 +1078,28 @@ def register_web_apis(context, managers: dict) -> None:
                     }
                 ), 409
 
-            target = config.setdefault(section, {})
-            for key, value in cleaned.items():
-                target[key] = value
+            section_existed, section_snapshot = _snapshot_config_section(
+                config, section
+            )
+            try:
+                target = _ensure_config_section(config, section)
+                for key, value in cleaned.items():
+                    target[key] = value
 
-            if not config_manager.save_config_safely():
+                save_ok = _save_config_or_rollback(
+                    config_manager,
+                    config,
+                    section,
+                    section_existed,
+                    section_snapshot,
+                )
+            except Exception:
+                _restore_config_section(
+                    config, section, section_existed, section_snapshot
+                )
+                raise
+
+            if not save_ok:
                 return _err(
                     locale, "api.errors.config_save_failed", "配置保存失败", 500
                 )

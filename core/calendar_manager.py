@@ -33,6 +33,7 @@ from .calendar_store import (
 
 CALENDAR_FILE_NAME = "calendar_data.yaml"
 LEGACY_CALENDAR_FILE_NAME = "calendar_data.json"
+CALENDAR_MIGRATED_MARKER_NAME = ".calendar_migrated"
 CALENDAR_DATA_VERSION = 1
 # 基准年合理范围（防止非法年份）
 MIN_YEAR = 1970
@@ -59,6 +60,21 @@ class CalendarManager:
     def _legacy_calendar_file_path(self) -> str:
         plugin_data_dir = self.persistence_manager.get_plugin_data_dir()
         return os.path.join(plugin_data_dir, LEGACY_CALENDAR_FILE_NAME)
+
+    def _calendar_migration_marker_path(self) -> str:
+        plugin_data_dir = self.persistence_manager.get_plugin_data_dir()
+        return os.path.join(plugin_data_dir, CALENDAR_MIGRATED_MARKER_NAME)
+
+    def _write_migration_marker(self, message: str) -> None:
+        """写入日历迁移标记，避免损坏 YAML 被旧 JSON 静默回退覆盖。"""
+        marker_file = self._calendar_migration_marker_path()
+        try:
+            with open(marker_file, "w", encoding="utf-8") as f:
+                f.write(message)
+                f.flush()
+                os.fsync(f.fileno())
+        except OSError as e:
+            logger.warning(f"心念 | ⚠️ 时间表迁移标记写入失败: {marker_file}: {e}")
 
     # ==================== 校验 / 规整 ====================
 
@@ -137,9 +153,27 @@ class CalendarManager:
         """
         try:
             calendar_file = self._calendar_file_path()
+            legacy_file = self._legacy_calendar_file_path()
+            migrated_marker = self._calendar_migration_marker_path()
 
-            # 一次性迁移：旧 JSON → 新 YAML（旧文件备份为 .json.bak）
-            migrate_json_to_yaml(self._legacy_calendar_file_path(), calendar_file)
+            # 一次性迁移：旧 JSON → 新 YAML（旧文件备份为 .json.bak）。
+            # 若当前 YAML 曾经损坏并已留档，不再用更旧的 JSON 自动回填，避免
+            # 用户的新日历数据看起来被回滚到旧版本。
+            if not os.path.exists(calendar_file):
+                if os.path.exists(migrated_marker):
+                    if os.path.exists(legacy_file):
+                        logger.info(
+                            "心念 | ℹ️ 已存在时间表迁移标记，跳过旧 JSON 迁移: "
+                            f"{legacy_file}"
+                        )
+                else:
+                    migrated_data = migrate_json_to_yaml(legacy_file, calendar_file)
+                    if migrated_data is not None:
+                        self._write_migration_marker(
+                            "migrated from "
+                            f"{legacy_file} at "
+                            f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                        )
 
             if not os.path.exists(calendar_file):
                 calendar_store.set_events([])
@@ -148,6 +182,12 @@ class CalendarManager:
 
             data = load_mapping(calendar_file)
             if data is None:
+                if not os.path.exists(calendar_file):
+                    self._write_migration_marker(
+                        "skipped legacy calendar migration because current YAML "
+                        "failed to load at "
+                        f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                    )
                 return
 
             events = self._normalize_events(data.get("events", []))
