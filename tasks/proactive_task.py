@@ -256,7 +256,7 @@ class ProactiveTaskManager(
                         f"{'（睡眠时段穿透）' if sleep_mode else ''}"
                     )
 
-                success, schedule_info = await self._send_with_retry(
+                success, schedule_info, retry_scheduled = await self._send_with_retry(
                     session, override_prompt=override_prompt
                 )
 
@@ -295,9 +295,11 @@ class ProactiveTaskManager(
                     # 刷新计时器（取常规间隔和剩余 AI 任务中的最小值）
                     self.refresh_session_timer(session)
                 else:
-                    # 失败逻辑：按理说应该重试或推迟？
-                    # 当前 _send_with_retry 已经重试过了。
-                    # 如果还是失败，暂时重置为默认间隔，避免死循环
+                    if retry_scheduled:
+                        # 失败会话已被推迟到短间隔重试点，继续处理其他会话。
+                        continue
+
+                    # 永久错误或本轮重试预算耗尽时，回到常规周期，避免死循环。
                     next_fire = self.calculate_next_fire_time(session)
                     self.set_session_next_fire_time(session, next_fire)
 

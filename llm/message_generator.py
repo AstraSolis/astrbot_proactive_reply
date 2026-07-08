@@ -13,6 +13,11 @@ from ..constants import MAX_HISTORY_MESSAGE_COUNT, MIN_HISTORY_MESSAGE_COUNT
 from ..core.runtime_data import runtime_data
 from ..utils.time_utils import get_tz
 from .ai_schedule_analyzer import analyze_for_schedule
+from .errors import (
+    DuplicateMessageError,
+    MessageDeliveryError,
+    MessageGenerationError,
+)
 from .message_splitter import MessageSplitter
 
 
@@ -105,16 +110,25 @@ class MessageGenerator:
         runtime_data.session_last_proactive_message[session] = message
 
     async def generate_proactive_message_with_retry(
-        self, session: str, max_retries: int = 3, override_prompt: str = None
+        self,
+        session: str,
+        max_retries: int = 3,
+        override_prompt: str = None,
+        allow_duplicate_on_exhausted: bool = True,
     ) -> tuple:
         """生成主动消息，带重复检测和重试
 
         Args:
             session: 会话ID
             max_retries: 最大重试次数
+            override_prompt: 覆盖用的提示词
+            allow_duplicate_on_exhausted: 重试耗尽后是否允许发送重复消息
 
         Returns:
-            元组 (生成的消息, 使用的主动对话提示词)，失败返回 (None, None)
+            元组 (生成的消息, 使用的主动对话提示词)
+
+        Raises:
+            MessageGenerationError: 生成失败或重复消息需要稍后重试
         """
         # 检查是否启用重复检测
         proactive_config = self.config.get("proactive_reply", {})
@@ -122,14 +136,13 @@ class MessageGenerator:
             "duplicate_detection_enabled", True
         )
 
+        max_retries = max(0, int(max_retries or 0))
         message = None
         final_prompt = None
         for attempt in range(max_retries + 1):
             message, final_prompt = await self.generate_proactive_message(
                 session, override_prompt
             )
-            if not message:
-                return None, None
 
             # 如果未启用重复检测，直接返回
             if not duplicate_detection_enabled:
@@ -145,7 +158,11 @@ class MessageGenerator:
                     f"心念 | 🔄 检测到重复消息，重新生成 ({attempt + 1}/{max_retries})"
                 )
             else:
-                logger.warning("心念 | ⚠️ 多次重试后仍为重复消息，使用当前消息")
+                if allow_duplicate_on_exhausted:
+                    logger.warning("心念 | ⚠️ 多次重试后仍为重复消息，使用当前消息")
+                else:
+                    logger.warning("心念 | ⚠️ 生成结果重复，等待下次调度重试")
+                    raise DuplicateMessageError(message, final_prompt)
 
         return message, final_prompt
 
@@ -158,13 +175,19 @@ class MessageGenerator:
             session: 会话ID
 
         Returns:
-            元组 (生成的消息, 使用的主动对话提示词)，失败返回 (None, None)
+            元组 (生成的消息, 使用的主动对话提示词)
+
+        Raises:
+            MessageGenerationError: 生成失败
         """
         try:
             # 检查LLM是否可用
             provider_id = await self.get_provider_id(session)
             if not provider_id:
-                return None, None
+                raise MessageGenerationError(
+                    f"会话 {session} 的 LLM 提供商不可用，无法生成主动消息",
+                    retryable=False,
+                )
 
             # 获取并处理主动对话提示词
             if override_prompt:
@@ -182,7 +205,10 @@ class MessageGenerator:
                 )
 
             if not final_prompt:
-                return None, None
+                raise MessageGenerationError(
+                    "主动消息提示词为空，请检查 proactive_prompt_list 或 AI 调度提示词配置",
+                    retryable=False,
+                )
 
             # 获取人格系统提示词
             base_system_prompt = await self.prompt_builder.get_persona_system_prompt(
@@ -236,39 +262,50 @@ class MessageGenerator:
             )
 
             if llm_response and llm_response.role == "assistant":
-                generated_message = llm_response.completion_text
+                generated_message = (llm_response.completion_text or "").strip()
                 if generated_message:
-                    generated_message = generated_message.strip()
                     logger.info("心念 | ✅ LLM 生成主动消息成功")
                     return generated_message, final_prompt
                 else:
                     logger.warning("心念 | ⚠️ LLM 返回了空消息")
-                    return None, None
+                    raise MessageGenerationError("LLM 返回了空消息", retryable=True)
             else:
                 logger.warning(f"心念 | ⚠️ LLM 响应异常: {llm_response}")
-                return None, None
+                raise MessageGenerationError("LLM 响应异常", retryable=True)
 
+        except MessageGenerationError:
+            raise
         except Exception as e:
             logger.error(f"心念 | ❌ 使用 LLM 生成主动消息失败: {e}")
             import traceback
 
             logger.error(f"心念 | 详细错误信息: {traceback.format_exc()}")
-            raise
+            raise MessageGenerationError(
+                f"使用 LLM 生成主动消息失败: {e}", retryable=True
+            ) from e
 
     async def send_proactive_message(
-        self, session: str, override_prompt: str = None
+        self,
+        session: str,
+        override_prompt: str = None,
+        duplicate_max_retries: int = 3,
+        allow_duplicate_on_exhausted: bool = True,
     ) -> dict | None:
         """向指定会话发送主动消息
 
         Args:
             session: 会话ID
+            override_prompt: 覆盖用的提示词
+            duplicate_max_retries: 重复消息的生成端重试次数
+            allow_duplicate_on_exhausted: 重复重试耗尽后是否仍发送当前消息
 
         Returns:
             AI 自主调度信息 {"delay_minutes": int, "follow_up_prompt": str, "fire_time": str}
             或 None（无调度）
 
         Raises:
-            RuntimeError: 消息生成失败时抛出
+            MessageGenerationError: 消息生成失败时抛出
+            MessageDeliveryError: 消息投递失败时抛出
             Exception: 发送过程中的其他异常会向上传播
         """
         try:
@@ -277,27 +314,30 @@ class MessageGenerator:
                 message,
                 proactive_prompt_used,
             ) = await self.generate_proactive_message_with_retry(
-                session, override_prompt=override_prompt
+                session,
+                max_retries=duplicate_max_retries,
+                override_prompt=override_prompt,
+                allow_duplicate_on_exhausted=allow_duplicate_on_exhausted,
             )
 
-            if not message:
-                raise RuntimeError(f"无法为会话 {session} 生成主动消息")
-
             original_message = message  # 保存原始消息用于历史记录
-
-            # 记录本次发送的消息（用于下次重复检测）
-            self.record_last_message(session, original_message)
 
             # 处理消息分割和发送
             await self._send_message_with_split(
                 session, message, original_message, proactive_prompt_used
             )
 
-            # AI 自主调度分析（发送后异步执行，不影响发送本身）
-            schedule_result = await self.analyze_message_for_schedule(
-                session, original_message
-            )
-            return schedule_result
+            # 只有确认投递成功后，才更新重复检测基线。
+            self.record_last_message(session, original_message)
+
+            # AI 自主调度分析属于发送后的附加能力，失败不应触发消息重发。
+            try:
+                return await self.analyze_message_for_schedule(
+                    session, original_message
+                )
+            except Exception as e:
+                logger.error(f"心念 | ❌ AI 调度分析失败，已跳过: {e}")
+                return None
 
         except Exception as e:
             logger.error(f"心念 | ❌ 向会话 {session} 发送主动消息时发生错误: {e}")
@@ -397,11 +437,14 @@ class MessageGenerator:
             else:
                 await self._send_single_message(session, message, proactive_prompt_used)
 
+        except MessageDeliveryError:
+            raise
         except Exception as e:
             logger.error(f"心念 | ❌ 发送消息时发生错误: {e}")
             import traceback
 
             logger.error(f"心念 | 发送错误详情: {traceback.format_exc()}")
+            raise MessageDeliveryError(f"发送消息时发生错误: {e}", retryable=True) from e
 
     async def _send_split_message(
         self,
@@ -419,66 +462,85 @@ class MessageGenerator:
             proactive_prompt_used: 本次使用的主动对话提示词
         """
         split_config = self.config.get("message_split", {})
-
         try:
             # 委托消息分割器按配置模式分割
             message_parts, mode_display = self.message_splitter.split_message(message)
-
-            if len(message_parts) > 1:
-                # 分割成多个片段
-                logger.info(
-                    f"心念 | 📨 使用 {mode_display} 分割消息，共 {len(message_parts)} 条"
-                )
-
-                delay_ms = split_config.get("delay_ms", 500)
-                delay_seconds = delay_ms / 1000.0
-
-                sent_count = 0
-                for i, part in enumerate(message_parts, 1):
-                    try:
-                        message_chain = MessageChain().message(part)
-                        success = await self.context.send_message(
-                            session, message_chain
-                        )
-
-                        if success:
-                            sent_count += 1
-                            logger.debug(
-                                f"心念 | ✅ 已发送第 {i}/{len(message_parts)} 条消息"
-                            )
-                            if i < len(message_parts):
-                                await asyncio.sleep(delay_seconds)
-                        else:
-                            logger.warning(
-                                f"心念 | ⚠️ 第 {i}/{len(message_parts)} 条消息发送失败"
-                            )
-
-                    except Exception as part_error:
-                        logger.error(
-                            f"心念 | ❌ 发送第 {i}/{len(message_parts)} 条消息时出错: {part_error}"
-                        )
-
-                if sent_count > 0:
-                    self.user_info_manager.record_sent_time(session)
-                    await self.conversation_manager.add_message_to_conversation_history(
-                        session,
-                        original_message,
-                        proactive_prompt_used=proactive_prompt_used,
-                        build_user_context_func=self.user_info_manager.build_user_context_for_proactive,
-                    )
-                    logger.info(
-                        f"心念 | ✅ 成功发送主动消息 ({sent_count}/{len(message_parts)} 条)"
-                    )
-                else:
-                    logger.warning("心念 | ⚠️ 所有消息片段都发送失败")
-            else:
-                # 没有被分割
-                await self._send_single_message(session, message, proactive_prompt_used)
-
         except Exception as e:
             logger.error(f"心念 | ❌ 消息分割失败: {e}")
             logger.error("心念 | 将使用原始消息，不进行分割")
+            message_parts = [message]
+            mode_display = "原始消息"
+
+        if len(message_parts) > 1:
+            # 分割成多个片段
+            logger.info(
+                f"心念 | 📨 使用 {mode_display} 分割消息，共 {len(message_parts)} 条"
+            )
+
+            delay_ms = split_config.get("delay_ms", 500)
+            delay_seconds = delay_ms / 1000.0
+
+            sent_count = 0
+            for i, part in enumerate(message_parts, 1):
+                message_chain = MessageChain().message(part)
+                await self._send_chain_or_raise(
+                    session, message_chain, f"第 {i}/{len(message_parts)} 条消息"
+                )
+
+                sent_count += 1
+                logger.debug(f"心念 | ✅ 已发送第 {i}/{len(message_parts)} 条消息")
+                if i < len(message_parts):
+                    await asyncio.sleep(delay_seconds)
+
+            await self._record_successful_delivery(
+                session, original_message, proactive_prompt_used
+            )
+            logger.info(
+                f"心念 | ✅ 成功发送主动消息 ({sent_count}/{len(message_parts)} 条)"
+            )
+        else:
+            # 没有被分割
             await self._send_single_message(session, message, proactive_prompt_used)
+
+    async def _send_chain_or_raise(
+        self, session: str, message_chain: MessageChain, description: str
+    ):
+        """发送消息链，失败时抛出可分类异常。"""
+        try:
+            success = await self.context.send_message(session, message_chain)
+        except Exception as e:
+            raise MessageDeliveryError(
+                f"{description}发送异常: {e}", retryable=True
+            ) from e
+
+        if not success:
+            raise MessageDeliveryError(
+                f"{description}发送失败，可能是会话不存在或平台不支持",
+                retryable=False,
+            )
+
+    async def _record_successful_delivery(
+        self, session: str, message: str, proactive_prompt_used: str = None
+    ):
+        """记录已确认投递的主动消息。
+
+        投递已经成功后，发送时间和历史记录属于后置 bookkeeping。这里不再向上
+        抛出异常，避免用户已收到消息却被调度层误判为投递失败并再次发送。
+        """
+        try:
+            self.user_info_manager.record_sent_time(session)
+        except Exception as e:
+            logger.error(f"心念 | ❌ 记录主动消息发送时间失败: {e}")
+
+        try:
+            await self.conversation_manager.add_message_to_conversation_history(
+                session,
+                message,
+                proactive_prompt_used=proactive_prompt_used,
+                build_user_context_func=self.user_info_manager.build_user_context_for_proactive,
+            )
+        except Exception as e:
+            logger.error(f"心念 | ❌ 保存主动消息历史失败: {e}")
 
     async def _send_single_message(
         self, session: str, message: str, proactive_prompt_used: str = None
@@ -491,16 +553,7 @@ class MessageGenerator:
             proactive_prompt_used: 本次使用的主动对话提示词
         """
         message_chain = MessageChain().message(message)
-        success = await self.context.send_message(session, message_chain)
+        await self._send_chain_or_raise(session, message_chain, "主动消息")
 
-        if success:
-            self.user_info_manager.record_sent_time(session)
-            await self.conversation_manager.add_message_to_conversation_history(
-                session,
-                message,
-                proactive_prompt_used=proactive_prompt_used,
-                build_user_context_func=self.user_info_manager.build_user_context_for_proactive,
-            )
-            logger.info("心念 | ✅ 成功发送主动消息")
-        else:
-            logger.warning("心念 | ⚠️ 主动消息发送失败，可能是会话不存在或平台不支持")
+        await self._record_successful_delivery(session, message, proactive_prompt_used)
+        logger.info("心念 | ✅ 成功发送主动消息")
