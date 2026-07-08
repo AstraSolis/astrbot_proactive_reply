@@ -66,6 +66,26 @@ class TestMessageSplitter(unittest.TestCase):
         self.assertEqual(parts, ["早上好，", "吃了吗。"])
         self.assertIn("正则模式", mode_display)
 
+    def test_words_mode_rebuilds_after_config_hot_update(self):
+        config = {"message_split": {"mode": "backslash"}}
+        splitter = MessageSplitter(config)
+
+        config["message_split"] = {"mode": "words", "split_words": ["。"]}
+        parts, mode_display = splitter.split_message("你好。再见。")
+
+        self.assertEqual(parts, ["你好", "再见"])
+        self.assertIn("分段词模式", mode_display)
+
+    def test_regex_mode_rebuilds_after_config_hot_update(self):
+        config = {"message_split": {"mode": "regex", "regex": r".*?[，]"}}
+        splitter = MessageSplitter(config)
+        self.assertEqual(splitter.split_message("早上好，吃了吗。")[0], ["早上好，"])
+
+        config["message_split"]["regex"] = r".*?[，。]"
+        parts, _ = splitter.split_message("早上好，吃了吗。")
+
+        self.assertEqual(parts, ["早上好，", "吃了吗。"])
+
     def test_custom_mode_splits(self):
         splitter = self._make({"mode": "custom", "custom_pattern": r"\|"})
         parts, mode_display = splitter.split_message("a|b|c")

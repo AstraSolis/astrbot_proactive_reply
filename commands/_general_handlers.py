@@ -2,6 +2,13 @@
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
+from ..constants import (
+    DEFAULT_MAX_RANDOM_DELAY_MINUTES,
+    DEFAULT_MIN_RANDOM_DELAY_MINUTES,
+    DEFAULT_PROACTIVE_INTERVAL_MINUTES,
+    DEFAULT_RANDOM_DELAY_ENABLED,
+    DEFAULT_TIMING_MODE,
+)
 from ..core.runtime_data import runtime_data
 from .command_catalog import build_help_text
 
@@ -51,16 +58,25 @@ class GeneralHandlersMixin:
             config_text += "=" * 50 + "\n"
             config_text += f"功能状态: {'✅ 已启用' if proactive_config.get('enabled', False) else '❌ 已禁用'}\n"
             config_text += (
-                f"定时模式: {proactive_config.get('timing_mode', 'fixed_interval')}\n"
+                f"定时模式: {proactive_config.get('timing_mode', DEFAULT_TIMING_MODE)}\n"
             )
             config_text += (
-                f"发送间隔: {proactive_config.get('interval_minutes', 600)} 分钟\n"
+                f"发送间隔: {proactive_config.get('interval_minutes', DEFAULT_PROACTIVE_INTERVAL_MINUTES)} 分钟\n"
             )
             config_text += f"睡眠时间: {self._get_sleep_time_status()}\n"
-            config_text += f"随机延迟: {'✅ 已启用' if proactive_config.get('random_delay_enabled', False) else '❌ 未启用'}\n"
+            random_delay_enabled = proactive_config.get(
+                "random_delay_enabled", DEFAULT_RANDOM_DELAY_ENABLED
+            )
+            config_text += f"随机延迟: {'✅ 已启用' if random_delay_enabled else '❌ 未启用'}\n"
 
-            if proactive_config.get("random_delay_enabled", False):
-                config_text += f"  - 随机延迟范围: {proactive_config.get('min_random_minutes', 0)}-{proactive_config.get('max_random_minutes', 30)} 分钟\n"
+            if random_delay_enabled:
+                min_random = proactive_config.get(
+                    "min_random_minutes", DEFAULT_MIN_RANDOM_DELAY_MINUTES
+                )
+                max_random = proactive_config.get(
+                    "max_random_minutes", DEFAULT_MAX_RANDOM_DELAY_MINUTES
+                )
+                config_text += f"  - 随机延迟范围: {min_random}-{max_random} 分钟\n"
 
             # 3. 历史记录配置
             config_text += f"\n对话历史记录: {'✅ 已启用' if proactive_config.get('include_history_enabled', False) else '❌ 未启用'}\n"

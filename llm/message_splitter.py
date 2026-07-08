@@ -37,6 +37,7 @@ class MessageSplitter:
             config: 配置字典
         """
         self.config = config
+        self._split_config_signature = None
         self.split_words_pattern = None
         self.split_words = []
         self.split_regex_pattern = None
@@ -65,10 +66,26 @@ class MessageSplitter:
                 )
                 break
 
+    def _get_split_config_signature(self) -> tuple:
+        """生成影响预编译分割规则的配置签名"""
+        split_config = self.config.get("message_split", {})
+        split_words = split_config.get("split_words", ["。", "？", "！", "~", "…"])
+        if isinstance(split_words, list):
+            split_words_sig = tuple(str(word) for word in split_words)
+        else:
+            split_words_sig = (str(split_words),)
+        return (
+            split_config.get("mode", "backslash"),
+            split_words_sig,
+            split_config.get("regex", ""),
+            split_config.get("custom_pattern", ""),
+        )
+
     def _initialize_split_patterns(self):
         """初始化分段模式（预编译正则表达式）"""
         split_config = self.config.get("message_split", {})
         split_mode = split_config.get("mode", "backslash")
+        self._split_config_signature = self._get_split_config_signature()
 
         # 初始化分段词模式（words 模式 - 官方风格）
         self.split_words_pattern = None
@@ -115,6 +132,13 @@ class MessageSplitter:
                 split_config.get("custom_pattern", ""), "custom 模式"
             )
 
+    def _ensure_split_patterns_current(self):
+        """配置热更新后惰性重建预编译分割规则"""
+        current_signature = self._get_split_config_signature()
+        if current_signature != self._split_config_signature:
+            logger.debug("心念 | 检测到消息分割配置变化，重新初始化分割规则")
+            self._initialize_split_patterns()
+
     def _is_text_too_long(self, text: str) -> bool:
         """文本是否超过参与正则分割的长度上限（ReDoS 长度保护）"""
         if len(text) > MAX_SPLIT_TEXT_LENGTH:
@@ -134,6 +158,7 @@ class MessageSplitter:
         Returns:
             元组 (片段列表, 模式描述字符串)
         """
+        self._ensure_split_patterns_current()
         split_config = self.config.get("message_split", {})
         split_mode = split_config.get("mode", "backslash")
 

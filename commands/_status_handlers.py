@@ -2,6 +2,7 @@
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
+from ..constants import DEFAULT_PROACTIVE_INTERVAL_MINUTES, DEFAULT_TIMING_MODE
 from ..core.runtime_data import runtime_data
 
 
@@ -93,8 +94,8 @@ class StatusHandlersMixin:
 
 🤖 智能主动发送功能：{"✅ 已启用" if proactive_config.get("enabled", False) else "❌ 已禁用"}
   - LLM提供商：{"✅ 可用" if llm_available else "❌ 不可用"}
-  - 时间模式：{proactive_config.get("timing_mode", "fixed_interval")}
-  - 发送间隔：{proactive_config.get("interval_minutes", 60)} 分钟
+  - 时间模式：{proactive_config.get("timing_mode", DEFAULT_TIMING_MODE)}
+  - 发送间隔：{proactive_config.get("interval_minutes", DEFAULT_PROACTIVE_INTERVAL_MINUTES)} 分钟
   - 睡眠时间：{self._get_sleep_time_status()}
   - 配置会话数：{session_count}
   - AI发送记录数：{ai_sent_times_count}{next_fire_info}{ai_schedule_status}

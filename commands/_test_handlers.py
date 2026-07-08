@@ -2,7 +2,11 @@
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
-from ..constants import MAX_HISTORY_MESSAGE_COUNT, MIN_HISTORY_MESSAGE_COUNT
+from ..constants import (
+    DEFAULT_TIME_GUIDANCE_ENABLED,
+    MAX_HISTORY_MESSAGE_COUNT,
+    MIN_HISTORY_MESSAGE_COUNT,
+)
 from ..core.runtime_data import runtime_data
 from .command_catalog import build_subcommand_help_text
 
@@ -184,7 +188,7 @@ class TestHandlersMixin:
             # 7. 获取时间增强提示词配置状态
             time_awareness_config = self.config.get("time_awareness", {})
             time_guidance_enabled = time_awareness_config.get(
-                "time_guidance_enabled", True
+                "time_guidance_enabled", DEFAULT_TIME_GUIDANCE_ENABLED
             )
             time_guidance_prompt = time_awareness_config.get("time_guidance_prompt", "")
             time_guidance_info = "✅ 已启用" if time_guidance_enabled else "❌ 未启用"

@@ -2,6 +2,15 @@
 
 import random
 from astrbot.api import logger
+from ..constants import (
+    DEFAULT_MAX_RANDOM_DELAY_MINUTES,
+    DEFAULT_MIN_RANDOM_DELAY_MINUTES,
+    DEFAULT_PROACTIVE_INTERVAL_MINUTES,
+    DEFAULT_RANDOM_DELAY_ENABLED,
+    DEFAULT_RANDOM_INTERVAL_MAX_MINUTES,
+    DEFAULT_RANDOM_INTERVAL_MIN_MINUTES,
+    DEFAULT_TIMING_MODE,
+)
 from ..utils.parsers import parse_sessions_list
 from ..core.runtime_data import runtime_data
 
@@ -46,12 +55,16 @@ class StatusMixin:
             基础间隔时间（分钟）
         """
         proactive_config = self.config.get("proactive_reply", {})
-        timing_mode = proactive_config.get("timing_mode", "fixed_interval")
+        timing_mode = proactive_config.get("timing_mode", DEFAULT_TIMING_MODE)
 
         if timing_mode == "random_interval":
-            return proactive_config.get("random_min_minutes", 600)
+            return proactive_config.get(
+                "random_min_minutes", DEFAULT_RANDOM_INTERVAL_MIN_MINUTES
+            )
         else:
-            return proactive_config.get("interval_minutes", 600)
+            return proactive_config.get(
+                "interval_minutes", DEFAULT_PROACTIVE_INTERVAL_MINUTES
+            )
 
     def get_session_target_interval(self, session: str) -> int:
         """获取指定会话的目标间隔时间
@@ -63,21 +76,33 @@ class StatusMixin:
             目标间隔时间（分钟）
         """
         proactive_config = self.config.get("proactive_reply", {})
-        timing_mode = proactive_config.get("timing_mode", "fixed_interval")
+        timing_mode = proactive_config.get("timing_mode", DEFAULT_TIMING_MODE)
 
         # 固定间隔模式
         if timing_mode != "random_interval":
-            interval = proactive_config.get("interval_minutes", 600)
+            interval = proactive_config.get(
+                "interval_minutes", DEFAULT_PROACTIVE_INTERVAL_MINUTES
+            )
             # 如果启用随机延迟，添加随机值
-            if proactive_config.get("random_delay_enabled", False):
-                min_delay = proactive_config.get("min_random_minutes", 0)
-                max_delay = proactive_config.get("max_random_minutes", 30)
+            if proactive_config.get(
+                "random_delay_enabled", DEFAULT_RANDOM_DELAY_ENABLED
+            ):
+                min_delay = proactive_config.get(
+                    "min_random_minutes", DEFAULT_MIN_RANDOM_DELAY_MINUTES
+                )
+                max_delay = proactive_config.get(
+                    "max_random_minutes", DEFAULT_MAX_RANDOM_DELAY_MINUTES
+                )
                 interval += random.randint(min_delay, max_delay)
             return interval
 
         # 随机间隔模式
-        random_min = proactive_config.get("random_min_minutes", 600)
-        random_max = proactive_config.get("random_max_minutes", 1200)
+        random_min = proactive_config.get(
+            "random_min_minutes", DEFAULT_RANDOM_INTERVAL_MIN_MINUTES
+        )
+        random_max = proactive_config.get(
+            "random_max_minutes", DEFAULT_RANDOM_INTERVAL_MAX_MINUTES
+        )
         return random.randint(random_min, random_max)
 
     # ==================== 状态信息方法 ====================

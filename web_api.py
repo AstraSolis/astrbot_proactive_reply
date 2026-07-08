@@ -13,6 +13,7 @@ from quart import jsonify, request
 from astrbot.api import logger
 
 from .commands.command_catalog import get_command_catalog
+from .constants import DEFAULT_TIME_GUIDANCE_ENABLED
 from .core.runtime_data import runtime_data
 from .llm.calendar_generator import (
     DEFAULT_MAX_GENERATE,
@@ -1194,7 +1195,9 @@ def _build_dashboard_stats(managers: dict, locale: str = "zh-CN") -> dict:
         "ai_schedule_enabled": config.get("ai_schedule", {}).get("enabled", False),
         "calendar_enabled": calendar_enabled,
         "time_guidance_enabled": bool(
-            time_awareness.get("time_guidance_enabled", False)
+            time_awareness.get(
+                "time_guidance_enabled", DEFAULT_TIME_GUIDANCE_ENABLED
+            )
         ),
         "sleep_mode_enabled": bool(time_awareness.get("sleep_mode_enabled", False)),
         "recent_activities": _build_recent_activities(config, astrbot_config, locale),

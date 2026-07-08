@@ -43,11 +43,16 @@ sys.modules["astrbot.api.event"] = MagicMock()
 
 cal_store_module = _load_from_package("core.calendar_store", "core/calendar_store.py")
 _load_from_package("core.runtime_data", "core/runtime_data.py")
+_load_from_package("core._datafile", "core/_datafile.py")
 _load_from_package("utils.time_utils", "utils/time_utils.py")
 ph = _load_from_package("llm.placeholder_utils", "llm/placeholder_utils.py")
+cal_manager_module = _load_from_package(
+    "core.calendar_manager", "core/calendar_manager.py"
+)
 
 calendar_store = cal_store_module.calendar_store
 REPEAT_FOREVER = cal_store_module.REPEAT_FOREVER
+CalendarManager = cal_manager_module.CalendarManager
 
 SESSION = "aiocqhttp:FriendMessage:10001"
 
@@ -141,6 +146,54 @@ class TestCalendarStoreQuery(unittest.TestCase):
         self.assertEqual(
             calendar_store.today_text(empty_now, "、", "今日无特殊事项"),
             "今日无特殊事项",
+        )
+
+
+class TestCalendarManagerClear(unittest.TestCase):
+    def setUp(self):
+        calendar_store.clear()
+        self.manager = CalendarManager(MagicMock())
+        self.manager.save = MagicMock(return_value=True)
+
+    def tearDown(self):
+        calendar_store.clear()
+
+    def test_clear_month_removes_visible_repeated_events(self):
+        calendar_store.set_events(
+            [
+                _event(2024, 7, 8, "永久重复", repeat=REPEAT_FOREVER, eid="forever"),
+                _event(2024, 7, 9, "有限重复", repeat=2, eid="finite"),
+                _event(2024, 7, 10, "已过期重复", repeat=1, eid="expired"),
+                _event(2024, 8, 8, "其他月份", repeat=REPEAT_FOREVER, eid="other"),
+                _event(2024, 2, 29, "闰日", repeat=REPEAT_FOREVER, eid="leap"),
+            ]
+        )
+
+        removed = self.manager.clear(scope="month", year=2026, month=7)
+
+        self.assertEqual(removed, 2)
+        self.assertEqual(
+            [event["id"] for event in calendar_store.events],
+            ["expired", "other", "leap"],
+        )
+
+    def test_clear_year_removes_events_active_in_view_year(self):
+        calendar_store.set_events(
+            [
+                _event(2024, 1, 1, "永久重复", repeat=REPEAT_FOREVER, eid="forever"),
+                _event(2024, 2, 1, "有限重复", repeat=2, eid="finite"),
+                _event(2024, 3, 1, "已过期重复", repeat=1, eid="expired"),
+                _event(2027, 4, 1, "未来一次性", repeat=0, eid="future"),
+                _event(2024, 2, 29, "闰日", repeat=REPEAT_FOREVER, eid="leap"),
+            ]
+        )
+
+        removed = self.manager.clear(scope="year", year=2026)
+
+        self.assertEqual(removed, 2)
+        self.assertEqual(
+            [event["id"] for event in calendar_store.events],
+            ["expired", "future", "leap"],
         )
 
 

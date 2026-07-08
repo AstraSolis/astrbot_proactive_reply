@@ -7,7 +7,7 @@
 import random
 from astrbot.api import logger
 from .placeholder_utils import replace_placeholders, stabilize_static_prompt_template
-from ..constants import DEFAULT_TIME_GUIDANCE_PROMPT
+from ..constants import DEFAULT_TIME_GUIDANCE_ENABLED, DEFAULT_TIME_GUIDANCE_PROMPT
 from ..utils.parsers import parse_prompt_list
 
 
@@ -338,7 +338,9 @@ class PromptBuilder:
 
         # 从配置中读取时间感知增强提示词设置
         time_awareness_config = self.config.get("time_awareness", {})
-        time_guidance_enabled = time_awareness_config.get("time_guidance_enabled", True)
+        time_guidance_enabled = time_awareness_config.get(
+            "time_guidance_enabled", DEFAULT_TIME_GUIDANCE_ENABLED
+        )
 
         time_guidance = ""
         if time_guidance_enabled:

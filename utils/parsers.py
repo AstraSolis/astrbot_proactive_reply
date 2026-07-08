@@ -21,7 +21,14 @@ def parse_sessions_list(sessions_data) -> list:
 
     # 如果已经是列表格式（新的配置格式）
     if isinstance(sessions_data, list):
-        sessions = [s.strip() for s in sessions_data if s and s.strip()]
+        for item in sessions_data:
+            if isinstance(item, dict) and "session_id" in item:
+                item = item["session_id"]
+            if item is None:
+                continue
+            session = str(item).strip()
+            if session:
+                sessions.append(session)
         return sessions
 
     # 如果是字符串格式（兼容旧配置）

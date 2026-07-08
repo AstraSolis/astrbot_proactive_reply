@@ -12,6 +12,13 @@ module = importlib.util.module_from_spec(spec)
 sys.modules["config_schema"] = module
 spec.loader.exec_module(module)
 
+constants_spec = importlib.util.spec_from_file_location(
+    "constants_for_config_schema_test", os.path.join(_ROOT, "constants.py")
+)
+constants = importlib.util.module_from_spec(constants_spec)
+sys.modules["constants_for_config_schema_test"] = constants
+constants_spec.loader.exec_module(constants)
+
 load_conf_schema = module.load_conf_schema
 build_config_schema = module.build_config_schema
 build_field = module.build_field
@@ -108,6 +115,18 @@ class TestBuildConfigSchema(unittest.TestCase):
         ai_fields = {f["key"]: f for f in by_key["ai_schedule"]["fields"]}
         self.assertEqual(ai_fields["provider_id"]["control"], "provider")
         self.assertTrue(by_key["ai_schedule"]["has_provider"])
+
+    def test_runtime_default_constants_match_schema_defaults(self):
+        schema = load_conf_schema(os.path.join(_ROOT, "_conf_schema.json"))
+
+        self.assertEqual(
+            schema["proactive_reply"]["items"]["interval_minutes"]["default"],
+            constants.DEFAULT_PROACTIVE_INTERVAL_MINUTES,
+        )
+        self.assertEqual(
+            schema["time_awareness"]["items"]["time_guidance_enabled"]["default"],
+            constants.DEFAULT_TIME_GUIDANCE_ENABLED,
+        )
 
     def test_select_choices_with_labels(self):
         groups = build_config_schema(SCHEMA, {})

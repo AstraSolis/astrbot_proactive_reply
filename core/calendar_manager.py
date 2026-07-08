@@ -26,6 +26,7 @@ from .calendar_store import (
     MAX_EVENT_TEXT_LENGTH,
     MAX_EVENTS,
     calendar_store,
+    event_active_in_year,
     normalize_repeat,
     valid_month_day,
 )
@@ -244,14 +245,25 @@ class CalendarManager:
                 return True
         return False
 
+    @staticmethod
+    def _event_visible_in_year(event: dict, year: int) -> bool:
+        """判断事项在指定视图年是否真实可见"""
+        if not event_active_in_year(event, year):
+            return False
+        try:
+            datetime.date(year, int(event.get("month")), int(event.get("day")))
+            return True
+        except (TypeError, ValueError):
+            return False
+
     def clear(
         self, scope: str = "all", year: int | None = None, month: int | None = None
     ) -> int:
         """批量清除事项
 
         Args:
-            scope: ``all``=全部；``year``=某基准年；``month``=某基准年的某月。
-            year: scope 为 year/month 时的基准年。
+            scope: ``all``=全部；``year``=某视图年；``month``=某视图年的某月。
+            year: scope 为 year/month 时的视图年。
             month: scope 为 month 时的月份。
 
         Returns:
@@ -261,12 +273,16 @@ class CalendarManager:
         if scope == "all":
             kept = []
         elif scope == "year" and year is not None:
-            kept = [e for e in before if e.get("year") != year]
+            # WebUI 的「本年」按当前视图年清除可见事项；重复事项的基准年
+            # 可能早于视图年，因此必须按 repeat 展开后的生效年份判断。
+            kept = [e for e in before if not self._event_visible_in_year(e, year)]
         elif scope == "month" and year is not None and month is not None:
             kept = [
                 e
                 for e in before
-                if not (e.get("year") == year and e.get("month") == month)
+                if not (
+                    e.get("month") == month and self._event_visible_in_year(e, year)
+                )
             ]
         else:
             logger.warning(f"心念 | ⚠️ 非法的清除范围: scope={scope}")

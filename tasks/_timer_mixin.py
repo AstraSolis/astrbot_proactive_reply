@@ -3,6 +3,15 @@
 from datetime import datetime, timedelta
 from typing import Optional
 from astrbot.api import logger
+from ..constants import (
+    DEFAULT_MAX_RANDOM_DELAY_MINUTES,
+    DEFAULT_MIN_RANDOM_DELAY_MINUTES,
+    DEFAULT_PROACTIVE_INTERVAL_MINUTES,
+    DEFAULT_RANDOM_DELAY_ENABLED,
+    DEFAULT_RANDOM_INTERVAL_MAX_MINUTES,
+    DEFAULT_RANDOM_INTERVAL_MIN_MINUTES,
+    DEFAULT_TIMING_MODE,
+)
 from ..core.runtime_data import runtime_data
 
 
@@ -101,10 +110,17 @@ class TimerMixin:
         """确保所有目标会话都有下次发送时间"""
         for session in self.get_target_sessions():
             if not self.get_session_next_fire_time(session):
-                next_fire = self.calculate_next_fire_time(session)
-                self.set_session_next_fire_time(session, next_fire)
+                # 用 refresh_session_timer 统一计算常规周期与 AI 约定的较早时间。
+                # 否则配置/时区变化清空计时器后，已有 AI 约定会被推迟到常规周期。
+                self.refresh_session_timer(session)
+                next_fire = self.get_session_next_fire_time(session)
+                display = (
+                    next_fire.strftime("%Y-%m-%d %H:%M:%S")
+                    if next_fire
+                    else "未知"
+                )
                 logger.info(
-                    f"心念 | 会话 {session} 初始化计时器，下次发送：{next_fire.strftime('%Y-%m-%d %H:%M:%S')}"
+                    f"心念 | 会话 {session} 初始化计时器，下次发送：{display}"
                 )
 
     def clear_session_timer(self, session: str):
@@ -172,13 +188,25 @@ class TimerMixin:
         """
         proactive_config = self.config.get("proactive_reply", {})
         # 提取所有影响计时的配置项
-        timing_mode = proactive_config.get("timing_mode", "fixed_interval")
-        interval_minutes = proactive_config.get("interval_minutes", 600)
-        random_min = proactive_config.get("random_min_minutes", 600)
-        random_max = proactive_config.get("random_max_minutes", 1200)
-        random_delay_enabled = proactive_config.get("random_delay_enabled", False)
-        min_random = proactive_config.get("min_random_minutes", 0)
-        max_random = proactive_config.get("max_random_minutes", 30)
+        timing_mode = proactive_config.get("timing_mode", DEFAULT_TIMING_MODE)
+        interval_minutes = proactive_config.get(
+            "interval_minutes", DEFAULT_PROACTIVE_INTERVAL_MINUTES
+        )
+        random_min = proactive_config.get(
+            "random_min_minutes", DEFAULT_RANDOM_INTERVAL_MIN_MINUTES
+        )
+        random_max = proactive_config.get(
+            "random_max_minutes", DEFAULT_RANDOM_INTERVAL_MAX_MINUTES
+        )
+        random_delay_enabled = proactive_config.get(
+            "random_delay_enabled", DEFAULT_RANDOM_DELAY_ENABLED
+        )
+        min_random = proactive_config.get(
+            "min_random_minutes", DEFAULT_MIN_RANDOM_DELAY_MINUTES
+        )
+        max_random = proactive_config.get(
+            "max_random_minutes", DEFAULT_MAX_RANDOM_DELAY_MINUTES
+        )
 
         return f"{timing_mode}|{interval_minutes}|{random_min}|{random_max}|{random_delay_enabled}|{min_random}|{max_random}"
 

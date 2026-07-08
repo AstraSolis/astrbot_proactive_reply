@@ -16,6 +16,22 @@ MAX_HISTORY_MESSAGE_COUNT = 50
 MAX_SCHEDULE_ANALYSIS_HISTORY_COUNT = 6
 
 
+# ==================== 主动回复 / 时间默认值 ====================
+
+# 定时主动发送的代码内回退默认值。面向用户的默认值仍写在
+# _conf_schema.json；这里用于所有运行时 get(..., default) 保持一致。
+DEFAULT_TIMING_MODE = "fixed_interval"
+DEFAULT_PROACTIVE_INTERVAL_MINUTES = 600
+DEFAULT_RANDOM_INTERVAL_MIN_MINUTES = 600
+DEFAULT_RANDOM_INTERVAL_MAX_MINUTES = 1200
+DEFAULT_RANDOM_DELAY_ENABLED = False
+DEFAULT_MIN_RANDOM_DELAY_MINUTES = 0
+DEFAULT_MAX_RANDOM_DELAY_MINUTES = 30
+
+# 时间感知增强提示词默认启用；所有状态展示与实际提示词构建都应使用同一回退值。
+DEFAULT_TIME_GUIDANCE_ENABLED = True
+
+
 # ==================== 消息分割 / 正则保护 ====================
 
 # 参与正则分割的文本长度上限。超过该长度则跳过基于正则的分割、整条发送，

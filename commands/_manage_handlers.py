@@ -111,8 +111,10 @@ class ManageHandlersMixin:
     async def _manage_save_config(self, event: AstrMessageEvent):
         """保存配置"""
         try:
-            self.plugin.config_manager.save_config_safely()
-            yield event.plain_result("✅ 配置保存成功")
+            if self.plugin.config_manager.save_config_safely():
+                yield event.plain_result("✅ 配置保存成功")
+            else:
+                yield event.plain_result("❌ 配置保存失败，请检查日志或文件权限")
         except Exception as e:
             yield event.plain_result(f"❌ 保存失败: {e}")
 

@@ -2,6 +2,7 @@
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
+from ..utils.parsers import parse_sessions_list
 
 
 class SessionHandlersMixin:
@@ -11,16 +12,33 @@ class SessionHandlersMixin:
         """添加当前会话到主动对话列表"""
         try:
             session_id = event.unified_msg_origin
-            sessions = self.config.get("proactive_reply", {}).get("sessions", [])
+            had_proactive_key = "proactive_reply" in self.config
+            original_proactive_config = self.config.get("proactive_reply")
+            proactive_config = original_proactive_config
+            if not isinstance(proactive_config, dict):
+                proactive_config = {}
+            original_sessions = proactive_config.get("sessions", [])
+            sessions = parse_sessions_list(original_sessions)
 
             if session_id in sessions:
                 yield event.plain_result("当前会话已在主动对话列表中")
             else:
                 sessions.append(session_id)
-                if "proactive_reply" not in self.config:
-                    self.config["proactive_reply"] = {}
-                self.config["proactive_reply"]["sessions"] = sessions
-                self.plugin.config_manager.save_config_safely()
+                self.config["proactive_reply"] = proactive_config
+                proactive_config["sessions"] = sessions
+                if not self.plugin.config_manager.save_config_safely():
+                    if had_proactive_key:
+                        if isinstance(original_proactive_config, dict):
+                            proactive_config["sessions"] = original_sessions
+                        else:
+                            self.config["proactive_reply"] = original_proactive_config
+                    else:
+                        if "proactive_reply" in self.config:
+                            del self.config["proactive_reply"]
+                    yield event.plain_result(
+                        "❌ 配置保存失败，已撤销本次添加；请检查日志或文件权限"
+                    )
+                    return
                 yield event.plain_result(
                     f"✅ 已添加会话到主动对话列表\n会话ID: {session_id}"
                 )
@@ -32,12 +50,21 @@ class SessionHandlersMixin:
         """从主动对话列表移除当前会话"""
         try:
             session_id = event.unified_msg_origin
-            sessions = self.config.get("proactive_reply", {}).get("sessions", [])
+            proactive_config = self.config.get("proactive_reply", {})
+            if not isinstance(proactive_config, dict):
+                proactive_config = {}
+            original_sessions = proactive_config.get("sessions", [])
+            sessions = parse_sessions_list(original_sessions)
 
             if session_id in sessions:
                 sessions.remove(session_id)
-                self.config["proactive_reply"]["sessions"] = sessions
-                self.plugin.config_manager.save_config_safely()
+                proactive_config["sessions"] = sessions
+                if not self.plugin.config_manager.save_config_safely():
+                    proactive_config["sessions"] = original_sessions
+                    yield event.plain_result(
+                        "❌ 配置保存失败，已撤销本次移除；请检查日志或文件权限"
+                    )
+                    return
                 # 清除该会话的计时器
                 self.plugin.task_manager.clear_session_timer(session_id)
                 yield event.plain_result("✅ 已从主动对话列表移除当前会话")
