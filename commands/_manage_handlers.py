@@ -65,6 +65,7 @@ class ManageHandlersMixin:
 
             # 保存清空后的持久化数据
             self.plugin.persistence_manager.save_persistent_data()
+            await self.plugin.persistence_manager.flush_pending_save()
             self.plugin.task_manager.notify_wakeup()
             yield event.plain_result("✅ 已清除所有用户信息和发送时间记录")
         except Exception as e:

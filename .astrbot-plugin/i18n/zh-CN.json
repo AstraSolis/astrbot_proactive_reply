@@ -546,6 +546,7 @@
       "config_save_failed": "配置保存失败",
       "config_section_invalid": "配置分组不存在",
       "config_value_invalid": "以下配置项的值无效：{keys}",
+      "config_conflict": "配置已被其他来源修改，请刷新后再保存",
       "session_not_found": "未找到该会话",
       "schedule_not_found": "未找到该约定任务",
       "internal_error": "服务器内部错误，请稍后重试",

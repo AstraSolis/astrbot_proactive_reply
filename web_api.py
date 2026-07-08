@@ -4,7 +4,10 @@
 向 AstrBot 注册所有插件 REST API，供 Plugin Pages 调用
 """
 
+import hashlib
+import json
 import os
+from collections.abc import Mapping
 from datetime import datetime
 
 import yaml
@@ -87,6 +90,56 @@ def _internal_error_response(locale: str):
     ), 500
 
 
+def _err(locale: str, key: str, fallback: str, status: int = 400, **kwargs):
+    """统一构造 API 错误响应。"""
+    return (
+        jsonify({"success": False, "error": t(locale, key, fallback, **kwargs)}),
+        status,
+    )
+
+
+def _manager_missing_response(locale: str, key: str, fallback: str):
+    return _err(locale, key, fallback, 500)
+
+
+def _get_config(managers: dict) -> dict:
+    """从 config_manager 安全提取当前配置。"""
+    config_manager = managers.get("config_manager")
+    if config_manager and hasattr(config_manager, "config"):
+        config = config_manager.config
+        if hasattr(config, "get") and hasattr(config, "setdefault"):
+            return config
+    return {}
+
+
+def _config_version(config: dict) -> str:
+    """基于当前配置内容生成乐观锁版本号。"""
+    try:
+        raw = json.dumps(
+            _jsonable_config(config),
+            ensure_ascii=False,
+            sort_keys=True,
+            default=str,
+        )
+    except (TypeError, ValueError):
+        raw = repr(config)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _jsonable_config(value):
+    """将 AstrBot 配置对象规整为稳定可 JSON 化的结构。"""
+    if isinstance(value, Mapping):
+        return {str(k): _jsonable_config(v) for k, v in value.items()}
+    items = getattr(value, "items", None)
+    if callable(items):
+        return {str(k): _jsonable_config(v) for k, v in items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable_config(v) for v in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
+
+
 def register_web_apis(context, managers: dict) -> None:
     """向 AstrBot 注册所有插件 Web API
 
@@ -102,7 +155,7 @@ def register_web_apis(context, managers: dict) -> None:
             stats = _build_dashboard_stats(managers, locale)
             return jsonify({"success": True, "stats": stats})
         except Exception as e:
-            logger.error(f"心念 Web API | 获取仪表板统计失败: {e}")
+            logger.error(f"心念 Web API | 获取仪表板统计失败: {e}", exc_info=True)
             return _internal_error_response(
                 normalize_locale(request.args.get("locale"))
             )
@@ -116,7 +169,7 @@ def register_web_apis(context, managers: dict) -> None:
                 {"success": True, "sessions": sessions, "total": len(sessions)}
             )
         except Exception as e:
-            logger.error(f"心念 Web API | 获取会话列表失败: {e}")
+            logger.error(f"心念 Web API | 获取会话列表失败: {e}", exc_info=True)
             return _internal_error_response(
                 normalize_locale(request.args.get("locale"))
             )
@@ -127,16 +180,11 @@ def register_web_apis(context, managers: dict) -> None:
             locale = request_locale()
             config_manager = managers.get("config_manager")
             if not config_manager:
-                return jsonify(
-                    {
-                        "success": False,
-                        "error": t(
-                            locale,
-                            "api.errors.config_manager_not_found",
-                            "配置管理器未找到",
-                        ),
-                    }
-                ), 500
+                return _manager_missing_response(
+                    locale,
+                    "api.errors.config_manager_not_found",
+                    "配置管理器未找到",
+                )
 
             data = await request.get_json()
             session_id = (data or {}).get("session_id", "").strip()
@@ -163,7 +211,7 @@ def register_web_apis(context, managers: dict) -> None:
                     }
                 ), 400
 
-            config = config_manager.config if hasattr(config_manager, "config") else {}
+            config = _get_config(managers)
             existing = _safe_sessions_list(config)
 
             if session_id in existing:
@@ -199,7 +247,7 @@ def register_web_apis(context, managers: dict) -> None:
                 }
             )
         except Exception as e:
-            logger.error(f"心念 Web API | 添加会话失败: {e}")
+            logger.error(f"心念 Web API | 添加会话失败: {e}", exc_info=True)
             return _internal_error_response(request_locale())
 
     async def remove_session():
@@ -208,16 +256,11 @@ def register_web_apis(context, managers: dict) -> None:
             locale = request_locale()
             config_manager = managers.get("config_manager")
             if not config_manager:
-                return jsonify(
-                    {
-                        "success": False,
-                        "error": t(
-                            locale,
-                            "api.errors.config_manager_not_found",
-                            "配置管理器未找到",
-                        ),
-                    }
-                ), 500
+                return _manager_missing_response(
+                    locale,
+                    "api.errors.config_manager_not_found",
+                    "配置管理器未找到",
+                )
 
             data = await request.get_json()
             session_id = (data or {}).get("session_id", "").strip()
@@ -231,7 +274,7 @@ def register_web_apis(context, managers: dict) -> None:
                     }
                 ), 400
 
-            config = config_manager.config if hasattr(config_manager, "config") else {}
+            config = _get_config(managers)
             existing = _safe_sessions_list(config)
             original_count = len(existing)
             updated = [s for s in existing if s != session_id]
@@ -274,19 +317,14 @@ def register_web_apis(context, managers: dict) -> None:
                 }
             )
         except Exception as e:
-            logger.error(f"心念 Web API | 移除会话失败: {e}")
+            logger.error(f"心念 Web API | 移除会话失败: {e}", exc_info=True)
             return _internal_error_response(request_locale())
 
     async def get_ai_schedules():
         """获取 AI 约定任务列表"""
         try:
             locale = normalize_locale(request.args.get("locale"))
-            config_manager = managers.get("config_manager")
-            config = (
-                config_manager.config
-                if config_manager and hasattr(config_manager, "config")
-                else {}
-            )
+            config = _get_config(managers)
             astrbot_config = _get_astrbot_config(managers)
             now = get_now(config, astrbot_config).replace(tzinfo=None)
             schedules = _build_ai_schedules_data(now, locale)
@@ -294,7 +332,7 @@ def register_web_apis(context, managers: dict) -> None:
                 {"success": True, "schedules": schedules, "total": len(schedules)}
             )
         except Exception as e:
-            logger.error(f"心念 Web API | 获取 AI 约定任务失败: {e}")
+            logger.error(f"心念 Web API | 获取 AI 约定任务失败: {e}", exc_info=True)
             return _internal_error_response(
                 normalize_locale(request.args.get("locale"))
             )
@@ -388,7 +426,7 @@ def register_web_apis(context, managers: dict) -> None:
                 }
             )
         except Exception as e:
-            logger.error(f"心念 Web API | 取消 AI 约定任务失败: {e}")
+            logger.error(f"心念 Web API | 取消 AI 约定任务失败: {e}", exc_info=True)
             return _internal_error_response(request_locale())
 
     async def get_placeholders():
@@ -396,7 +434,7 @@ def register_web_apis(context, managers: dict) -> None:
         try:
             return jsonify({"success": True, "groups": get_placeholder_catalog()})
         except Exception as e:
-            logger.error(f"心念 Web API | 获取占位符目录失败: {e}")
+            logger.error(f"心念 Web API | 获取占位符目录失败: {e}", exc_info=True)
             return _internal_error_response(
                 normalize_locale(request.args.get("locale"))
             )
@@ -406,7 +444,7 @@ def register_web_apis(context, managers: dict) -> None:
         try:
             return jsonify({"success": True, "categories": get_command_catalog()})
         except Exception as e:
-            logger.error(f"心念 Web API | 获取命令目录失败: {e}")
+            logger.error(f"心念 Web API | 获取命令目录失败: {e}", exc_info=True)
             return _internal_error_response(
                 normalize_locale(request.args.get("locale"))
             )
@@ -430,7 +468,7 @@ def register_web_apis(context, managers: dict) -> None:
                 }
             )
         except Exception as e:
-            logger.error(f"心念 Web API | 获取关于信息失败: {e}")
+            logger.error(f"心念 Web API | 获取关于信息失败: {e}", exc_info=True)
             return _internal_error_response(
                 normalize_locale(request.args.get("locale"))
             )
@@ -438,16 +476,11 @@ def register_web_apis(context, managers: dict) -> None:
     # ==================== 时间表（日历事项） ====================
 
     def _calendar_manager_missing(locale):
-        return jsonify(
-            {
-                "success": False,
-                "error": t(
-                    locale,
-                    "api.errors.calendar_manager_not_found",
-                    "时间表管理器未找到",
-                ),
-            }
-        ), 500
+        return _manager_missing_response(
+            locale,
+            "api.errors.calendar_manager_not_found",
+            "时间表管理器未找到",
+        )
 
     async def get_calendar_data():
         """获取时间表数据（开关、分隔符、空文本、全部事项）"""
@@ -456,12 +489,7 @@ def register_web_apis(context, managers: dict) -> None:
             calendar_manager = managers.get("calendar_manager")
             if not calendar_manager:
                 return _calendar_manager_missing(locale)
-            config_manager = managers.get("config_manager")
-            config = (
-                config_manager.config
-                if config_manager and hasattr(config_manager, "config")
-                else {}
-            )
+            config = _get_config(managers)
             calendar_conf = config.get("calendar", {})
             return jsonify(
                 {
@@ -473,7 +501,7 @@ def register_web_apis(context, managers: dict) -> None:
                 }
             )
         except Exception as e:
-            logger.error(f"心念 Web API | 获取时间表数据失败: {e}")
+            logger.error(f"心念 Web API | 获取时间表数据失败: {e}", exc_info=True)
             return _internal_error_response(
                 normalize_locale(request.args.get("locale"))
             )
@@ -525,7 +553,7 @@ def register_web_apis(context, managers: dict) -> None:
                 }
             )
         except Exception as e:
-            logger.error(f"心念 Web API | 保存时间表事项失败: {e}")
+            logger.error(f"心念 Web API | 保存时间表事项失败: {e}", exc_info=True)
             return _internal_error_response(request_locale())
 
     async def delete_calendar_event():
@@ -558,7 +586,7 @@ def register_web_apis(context, managers: dict) -> None:
                 }
             )
         except Exception as e:
-            logger.error(f"心念 Web API | 删除时间表事项失败: {e}")
+            logger.error(f"心念 Web API | 删除时间表事项失败: {e}", exc_info=True)
             return _internal_error_response(request_locale())
 
     async def clear_calendar():
@@ -587,7 +615,7 @@ def register_web_apis(context, managers: dict) -> None:
                 }
             )
         except Exception as e:
-            logger.error(f"心念 Web API | 清除时间表失败: {e}")
+            logger.error(f"心念 Web API | 清除时间表失败: {e}", exc_info=True)
             return _internal_error_response(request_locale())
 
     async def export_calendar():
@@ -604,7 +632,7 @@ def register_web_apis(context, managers: dict) -> None:
                 }
             )
         except Exception as e:
-            logger.error(f"心念 Web API | 导出时间表失败: {e}")
+            logger.error(f"心念 Web API | 导出时间表失败: {e}", exc_info=True)
             return _internal_error_response(request_locale())
 
     async def import_calendar():
@@ -657,20 +685,15 @@ def register_web_apis(context, managers: dict) -> None:
                 }
             )
         except Exception as e:
-            logger.error(f"心念 Web API | 导入时间表失败: {e}")
+            logger.error(f"心念 Web API | 导入时间表失败: {e}", exc_info=True)
             return _internal_error_response(request_locale())
 
     # ==================== 时间表 · AI 生成 ====================
 
     def _calendar_ai_config():
         """读取时间表 AI 生成相关配置，返回 (provider_id, prompt)。"""
-        config_manager = managers.get("config_manager")
-        config = (
-            config_manager.config
-            if config_manager and hasattr(config_manager, "config")
-            else {}
-        )
-        calendar_conf = config.get("calendar", {}) if isinstance(config, dict) else {}
+        config = _get_config(managers)
+        calendar_conf = config.get("calendar", {})
         provider_id = str(
             calendar_conf.get("ai_generate_provider_id", "") or ""
         ).strip()
@@ -710,7 +733,7 @@ def register_web_apis(context, managers: dict) -> None:
                 }
             )
         except Exception as e:
-            logger.error(f"心念 Web API | 获取 AI 生成选项失败: {e}")
+            logger.error(f"心念 Web API | 获取 AI 生成选项失败: {e}", exc_info=True)
             return _internal_error_response(
                 normalize_locale(request.args.get("locale"))
             )
@@ -757,12 +780,7 @@ def register_web_apis(context, managers: dict) -> None:
                 data.get("provider_id"), configured_provider
             )
 
-            config_manager = managers.get("config_manager")
-            config = (
-                config_manager.config
-                if config_manager and hasattr(config_manager, "config")
-                else {}
-            )
+            config = _get_config(managers)
             current_year = get_now(config, _get_astrbot_config(managers)).year
             system_prompt = build_system_prompt(
                 base_prompt, current_year, DEFAULT_MAX_GENERATE
@@ -808,7 +826,7 @@ def register_web_apis(context, managers: dict) -> None:
                 }
             )
         except Exception as e:
-            logger.error(f"心念 Web API | AI 生成时间表失败: {e}")
+            logger.error(f"心念 Web API | AI 生成时间表失败: {e}", exc_info=True)
             return _internal_error_response(request_locale())
 
     async def apply_calendar_ai():
@@ -859,7 +877,7 @@ def register_web_apis(context, managers: dict) -> None:
                 }
             )
         except Exception as e:
-            logger.error(f"心念 Web API | 应用 AI 时间表失败: {e}")
+            logger.error(f"心念 Web API | 应用 AI 时间表失败: {e}", exc_info=True)
             return _internal_error_response(request_locale())
 
     # ==================== 配置文件（可视化编辑） ====================
@@ -868,12 +886,7 @@ def register_web_apis(context, managers: dict) -> None:
         """返回配置分组结构 + 当前值（供 WebUI 配置页渲染）。"""
         try:
             locale = normalize_locale(request.args.get("locale"))
-            config_manager = managers.get("config_manager")
-            config = (
-                config_manager.config
-                if config_manager and hasattr(config_manager, "config")
-                else {}
-            )
+            config = _get_config(managers)
             schema = _get_conf_schema()
             groups = build_config_schema(
                 schema,
@@ -882,9 +895,15 @@ def register_web_apis(context, managers: dict) -> None:
                 translate=lambda key, fallback="": t(locale, key, fallback),
                 translate_list=lambda key, fallback=None: t_list(locale, key, fallback),
             )
-            return jsonify({"success": True, "groups": groups})
+            return jsonify(
+                {
+                    "success": True,
+                    "groups": groups,
+                    "config_version": _config_version(config),
+                }
+            )
         except Exception as e:
-            logger.error(f"心念 Web API | 获取配置 schema 失败: {e}")
+            logger.error(f"心念 Web API | 获取配置 schema 失败: {e}", exc_info=True)
             return _internal_error_response(
                 normalize_locale(request.args.get("locale"))
             )
@@ -895,37 +914,29 @@ def register_web_apis(context, managers: dict) -> None:
         请求体：``{"section": "basic_settings", "values": {...}}``
         """
         try:
-            locale = request_locale()
+            data = await request.get_json() or {}
+            locale = normalize_locale(data.get("locale") or request.args.get("locale"))
             config_manager = managers.get("config_manager")
             if not config_manager:
-                return jsonify(
-                    {
-                        "success": False,
-                        "error": t(
-                            locale,
-                            "api.errors.config_manager_not_found",
-                            "配置管理器未找到",
-                        ),
-                    }
-                ), 500
+                return _manager_missing_response(
+                    locale,
+                    "api.errors.config_manager_not_found",
+                    "配置管理器未找到",
+                )
 
-            data = await request.get_json() or {}
             section = str(data.get("section") or "").strip()
             raw_values = data.get("values")
+            client_version = str(data.get("config_version") or "").strip()
 
             schema = _get_conf_schema()
             section_def = schema.get(section) if isinstance(schema, dict) else None
             if not section or not isinstance(section_def, dict):
-                return jsonify(
-                    {
-                        "success": False,
-                        "error": t(
-                            locale,
-                            "api.errors.config_section_invalid",
-                            "配置分组不存在",
-                        ),
-                    }
-                ), 400
+                return _err(
+                    locale,
+                    "api.errors.config_section_invalid",
+                    "配置分组不存在",
+                    400,
+                )
 
             cleaned, errors = coerce_section_values(section_def, raw_values)
             if errors:
@@ -943,20 +954,30 @@ def register_web_apis(context, managers: dict) -> None:
                     }
                 ), 400
 
-            config = config_manager.config if hasattr(config_manager, "config") else {}
+            config = _get_config(managers)
+            current_version = _config_version(config)
+            if client_version and client_version != current_version:
+                return jsonify(
+                    {
+                        "success": False,
+                        "conflict": True,
+                        "config_version": current_version,
+                        "error": t(
+                            locale,
+                            "api.errors.config_conflict",
+                            "配置已被其他来源修改，请刷新后再保存",
+                        ),
+                    }
+                ), 409
+
             target = config.setdefault(section, {})
             for key, value in cleaned.items():
                 target[key] = value
 
             if not config_manager.save_config_safely():
-                return jsonify(
-                    {
-                        "success": False,
-                        "error": t(
-                            locale, "api.errors.config_save_failed", "配置保存失败"
-                        ),
-                    }
-                ), 500
+                return _err(
+                    locale, "api.errors.config_save_failed", "配置保存失败", 500
+                )
 
             logger.info(f"心念 Web API | 已更新配置分组 {section}（{len(cleaned)} 项）")
             return jsonify(
@@ -964,6 +985,7 @@ def register_web_apis(context, managers: dict) -> None:
                     "success": True,
                     "section": section,
                     "values": cleaned,
+                    "config_version": _config_version(config),
                     "message": t(
                         locale,
                         "api.messages.config_saved",
@@ -972,7 +994,7 @@ def register_web_apis(context, managers: dict) -> None:
                 }
             )
         except Exception as e:
-            logger.error(f"心念 Web API | 保存配置失败: {e}")
+            logger.error(f"心念 Web API | 保存配置失败: {e}", exc_info=True)
             return _internal_error_response(request_locale())
 
     context.register_web_api(
@@ -1135,12 +1157,7 @@ def _get_astrbot_config(managers: dict):
 
 def _build_dashboard_stats(managers: dict, locale: str = "zh-CN") -> dict:
     """构建仪表板统计数据"""
-    config_manager = managers.get("config_manager")
-    config = (
-        config_manager.config
-        if config_manager and hasattr(config_manager, "config")
-        else {}
-    )
+    config = _get_config(managers)
     astrbot_config = _get_astrbot_config(managers)
 
     sessions = _safe_sessions_list(config)
@@ -1404,7 +1421,7 @@ def _build_sessions_data(managers: dict, locale: str = "zh-CN") -> list:
     if not config_manager:
         return []
 
-    config = config_manager.config if hasattr(config_manager, "config") else {}
+    config = _get_config(managers)
     astrbot_config = _get_astrbot_config(managers)
     now = get_now(config, astrbot_config).replace(tzinfo=None)
 

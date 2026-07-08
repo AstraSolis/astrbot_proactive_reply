@@ -270,6 +270,86 @@ const VIEW_TITLE_KEYS = {
   about: ["tab_about", "关于"],
 };
 
+const VIEW_REGISTRY = {
+  dashboard: {
+    showRefresh: true,
+    load: () => loadDashboard(),
+    poll: () => loadDashboard(),
+  },
+  sessions: {
+    showAdd: true,
+    isLoaded: () => sessionsLoaded,
+    load: () => loadSessions(),
+    render: () => renderSessionList(),
+    invalidate: () => {
+      sessionsLoaded = false;
+    },
+    poll: () => sessionsLoaded && loadSessions(),
+  },
+  schedules: {
+    showRefresh: true,
+    isLoaded: () => schedulesLoaded,
+    load: () => loadAiSchedules(),
+    render: () => renderAiSchedules(aiSchedules),
+    invalidate: () => {
+      schedulesLoaded = false;
+    },
+    poll: () => schedulesLoaded && loadAiSchedules(),
+  },
+  placeholders: {
+    isLoaded: () => placeholdersLoaded,
+    load: () => loadPlaceholders(),
+    render: () => renderPlaceholders(),
+    invalidate: () => {
+      placeholdersLoaded = false;
+    },
+  },
+  commands: {
+    isLoaded: () => commandsLoaded,
+    load: () => loadCommands(),
+    render: () => renderCommands(),
+    invalidate: () => {
+      commandsLoaded = false;
+    },
+  },
+  calendar: {
+    alwaysLoad: true,
+    load: () => loadCalendar(),
+    invalidate: () => {
+      calendarLoaded = false;
+    },
+  },
+  config: {
+    showRefresh: true,
+    isLoaded: () => configLoaded,
+    load: () => loadConfig(),
+    invalidate: () => {
+      configLoaded = false;
+    },
+  },
+  about: {
+    isLoaded: () => aboutLoaded,
+    load: () => loadAbout(),
+    render: () => renderAbout(),
+    invalidate: () => {
+      aboutLoaded = false;
+    },
+  },
+};
+
+function viewSpec(view) {
+  return VIEW_REGISTRY[view] || VIEW_REGISTRY.dashboard;
+}
+
+function loadView(view) {
+  const spec = viewSpec(view);
+  if (spec.alwaysLoad || !spec.isLoaded || !spec.isLoaded()) {
+    return spec.load?.();
+  }
+  spec.render?.();
+  return Promise.resolve();
+}
+
 function updateTopbarTitle(view) {
   const el = document.getElementById("topbar-title");
   if (!el) return;
@@ -309,6 +389,7 @@ function emptyStateHtml(title, desc, actionHtml = "") {
 }
 
 function switchView(view) {
+  const spec = viewSpec(view);
   activeView = view;
 
   document.querySelectorAll(".nav-item").forEach(btn => {
@@ -323,34 +404,14 @@ function switchView(view) {
   });
 
   document.getElementById("btn-refresh").style.display =
-    (view === "dashboard" || view === "schedules") ? "inline-flex" : "none";
+    spec.showRefresh ? "inline-flex" : "none";
   document.getElementById("btn-add-session").style.display =
-    view === "sessions" ? "inline-flex" : "none";
+    spec.showAdd ? "inline-flex" : "none";
 
   updateTopbarTitle(view);
   closeSidebar();
   hideGlobalError();
-
-  if (view === "sessions" && !sessionsLoaded) {
-    loadSessions();
-  } else if (view === "sessions" && sessionsLoaded) {
-    renderSessionList();
-  } else if (view === "schedules" && !schedulesLoaded) {
-    loadAiSchedules();
-  } else if (view === "schedules" && schedulesLoaded) {
-    renderAiSchedules(aiSchedules);
-  } else if (view === "placeholders" && !placeholdersLoaded) {
-    loadPlaceholders();
-  } else if (view === "commands" && !commandsLoaded) {
-    loadCommands();
-  } else if (view === "calendar") {
-    // 每次进入时间表页都重新拉取，保证与配置文件页对启用状态的修改同步
-    loadCalendar();
-  } else if (view === "config" && !configLoaded) {
-    loadConfig();
-  } else if (view === "about" && !aboutLoaded) {
-    loadAbout();
-  }
+  loadView(view);
 }
 
 document.querySelectorAll(".nav-item").forEach(btn => {
@@ -1341,29 +1402,9 @@ function escAttr(str) {
 }
 
 async function reloadActiveView() {
-  if (activeView === "dashboard") await loadDashboard();
-  else if (activeView === "sessions") {
-    sessionsLoaded = false;
-    await loadSessions();
-  } else if (activeView === "schedules") {
-    schedulesLoaded = false;
-    await loadAiSchedules();
-  } else if (activeView === "placeholders") {
-    placeholdersLoaded = false;
-    await loadPlaceholders();
-  } else if (activeView === "commands") {
-    commandsLoaded = false;
-    await loadCommands();
-  } else if (activeView === "calendar") {
-    calendarLoaded = false;
-    await loadCalendar();
-  } else if (activeView === "config") {
-    configLoaded = false;
-    await loadConfig();
-  } else if (activeView === "about") {
-    aboutLoaded = false;
-    await loadAbout();
-  }
+  const spec = viewSpec(activeView);
+  spec.invalidate?.();
+  await spec.load?.();
 }
 
 /* ==================== 配置文件（可视化编辑） ==================== */
@@ -1374,6 +1415,7 @@ let configGroups = [];
 let activeConfigGroup = null;
 let configDirty = false;
 let configSaving = false;
+let configVersion = "";
 
 // 配置字段联动：当「控制字段」取特定值时才显示对应「从属字段」，
 // 避免分割模式 / 时间模式的所有子字段平铺，降低误配概率。
@@ -1429,6 +1471,7 @@ async function loadConfig() {
       const data = await bridge.apiGet("config/schema", apiLocale());
       if (!data.success) throw new Error(data.error || t("err_unknown", "未知错误"));
       configGroups = Array.isArray(data.groups) ? data.groups : [];
+      configVersion = typeof data.config_version === "string" ? data.config_version : "";
       configLoaded = true;
       if (!activeConfigGroup || !configGroups.some(g => g.key === activeConfigGroup)) {
         activeConfigGroup = configGroups[0]?.key || null;
@@ -1806,10 +1849,14 @@ async function saveConfigGroup() {
     const data = await bridge.apiPost("config/save", {
       section: group.key,
       values,
+      config_version: configVersion,
       ...apiLocale(),
     });
     if (!data.success) {
       toast(data.error || t("config_save_failed", "保存失败"), "error");
+      if (data.conflict) {
+        configLoaded = false;
+      }
       return;
     }
     // 用后端规整后的值刷新本地缓存，保证「恢复默认」基线与回显一致
@@ -1817,6 +1864,9 @@ async function saveConfigGroup() {
       for (const field of group.fields) {
         if (field.key in data.values) field.value = data.values[field.key];
       }
+    }
+    if (typeof data.config_version === "string") {
+      configVersion = data.config_version;
     }
     const baseMsg = data.message || t("config_saved", "配置已保存");
     const scope = group.title || group.key;
@@ -2803,9 +2853,7 @@ if (!bridge) {
   await reloadActiveView();
 
   refreshTimer = setInterval(() => {
-    if (activeView === "dashboard") loadDashboard();
-    else if (activeView === "sessions" && sessionsLoaded) loadSessions();
-    else if (activeView === "schedules" && schedulesLoaded) loadAiSchedules();
+    viewSpec(activeView).poll?.();
   }, 30000);
 
   window.addEventListener("beforeunload", () => {

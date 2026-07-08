@@ -1,3 +1,4 @@
+import asyncio
 import importlib.util
 import json
 import os
@@ -347,6 +348,73 @@ class TestPersistentMigration(unittest.TestCase):
             pm.load_persistent_data()
             self.assertFalse(os.path.exists(yaml_path))
             self.assertTrue(os.path.exists(legacy_path))
+
+
+class TestDebouncedPersistence(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        runtime_data.clear_all()
+
+    async def test_event_loop_saves_are_debounced(self):
+        """事件循环内连续保存应合并为一次 YAML 落盘。"""
+        with tempfile.TemporaryDirectory() as d:
+            pm = pm_mod.PersistenceManager(config={}, context=MagicMock())
+            pm.get_plugin_data_dir = lambda: d
+            pm._save_debounce_seconds = 0.01
+            session = "aiocqhttp:FriendMessage:debounce"
+
+            with patch.object(
+                pm_mod,
+                "atomic_write_yaml",
+                wraps=datafile.atomic_write_yaml,
+            ) as writer:
+                for count in range(3):
+                    runtime_data.session_unreplied_count[session] = count
+                    self.assertTrue(pm.save_persistent_data())
+
+                self.assertTrue(await pm.flush_pending_save())
+                self.assertEqual(writer.call_count, 1)
+
+            data = datafile.load_mapping(os.path.join(d, "persistent_data.yaml"))
+            self.assertEqual(
+                data["sessions"][session]["activity"]["unreplied_count"], 2
+            )
+
+    async def test_flush_pending_save_wakes_debounce_immediately(self):
+        """显式 flush 不应被防抖窗口额外阻塞。"""
+        with tempfile.TemporaryDirectory() as d:
+            pm = pm_mod.PersistenceManager(config={}, context=MagicMock())
+            pm.get_plugin_data_dir = lambda: d
+            pm._save_debounce_seconds = 60
+            session = "aiocqhttp:FriendMessage:flush"
+
+            runtime_data.session_unreplied_count[session] = 1
+            self.assertTrue(pm.save_persistent_data())
+            self.assertTrue(
+                await asyncio.wait_for(pm.flush_pending_save(), timeout=0.2)
+            )
+
+            data = datafile.load_mapping(os.path.join(d, "persistent_data.yaml"))
+            self.assertEqual(
+                data["sessions"][session]["activity"]["unreplied_count"], 1
+            )
+
+    async def test_persistent_payload_is_detached_snapshot(self):
+        """线程落盘前的 payload 不应继续引用运行时嵌套对象。"""
+        pm = pm_mod.PersistenceManager(config={}, context=MagicMock())
+        session = "aiocqhttp:FriendMessage:snapshot"
+        runtime_data.session_ai_scheduled[session] = [
+            {"task_id": "a", "fire_time": "2026-01-01 10:00:00"}
+        ]
+
+        payload = pm._build_persistent_payload()
+        runtime_data.session_ai_scheduled[session][0]["task_id"] = "mutated"
+        runtime_data.session_ai_scheduled[session].append({"task_id": "b"})
+
+        scheduled = payload["sessions"][session]["ai_scheduled"]
+        self.assertEqual(
+            scheduled,
+            [{"task_id": "a", "fire_time": "2026-01-01 10:00:00"}],
+        )
 
 
 class TestCalendarMigration(unittest.TestCase):

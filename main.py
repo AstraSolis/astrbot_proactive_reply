@@ -423,4 +423,5 @@ class ProactiveReplyPlugin(Star):
 
         # 停止定时任务
         await self.task_manager.stop_proactive_task()
+        await self.persistence_manager.flush_pending_save()
         logger.info("心念 | ✅ 插件已终止")

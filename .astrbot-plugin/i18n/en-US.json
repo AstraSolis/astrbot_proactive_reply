@@ -546,6 +546,7 @@
       "config_save_failed": "Failed to save config",
       "config_section_invalid": "Configuration group does not exist",
       "config_value_invalid": "Invalid values for the following items: {keys}",
+      "config_conflict": "Configuration changed elsewhere. Refresh before saving.",
       "session_not_found": "Session not found",
       "schedule_not_found": "Scheduled task not found",
       "internal_error": "Internal server error. Please try again later.",

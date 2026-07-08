@@ -4,10 +4,14 @@
 负责数据的持久化存储和加载
 """
 
+import asyncio
+import copy
 import datetime
 import json
 import os
 import shutil
+from contextlib import suppress
+
 from astrbot.api import logger
 from astrbot.api.star import StarTools
 from ..utils.validators import validate_persistent_data
@@ -34,6 +38,16 @@ class PersistenceManager:
         """
         self.config = config
         self.context = context
+        self._plugin_data_dir_cache: str | None = None
+        self._save_debounce_seconds = 0.5
+        self._save_generation = 0
+        self._flushed_generation = 0
+        self._last_save_ok = True
+        self._save_task: asyncio.Task | None = None
+        self._save_lock: asyncio.Lock | None = None
+        self._save_lock_loop = None
+        self._flush_event: asyncio.Event | None = None
+        self._flush_event_loop = None
 
     def get_plugin_data_dir(self) -> str:
         """获取插件专用的数据目录路径
@@ -46,9 +60,13 @@ class PersistenceManager:
         Returns:
             数据目录路径
         """
+        if self._plugin_data_dir_cache:
+            return self._plugin_data_dir_cache
+
         # 优先使用官方 API(AstrBot >=4.24.0),由其负责创建并返回标准数据目录
         try:
             plugin_data_dir = str(StarTools.get_data_dir(PLUGIN_DATA_DIR_NAME))
+            self._plugin_data_dir_cache = plugin_data_dir
             logger.info(f"心念 | ✅ 插件数据目录: {plugin_data_dir}")
             return plugin_data_dir
         except Exception as e:
@@ -79,6 +97,7 @@ class PersistenceManager:
             os.makedirs(plugin_data_dir, exist_ok=True)
 
             logger.info(f"心念 | ✅ 插件数据目录: {plugin_data_dir}")
+            self._plugin_data_dir_cache = plugin_data_dir
             return plugin_data_dir
 
         except OSError as e:
@@ -89,10 +108,13 @@ class PersistenceManager:
             try:
                 os.makedirs(fallback_dir, exist_ok=True)
                 logger.warning(f"心念 | ⚠️ 使用回退数据目录: {fallback_dir}")
+                self._plugin_data_dir_cache = fallback_dir
                 return fallback_dir
             except OSError:
                 logger.error("心念 | ❌ 创建回退数据目录失败")
-                return os.getcwd()
+                cwd = os.getcwd()
+                self._plugin_data_dir_cache = cwd
+                return cwd
 
     def load_persistent_data(self):
         """从独立的持久化文件加载用户数据
@@ -350,39 +372,166 @@ class PersistenceManager:
         except Exception as e:
             logger.error(f"心念 | ❌ 迁移旧持久化数据失败: {e}")
 
-    def save_persistent_data(self) -> bool:
-        """保存用户数据到独立的持久化文件
+    def _build_persistent_payload(self) -> dict | None:
+        """构建待落盘的持久化快照；失败时返回 None。"""
+        # 写盘在线程池中执行，必须先和运行时数据断开引用，避免序列化期间
+        # 主事件循环继续修改嵌套 list/dict 导致快照不一致。
+        persistent_data = copy.deepcopy(runtime_data.to_persistent_dict())
+        persistent_data["meta"]["last_update"] = datetime.datetime.now().strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+        persistent_data["meta"]["data_version"] = "3.1"
 
-        Returns:
-            是否保存成功
-        """
+        if not validate_persistent_data(persistent_data):
+            logger.error("心念 | ❌ 持久化数据验证失败")
+            return None
+        return persistent_data
+
+    def _write_persistent_payload(self, persistent_file: str, payload: dict) -> bool:
+        """执行实际 YAML 写盘。该方法可安全放入线程池运行。"""
+        ok = atomic_write_yaml(
+            persistent_file,
+            payload,
+            header="心念插件持久化数据（自动生成，一般无需手动编辑）",
+        )
+        if ok:
+            logger.debug(f"心念 | ✅ 持久化数据已保存到: {persistent_file}")
+        return ok
+
+    def _save_persistent_data_now(self) -> bool:
+        """同步立即保存；用于无事件循环场景和显式强制保存。"""
         try:
             plugin_data_dir = self.get_plugin_data_dir()
             persistent_file = os.path.join(plugin_data_dir, PERSISTENT_FILE_NAME)
-
-            # 从运行时数据存储中获取数据（session-major 嵌套格式，更直观）
-            persistent_data = runtime_data.to_persistent_dict()
-            persistent_data["meta"]["last_update"] = datetime.datetime.now().strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )
-            persistent_data["meta"]["data_version"] = "3.1"
-
-            if not validate_persistent_data(persistent_data):
-                logger.error("心念 | ❌ 持久化数据验证失败")
+            payload = self._build_persistent_payload()
+            if payload is None:
                 return False
+            return self._write_persistent_payload(persistent_file, payload)
+        except Exception as e:
+            logger.error(f"心念 | ❌ 持久化数据保存错误: {e}", exc_info=True)
+            return False
 
-            ok = atomic_write_yaml(
-                persistent_file,
-                persistent_data,
-                header="心念插件持久化数据（自动生成，一般无需手动编辑）",
-            )
+    def _get_save_lock(self) -> asyncio.Lock:
+        """按事件循环懒创建锁，避免测试中跨 loop 复用锁对象。"""
+        loop = asyncio.get_running_loop()
+        if self._save_lock is None or self._save_lock_loop is not loop:
+            self._save_lock = asyncio.Lock()
+            self._save_lock_loop = loop
+        return self._save_lock
+
+    def _get_flush_event(self) -> asyncio.Event:
+        """按事件循环懒创建防抖唤醒事件。"""
+        loop = asyncio.get_running_loop()
+        if self._flush_event is None or self._flush_event_loop is not loop:
+            self._flush_event = asyncio.Event()
+            self._flush_event_loop = loop
+        return self._flush_event
+
+    def save_persistent_data(self, *, immediate: bool = False) -> bool:
+        """保存用户数据到独立的持久化文件
+
+        在事件循环内默认只标记脏数据并防抖合并写入，实际 YAML 序列化与落盘放到
+        ``asyncio.to_thread``，避免每条消息多次阻塞事件循环。无运行中的事件循环
+        时保持同步写入，兼容测试与启动迁移等同步路径。
+
+        Returns:
+            同步路径返回实际保存结果；异步防抖路径返回“已接受保存请求”。
+        """
+        self._save_generation += 1
+
+        if immediate:
+            ok = self._save_persistent_data_now()
+            self._last_save_ok = ok
             if ok:
-                logger.debug(f"心念 | ✅ 持久化数据已保存到: {persistent_file}")
+                self._flushed_generation = self._save_generation
             return ok
 
-        except Exception as e:
-            logger.error(f"心念 | ❌ 持久化数据保存错误: {e}")
-            return False
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            ok = self._save_persistent_data_now()
+            self._last_save_ok = ok
+            if ok:
+                self._flushed_generation = self._save_generation
+            return ok
+
+        if self._save_task is None or self._save_task.done():
+            self._save_task = loop.create_task(self._debounced_flush())
+        return True
+
+    async def _flush_dirty_once(self) -> bool:
+        """将当前代数的脏数据刷新到磁盘一次。"""
+        lock = self._get_save_lock()
+        async with lock:
+            if self._flushed_generation >= self._save_generation:
+                return self._last_save_ok
+
+            target_generation = self._save_generation
+            try:
+                plugin_data_dir = self.get_plugin_data_dir()
+                persistent_file = os.path.join(plugin_data_dir, PERSISTENT_FILE_NAME)
+                payload = self._build_persistent_payload()
+                if payload is None:
+                    self._last_save_ok = False
+                    return False
+                ok = await asyncio.to_thread(
+                    self._write_persistent_payload,
+                    persistent_file,
+                    payload,
+                )
+            except Exception as e:
+                logger.error(f"心念 | ❌ 异步持久化保存错误: {e}", exc_info=True)
+                ok = False
+
+            self._last_save_ok = ok
+            if ok:
+                self._flushed_generation = max(
+                    self._flushed_generation, target_generation
+                )
+            return ok
+
+    async def _debounced_flush(self) -> bool:
+        """防抖保存任务；保存期间若产生新变更，会自动再排一次。"""
+        task = asyncio.current_task()
+        ok = False
+        try:
+            flush_event = self._get_flush_event()
+            try:
+                await asyncio.wait_for(
+                    flush_event.wait(), timeout=self._save_debounce_seconds
+                )
+            except asyncio.TimeoutError:
+                pass
+            flush_event.clear()
+            ok = await self._flush_dirty_once()
+            return ok
+        except asyncio.CancelledError:
+            raise
+        finally:
+            if self._save_task is task:
+                self._save_task = None
+                if ok and self._flushed_generation < self._save_generation:
+                    self._save_task = asyncio.create_task(self._debounced_flush())
+
+    async def flush_pending_save(self) -> bool:
+        """立即唤醒防抖任务并等待所有待保存数据落盘。
+
+        插件终止、测试或需要强一致持久化的路径可调用此方法，确保防抖队列中的
+        最新运行时数据已经写入 ``persistent_data.yaml``。
+        """
+        task = self._save_task
+        current = asyncio.current_task()
+        if task is not None and task is not current and not task.done():
+            self._get_flush_event().set()
+            with suppress(asyncio.CancelledError):
+                await task
+
+        ok = self._last_save_ok
+        while self._flushed_generation < self._save_generation:
+            ok = await self._flush_dirty_once()
+            if not ok:
+                break
+        return ok
 
     def load_data(self, key: str, default=None):
         """加载特定的运行时数据"""
