@@ -9,13 +9,15 @@
 - 仅使用 ``yaml.safe_load`` / ``yaml.safe_dump``，杜绝任意对象构造带来的安全风险。
 - 写入采用 ``allow_unicode=True``（中文不转义）、``sort_keys=False``（保持插入顺序，
   diff 友好）、``default_flow_style=False``（块状缩进，最直观）。
-- 写入沿用「``.tmp`` + ``os.rename``」原子替换，并在 Windows 下先删旧文件。
+- 写入使用「``.tmp`` + ``os.replace``」原子替换；写入临时文件后先 ``fsync``，
+  避免 Windows 上先删旧文件再改名导致的丢数据窗口。
 - 读取优先使用 libyaml C 扩展（``CSafeLoader``）提速；写出固定使用纯 Python
   ``SafeDumper``：libyaml 的 C emitter 会忽略按节点设置的块样式（``|``）并转义
   星平面 Unicode（如 emoji），使长消息可读性变差。持久化文件体量小、写盘不频繁，
   用 Python dumper 换取「块样式 + 不转义」的可读性更划算。
 """
 
+import datetime
 import json
 import os
 
@@ -99,17 +101,70 @@ def load_mapping(path: str):
             return None
         except UnicodeDecodeError:
             continue
-        except yaml.YAMLError:
-            logger.error(f"心念 | ❌ YAML 解析失败，文件可能已损坏: {path}")
+        except yaml.YAMLError as e:
+            archive_corrupt_file(path, f"YAML 解析失败，文件可能已损坏: {e}")
             return None
     else:
         logger.error(f"心念 | ❌ 无法以任何编码读取文件: {path}")
         return None
 
     if not isinstance(data, dict):
-        logger.error(f"心念 | ❌ 文件格式错误：根对象不是字典: {path}")
+        archive_corrupt_file(path, "文件格式错误：根对象不是字典")
         return None
     return data
+
+
+def _next_corrupt_path(path: str) -> str:
+    """生成不覆盖已有留档的 ``.corrupt`` 路径"""
+    base = path + ".corrupt"
+    if not os.path.exists(base):
+        return base
+
+    stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    candidate = f"{base}.{stamp}"
+    index = 1
+    while os.path.exists(candidate):
+        index += 1
+        candidate = f"{base}.{stamp}.{index}"
+    return candidate
+
+
+def archive_corrupt_file(path: str, reason: str) -> str | None:
+    """将损坏的数据文件改名留档，避免后续保存静默覆盖原始现场"""
+    if not os.path.exists(path):
+        logger.error(f"心念 | ❌ {reason}: {path}")
+        return None
+
+    corrupt_path = _next_corrupt_path(path)
+    try:
+        os.rename(path, corrupt_path)
+        logger.error(f"心念 | ❌ {reason}，已留档为: {corrupt_path}")
+        return corrupt_path
+    except OSError as e:
+        logger.error(f"心念 | ❌ {reason}，但损坏文件留档失败: {path}: {e}")
+        return None
+
+
+def _fsync_parent_dir(path: str) -> None:
+    """尽力同步目录项；Windows 对目录 fsync 支持有限，跳过即可"""
+    if os.name == "nt":
+        return
+
+    directory = os.path.dirname(os.path.abspath(path)) or "."
+    flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+
+    dir_fd = None
+    try:
+        dir_fd = os.open(directory, flags)
+        os.fsync(dir_fd)
+    except OSError:
+        # 文件内容已经 fsync；目录 fsync 属于额外耐久性保障，失败不影响主流程。
+        pass
+    finally:
+        if dir_fd is not None:
+            os.close(dir_fd)
 
 
 def atomic_write_yaml(path: str, data: dict, header: str | None = None) -> bool:
@@ -124,20 +179,25 @@ def atomic_write_yaml(path: str, data: dict, header: str | None = None) -> bool:
         是否写入成功
     """
     temp_file = path + ".tmp"
+    preserve_temp_on_error = False
     try:
         with open(temp_file, "w", encoding="utf-8") as f:
             f.write(dump_yaml_str(data, header=header))
+            f.flush()
+            os.fsync(f.fileno())
 
-        # Windows 下 os.rename 不允许覆盖已存在文件
-        if os.name == "nt" and os.path.exists(path):
-            os.remove(path)
-        os.rename(temp_file, path)
+        preserve_temp_on_error = True
+        os.replace(temp_file, path)
+        preserve_temp_on_error = False
+        _fsync_parent_dir(path)
         return True
     except Exception as e:
         logger.error(f"心念 | ❌ 写入文件失败: {path}: {e}")
+        if preserve_temp_on_error and os.path.exists(temp_file):
+            logger.warning(f"心念 | ⚠️ 已保留未替换的临时文件以便恢复: {temp_file}")
         return False
     finally:
-        if os.path.exists(temp_file):
+        if not preserve_temp_on_error and os.path.exists(temp_file):
             try:
                 os.remove(temp_file)
             except OSError:

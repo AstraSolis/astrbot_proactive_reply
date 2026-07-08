@@ -98,33 +98,68 @@ class PersistenceManager:
         """从独立的持久化文件加载用户数据
 
         加载顺序：
-        1. 同目录历史 ``persistent_data.json`` → ``persistent_data.yaml`` 一次性迁移。
-        2. 读取 YAML 文件并回填运行时单例。
-        3. 首次运行时尝试从旧的存储位置迁移数据。
+        1. 无当前 YAML 且未做过迁移时，同目录历史 JSON → YAML 一次性迁移。
+        2. 若当前 YAML 已存在，只读取它，不再用更旧位置的数据覆盖。
+        3. 仅当当前 YAML 不存在时，首次尝试从旧的存储位置迁移数据。
         """
         try:
             plugin_data_dir = self.get_plugin_data_dir()
             persistent_file = os.path.join(plugin_data_dir, PERSISTENT_FILE_NAME)
             legacy_file = os.path.join(plugin_data_dir, LEGACY_PERSISTENT_FILE_NAME)
+            migrated_marker = os.path.join(plugin_data_dir, ".migrated")
 
-            # 1) 同目录 JSON → YAML 一次性迁移（旧文件备份为 .json.bak）
-            migrate_json_to_yaml(legacy_file, persistent_file)
+            # 1) 同目录 JSON → YAML 一次性迁移（旧文件备份为 .json.bak）。
+            # 已有迁移标记时不要在 YAML 缺失后重新拉起旧 JSON，避免损坏归档后
+            # 下次启动又把数据回退到旧版本。
+            if not os.path.exists(persistent_file):
+                if os.path.exists(migrated_marker):
+                    if os.path.exists(legacy_file):
+                        logger.info(
+                            "心念 | ℹ️ 已存在迁移标记，跳过同目录旧 JSON 迁移: "
+                            f"{legacy_file}"
+                        )
+                else:
+                    migrated_data = migrate_json_to_yaml(legacy_file, persistent_file)
+                    if migrated_data is not None:
+                        self._write_migration_marker(
+                            plugin_data_dir,
+                            f"migrated from {legacy_file} at "
+                            f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                        )
 
-            # 2) 读取 YAML
+            # 2) 读取 YAML。只要当前 YAML 存在，就以它为准；读取失败时也不要再
+            # 用旧 JSON 兜底覆盖，损坏现场会由 load_mapping 改名留档。
             if os.path.exists(persistent_file):
                 persistent_data = load_mapping(persistent_file)
                 if persistent_data is not None:
                     # 将持久化数据加载到运行时数据存储中（不是 config 对象）
                     runtime_data.load_from_dict(persistent_data)
                     logger.info("心念 | ✅ 从持久化文件加载数据成功")
+                else:
+                    self._write_migration_marker(
+                        plugin_data_dir,
+                        "skipped legacy migration because current YAML failed to load "
+                        f"at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                    )
+                return
 
-            # 3) 尝试从旧的存储位置迁移数据（仅首次）
-            migrated_marker = os.path.join(plugin_data_dir, ".migrated")
+            # 3) 当前 YAML 不存在时，才尝试从旧的存储位置迁移数据（仅首次）
             if not os.path.exists(migrated_marker):
                 self.migrate_old_persistent_data(plugin_data_dir)
 
         except (FileNotFoundError, OSError, AttributeError) as e:
             logger.info(f"心念 | ℹ️ 持久化文件加载: {e}")
+
+    def _write_migration_marker(self, new_data_dir: str, message: str) -> None:
+        """写入旧数据迁移标记；失败只影响重复扫描，不应影响主数据"""
+        marker_file = os.path.join(new_data_dir, ".migrated")
+        try:
+            with open(marker_file, "w", encoding="utf-8") as f:
+                f.write(message)
+                f.flush()
+                os.fsync(f.fileno())
+        except OSError as e:
+            logger.warning(f"心念 | ⚠️ 迁移标记写入失败: {marker_file}: {e}")
 
     def migrate_old_persistent_data(self, new_data_dir: str):
         """迁移旧的持久化数据到新的数据目录（向后兼容）
@@ -133,6 +168,18 @@ class PersistenceManager:
             new_data_dir: 新的数据目录路径
         """
         try:
+            new_file = os.path.join(new_data_dir, PERSISTENT_FILE_NAME)
+            if os.path.exists(new_file):
+                logger.info(
+                    f"心念 | ℹ️ 已存在当前 YAML 持久化文件，跳过旧路径迁移: {new_file}"
+                )
+                self._write_migration_marker(
+                    new_data_dir,
+                    "skipped legacy migration because current YAML already existed "
+                    f"at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                )
+                return
+
             # 旧的可能存在的数据文件位置
             old_locations = [
                 # 最旧的位置（根目录）
@@ -210,12 +257,27 @@ class PersistenceManager:
                             )
                             continue
 
-                        new_file = os.path.join(new_data_dir, PERSISTENT_FILE_NAME)
-                        atomic_write_yaml(
+                        if os.path.exists(new_file):
+                            logger.info(
+                                f"心念 | ℹ️ 当前 YAML 已创建，停止旧路径迁移: {new_file}"
+                            )
+                            self._write_migration_marker(
+                                new_data_dir,
+                                "skipped remaining legacy migration because current "
+                                "YAML already existed "
+                                f"at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                            )
+                            return
+
+                        if not atomic_write_yaml(
                             new_file,
                             old_data,
                             header="心念插件持久化数据（自动生成）",
-                        )
+                        ):
+                            logger.warning(
+                                f"心念 | ⚠️ 迁移旧持久化文件写入失败，保留旧文件: {old_file}"
+                            )
+                            continue
 
                         # 加载到运行时数据存储中
                         runtime_data.load_from_dict(old_data)
@@ -224,52 +286,66 @@ class PersistenceManager:
                             f"心念 | ✅ 成功迁移旧的持久化数据: {old_file} -> {new_file}"
                         )
 
-                        # 将备份文件保存到新目录
+                        self._write_migration_marker(
+                            new_data_dir,
+                            f"migrated from {old_file} at "
+                            f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                        )
+
+                        # 将备份文件保存到新目录；备份失败时不删除旧文件。
                         backup_filename = f"persistent_data.backup_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
                         backup_file = os.path.join(new_data_dir, backup_filename)
-                        shutil.copy2(old_file, backup_file)
-                        logger.info(f"心念 | ✅ 旧文件已备份到: {backup_file}")
+                        old_file_removed = False
+                        try:
+                            shutil.copy2(old_file, backup_file)
+                            logger.info(f"心念 | ✅ 旧文件已备份到: {backup_file}")
 
-                        # 删除旧文件
-                        os.remove(old_file)
-                        logger.info(f"心念 | ✅ 已删除旧文件: {old_file}")
+                            # 删除旧文件
+                            os.remove(old_file)
+                            old_file_removed = True
+                            logger.info(f"心念 | ✅ 已删除旧文件: {old_file}")
+                        except OSError as e:
+                            logger.warning(
+                                f"心念 | ⚠️ 旧文件备份或删除失败，已保留原文件: {e}"
+                            )
 
                         # 尝试删除旧目录（如果为空且不是关键目录）
-                        old_dir = os.path.dirname(old_file)
-                        try:
-                            # 安全检查：不删除根目录、data 目录、plugins 目录等关键目录
-                            cwd = os.getcwd()
-                            data_dir = os.path.join(cwd, "data")
-                            plugins_dir = os.path.join(cwd, "data", "plugins")
+                        if old_file_removed:
+                            old_dir = os.path.dirname(old_file)
+                            try:
+                                # 安全检查：不删除根目录、data 目录、plugins 目录等关键目录
+                                cwd = os.getcwd()
+                                data_dir = os.path.join(cwd, "data")
+                                plugins_dir = os.path.join(cwd, "data", "plugins")
 
-                            # 规范化路径用于比较
-                            old_dir_normalized = os.path.normpath(old_dir)
+                                # 规范化路径用于比较
+                                old_dir_normalized = os.path.normpath(old_dir)
 
-                            safe_to_delete = (
-                                os.path.isdir(old_dir)
-                                and not os.listdir(old_dir)
-                                and old_dir_normalized != os.path.normpath(cwd)
-                                and old_dir_normalized != os.path.normpath(data_dir)
-                                and old_dir_normalized != os.path.normpath(plugins_dir)
-                                and len(old_dir_normalized)
-                                > len(data_dir)  # 确保是子目录
-                            )
-                            if safe_to_delete:
-                                os.rmdir(old_dir)
-                                logger.info(f"心念 | ✅ 已删除空目录: {old_dir}")
-                        except OSError:
-                            pass  # 目录不为空或无法删除，忽略
-
-                        # 写入迁移完成标记
-                        marker_file = os.path.join(new_data_dir, ".migrated")
-                        with open(marker_file, "w") as f:
-                            f.write(
-                                f"migrated from {old_file} at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-                            )
+                                safe_to_delete = (
+                                    os.path.isdir(old_dir)
+                                    and not os.listdir(old_dir)
+                                    and old_dir_normalized != os.path.normpath(cwd)
+                                    and old_dir_normalized != os.path.normpath(data_dir)
+                                    and old_dir_normalized
+                                    != os.path.normpath(plugins_dir)
+                                    and len(old_dir_normalized)
+                                    > len(data_dir)  # 确保是子目录
+                                )
+                                if safe_to_delete:
+                                    os.rmdir(old_dir)
+                                    logger.info(f"心念 | ✅ 已删除空目录: {old_dir}")
+                            except OSError:
+                                pass  # 目录不为空或无法删除，忽略
 
                         return
                     except Exception as e:
                         logger.warning(f"心念 | ⚠️ 迁移旧持久化文件失败: {e}")
+
+            self._write_migration_marker(
+                new_data_dir,
+                "no legacy persistent data found at "
+                f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            )
 
         except Exception as e:
             logger.error(f"心念 | ❌ 迁移旧持久化数据失败: {e}")

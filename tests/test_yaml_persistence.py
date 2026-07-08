@@ -6,7 +6,7 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 ROOT = Path(__file__).resolve().parent.parent
 PKG = "proactive_reply_yaml_test"
@@ -90,12 +90,40 @@ class TestDatafileRoundTrip(unittest.TestCase):
             with open(path, encoding="utf-8") as f:
                 self.assertTrue(f.readline().startswith("# "))
 
-    def test_load_mapping_bad_root_returns_none(self):
+    def test_load_mapping_bad_root_is_archived(self):
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "bad.yaml")
             with open(path, "w", encoding="utf-8") as f:
                 f.write("- just\n- a\n- list\n")
             self.assertIsNone(datafile.load_mapping(path))
+            self.assertFalse(os.path.exists(path))
+            self.assertTrue(os.path.exists(path + ".corrupt"))
+
+    def test_load_mapping_archives_parse_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "bad.yaml")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("broken: [\n")
+
+            self.assertIsNone(datafile.load_mapping(path))
+
+            corrupt_path = path + ".corrupt"
+            self.assertFalse(os.path.exists(path))
+            self.assertTrue(os.path.exists(corrupt_path))
+            with open(corrupt_path, encoding="utf-8") as f:
+                self.assertIn("broken", f.read())
+
+    def test_atomic_write_keeps_old_file_when_replace_fails(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "safe.yaml")
+            self.assertTrue(datafile.atomic_write_yaml(path, {"old": True}))
+
+            with patch.object(datafile.os, "replace", side_effect=OSError("locked")):
+                self.assertFalse(datafile.atomic_write_yaml(path, {"new": True}))
+
+            self.assertEqual(datafile.load_mapping(path), {"old": True})
+            self.assertTrue(os.path.exists(path + ".tmp"))
+            self.assertEqual(datafile.load_mapping(path + ".tmp"), {"new": True})
 
     def test_migrate_json_to_yaml(self):
         with tempfile.TemporaryDirectory() as d:
@@ -277,8 +305,63 @@ class TestPersistentMigration(unittest.TestCase):
         )
         self.assertEqual(runtime_data.timezone_signature, "Asia/Shanghai")
 
+    def test_old_location_migration_does_not_overwrite_existing_yaml(self):
+        with tempfile.TemporaryDirectory() as d:
+            new_dir = os.path.join(d, "new")
+            os.makedirs(new_dir)
+            new_yaml = os.path.join(new_dir, "persistent_data.yaml")
+            self.assertTrue(datafile.atomic_write_yaml(new_yaml, {"marker": "new"}))
+
+            base_dir = os.path.join(d, "base")
+            old_dir = os.path.join(base_dir, "plugins", "astrbot_proactive_reply")
+            os.makedirs(old_dir)
+            old_file = os.path.join(old_dir, "persistent_data.json")
+            with open(old_file, "w", encoding="utf-8") as f:
+                json.dump({"marker": "old"}, f)
+
+            context = MagicMock()
+            context.get_config.return_value = types.SimpleNamespace(data_dir=base_dir)
+            pm = pm_mod.PersistenceManager(config={}, context=context)
+            pm.migrate_old_persistent_data(new_dir)
+
+            self.assertEqual(datafile.load_mapping(new_yaml), {"marker": "new"})
+            self.assertTrue(os.path.exists(old_file))
+
+    def test_corrupt_yaml_does_not_fall_back_to_legacy_json_next_start(self):
+        with tempfile.TemporaryDirectory() as d:
+            yaml_path = os.path.join(d, "persistent_data.yaml")
+            legacy_path = os.path.join(d, "persistent_data.json")
+            with open(yaml_path, "w", encoding="utf-8") as f:
+                f.write("broken: [\n")
+            with open(legacy_path, "w", encoding="utf-8") as f:
+                json.dump({"marker": "old"}, f)
+
+            pm = pm_mod.PersistenceManager(config={}, context=MagicMock())
+            pm.get_plugin_data_dir = lambda: d
+
+            pm.load_persistent_data()
+            self.assertFalse(os.path.exists(yaml_path))
+            self.assertTrue(os.path.exists(yaml_path + ".corrupt"))
+            self.assertTrue(os.path.exists(os.path.join(d, ".migrated")))
+
+            pm.load_persistent_data()
+            self.assertFalse(os.path.exists(yaml_path))
+            self.assertTrue(os.path.exists(legacy_path))
+
 
 class TestCalendarMigration(unittest.TestCase):
+    def test_corrupt_calendar_yaml_is_archived_on_load(self):
+        with tempfile.TemporaryDirectory() as d:
+            yaml_path = os.path.join(d, "calendar_data.yaml")
+            with open(yaml_path, "w", encoding="utf-8") as f:
+                f.write("events: [\n")
+
+            mgr = cal_mod.CalendarManager(_FakePM(d))
+            mgr.load()
+
+            self.assertFalse(os.path.exists(yaml_path))
+            self.assertTrue(os.path.exists(yaml_path + ".corrupt"))
+
     def test_legacy_calendar_json_migrates(self):
         with tempfile.TemporaryDirectory() as d:
             legacy = os.path.join(d, "calendar_data.json")
