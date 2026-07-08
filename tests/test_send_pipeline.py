@@ -81,8 +81,10 @@ SendRetryMixin = send_retry_mod.SendRetryMixin
 
 
 class FakeContext:
-    def __init__(self, send_result=True):
+    def __init__(self, send_result=True, completion_text="你好"):
         self.send_result = send_result
+        self.send_results = list(send_result) if isinstance(send_result, list) else None
+        self.completion_text = completion_text
         self.sent = []
         self.llm_calls = 0
         self.provider_calls = 0
@@ -96,10 +98,14 @@ class FakeContext:
 
     async def llm_generate(self, **kwargs):
         self.llm_calls += 1
-        return SimpleNamespace(role="assistant", completion_text="你好")
+        return SimpleNamespace(role="assistant", completion_text=self.completion_text)
 
     async def send_message(self, session, message_chain):
         self.sent.append((session, message_chain))
+        if self.send_results is not None:
+            if self.send_results:
+                return self.send_results.pop(0)
+            return True
         return self.send_result
 
 
@@ -247,6 +253,44 @@ class TestMessageDelivery(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(context.sent), 1)
         self.assertEqual(
             runtime_data.session_last_proactive_message["session-1"], "你好"
+        )
+
+    async def test_split_partial_delivery_records_and_does_not_retry_whole_message(self):
+        context = FakeContext(send_result=[True, False], completion_text="第一段\\第二段")
+        conversation = FakeConversationManager()
+        user_info = FakeUserInfoManager()
+        generator = MessageGenerator(
+            {
+                "message_split": {
+                    "enabled": True,
+                    "mode": "backslash",
+                    "delay_ms": 0,
+                },
+                "proactive_reply": {"duplicate_detection_enabled": True},
+                "ai_schedule": {"enabled": False},
+            },
+            context,
+            FakePromptBuilder(),
+            conversation,
+            user_info,
+        )
+
+        schedule = await generator.send_proactive_message(
+            "session-1", duplicate_max_retries=0
+        )
+
+        self.assertIsNone(schedule)
+        self.assertEqual(len(context.sent), 2)
+        self.assertEqual(context.sent[0][1].parts, ["第一段"])
+        self.assertEqual(context.sent[1][1].parts, ["第二段"])
+        self.assertEqual(user_info.recorded_sessions, ["session-1"])
+        self.assertEqual(
+            conversation.history_records[0][1],
+            "第一段\\第二段",
+        )
+        self.assertEqual(
+            runtime_data.session_last_proactive_message["session-1"],
+            "第一段\\第二段",
         )
 
     async def test_schedule_precheck_skips_provider_and_history_for_daily_message(self):

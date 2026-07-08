@@ -492,9 +492,21 @@ class MessageGenerator:
             sent_count = 0
             for i, part in enumerate(message_parts, 1):
                 message_chain = MessageChain().message(part)
-                await self._send_chain_or_raise(
-                    session, message_chain, f"第 {i}/{len(message_parts)} 条消息"
-                )
+                try:
+                    await self._send_chain_or_raise(
+                        session, message_chain, f"第 {i}/{len(message_parts)} 条消息"
+                    )
+                except MessageDeliveryError as e:
+                    if sent_count <= 0:
+                        raise
+                    logger.error(
+                        f"心念 | ❌ 分段消息已成功发送 {sent_count}/{len(message_parts)} 条，"
+                        f"第 {i} 条失败；为避免重复打扰，本轮不再整条重试: {e}"
+                    )
+                    await self._record_successful_delivery(
+                        session, original_message, proactive_prompt_used
+                    )
+                    return
 
                 sent_count += 1
                 logger.debug(f"心念 | ✅ 已发送第 {i}/{len(message_parts)} 条消息")

@@ -59,16 +59,29 @@ class ManageHandlersMixin:
 
     async def _manage_clear(self, event: AstrMessageEvent):
         """清除记录"""
+        snapshot = runtime_data.to_dict()
         try:
             # 清除运行时数据存储
             runtime_data.clear_all()
 
             # 保存清空后的持久化数据
-            self.plugin.persistence_manager.save_persistent_data()
-            await self.plugin.persistence_manager.flush_pending_save()
+            save_ok = self.plugin.persistence_manager.save_persistent_data()
+            flush_ok = (
+                await self.plugin.persistence_manager.flush_pending_save()
+                if save_ok
+                else False
+            )
+            if not save_ok or not flush_ok:
+                runtime_data.load_from_dict(snapshot)
+                yield event.plain_result(
+                    "❌ 清除失败：持久化保存未成功，已恢复内存数据；请检查日志或文件权限"
+                )
+                return
+
             self.plugin.task_manager.notify_wakeup()
             yield event.plain_result("✅ 已清除所有用户信息和发送时间记录")
         except Exception as e:
+            runtime_data.load_from_dict(snapshot)
             yield event.plain_result(f"❌ 清除失败: {e}")
 
     async def _manage_task_status(self, event: AstrMessageEvent):
