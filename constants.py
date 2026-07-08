@@ -11,6 +11,10 @@ MIN_HISTORY_MESSAGE_COUNT = 1
 # 获取对话历史的条数上限（用于裁剪用户配置，防止上下文过长）
 MAX_HISTORY_MESSAGE_COUNT = 50
 
+# AI 调度分析只需要最近几轮上下文辅助去重和消歧，避免一次预检命中就把
+# 主动对话配置中的完整历史都塞进二次 LLM 调用。
+MAX_SCHEDULE_ANALYSIS_HISTORY_COUNT = 6
+
 
 # ==================== 消息分割 / 正则保护 ====================
 

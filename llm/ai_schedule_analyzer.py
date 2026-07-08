@@ -13,36 +13,128 @@ from typing import Optional
 
 from astrbot.api import logger
 
-# 时间相关关键词模式
-# 匹配包含时间约定意图的文本
-_TIME_KEYWORD_PATTERNS = [
-    # 1. 相对时间 - 数字+单位
-    # 包含中文数字（一到十、百、两、俩、仨）
-    # 排除"有点"（"点"字前不能是"有"或"一"除非后面跟"钟"）
-    # 匹配: "40分钟", "五分钟", "半小时", "俩小时", "三天"
-    r"(?:[\d一二三四五六七八九十百两俩仨]+|半)\s*(?:分钟|个?半?小时|天|日|周|月|年|个?钟头?)",
-    # 2. 绝对时间 - 显式时间点
-    # HH:MM 格式：严格限制小时 0-23，分钟 0-59，避免匹配 "3:2" (比分/比例)
-    r"(?:0?\d|1\d|2[0-3])[:：][0-5]\d",
-    # 中文时间点: "3点", "下午2点半", "明早8点15"
-    # 排除"三点水"、"一点建议"、"有点"等：要求"点"前面是数字或特定时间词，或者后面跟"钟/分/半"
-    r"(?:(?:凌晨|早上|上午|中午|下午|晚上|明早|今晚)\s*)?"
-    r"[\d一二三四五六七八九十两]+\s*(?:点|时)\s*(?:半|钟|[\d一二三四五六七八九十两]+分?)?",
-    # 3. 模糊/口语时间
-    r"(?:一会儿?|待会儿?|稍后|等下|过后|过一会|晚[点些]|明[天早晚]|后天|下午|晚上|早上|中午|睡醒|起床)",
-    r"(?:半天|半晌|整天|一整天)",
-    # 4. 动作暗示
-    r"(?:之后|以后|回[来头]|到时候?|再[来找联]?)",
-]
 
-# 编译为单个正则（任意一个命中即可）
-_TIME_KEYWORDS_RE = re.compile("|".join(_TIME_KEYWORD_PATTERNS))
+# 时间约定预检不再做“任意关键词命中即可”的宽召回。
+# 只有时间表达与联系/提醒动作组合出现时，才值得发起二次 LLM 分析。
+_NUM = r"[\d一二三四五六七八九十百两俩仨]+"
+_DURATION_RE = re.compile(
+    rf"(?:{_NUM}|半)\s*(?:分钟|个?半?小时|天|日|周|月|年|个?钟头?)"
+    r"|(?:半天|半晌|整天|一整天)"
+)
+
+# HH:MM 格式严格限制小时和分钟，避免把比分/比例当时间。
+_CLOCK_RE = re.compile(r"(?:0?\d|1\d|2[0-3])[:：][0-5]\d")
+_CHINESE_TIME_POINT_RE = re.compile(
+    r"(?:(?:凌晨|早上|上午|中午|下午|晚上|明早|明晚|今晚)\s*)?"
+    r"(?:[01]?\d|2[0-3]|[一二三四五六七八九十两]+)\s*(?:点|时)"
+    r"\s*(?:半|钟|[0-5]?\d分?|[一二三四五六七八九十两]+分?)?"
+)
+_FUTURE_DATE_RE = re.compile(
+    r"(?:明天\s*(?:早上|上午|中午|下午|晚上)?|"
+    r"后天\s*(?:早上|上午|中午|下午|晚上)?|"
+    r"今天\s*(?:早上|上午|中午|下午|晚上)|"
+    r"明早|明晚|今晚|今早)"
+)
+_DAYPART_RE = re.compile(r"(?:凌晨|早上|上午|中午|下午|晚上)")
+_VAGUE_TIME_RE = re.compile(
+    r"(?:一会儿?|待会儿?|稍后|等下|过一会|晚[点些]|睡醒|起床)"
+)
+
+_SCHEDULE_ACTION_RE = re.compile(
+    r"(?:"
+    r"(?:再\s*)?(?:找|联系|叫|喊|提醒|通知|约|催|陪)(?:你|我|一下)?"
+    r"|(?:再\s*)?聊(?:聊|天)?(?![了过得])"
+    r"|(?:再\s*)?见(?:面|你|我)"
+    r"|(?<!再)见(?!到|过|识|证)"
+    r"|(?:回复|回)(?:你|我|消息|信息|信|话)"
+    r"|发(?:个)?(?:消息|信息)(?:给你|给我)?"
+    r"|敲(?:你|我)?|戳(?:你|我)?|问(?:你|我)?"
+    r"|同步|汇报|确认|准时|到点|轰炸"
+    r"|继续\s*(?:聊(?:聊|天)?|说|讨论|同步|确认|汇报)"
+    r")"
+)
+_DAYPART_COMMITMENT_RE = re.compile(
+    r"(?:"
+    r"(?:再\s*)?(?:找|联系|叫|喊|提醒|通知|约|催)(?:你|我|一下)?"
+    r"|(?:回复|回)(?:你|我|消息|信息|信|话)"
+    r"|发(?:个)?(?:消息|信息)(?:给你|给我)?"
+    r"|敲(?:你|我)?|戳(?:你|我)?|问(?:你|我)?"
+    r"|同步|汇报|确认|准时|到点|轰炸"
+    r"|(?:再|会|要|到时|到时候|继续)\s*(?:聊(?:聊|天)?|见(?:面|你|我))"
+    r")"
+)
+_WAIT_INTENT_RE = re.compile(
+    r"(?:等(?:我|你)?(?![了过])|等等|等一下|等会儿?|待命)"
+)
+_DURATION_FUTURE_HINT_RE = re.compile(
+    r"(?:后|以后|之后|内|再|等|待|稍后|准时|到点|记得|别忘|会)"
+)
+
+
+def _nearby_text(
+    text: str, start: int, end: int, before: int = 8, after: int = 18
+) -> str:
+    """取命中片段附近的短窗口，避免远距离词语互相误伤。"""
+    return text[max(0, start - before) : min(len(text), end + after)]
+
+
+def _has_schedule_action(text: str) -> bool:
+    return bool(_SCHEDULE_ACTION_RE.search(text))
+
+
+def _contains_duration_schedule(text: str) -> bool:
+    for match in _DURATION_RE.finditer(text):
+        window = _nearby_text(text, match.start(), match.end(), after=20)
+        if _WAIT_INTENT_RE.search(window):
+            return True
+        if _has_schedule_action(window) and _DURATION_FUTURE_HINT_RE.search(window):
+            return True
+    return False
+
+
+def _contains_clock_schedule(text: str) -> bool:
+    for regex in (_CLOCK_RE, _CHINESE_TIME_POINT_RE):
+        for match in regex.finditer(text):
+            window = _nearby_text(text, match.start(), match.end())
+            if _FUTURE_DATE_RE.search(window) or _has_schedule_action(window):
+                return True
+    return False
+
+
+def _contains_future_date_schedule(text: str) -> bool:
+    for match in _FUTURE_DATE_RE.finditer(text):
+        window = _nearby_text(text, match.start(), match.end(), after=20)
+        if (
+            _has_schedule_action(window)
+            or _CLOCK_RE.search(window)
+            or _CHINESE_TIME_POINT_RE.search(window)
+        ):
+            return True
+    return False
+
+
+def _contains_daypart_schedule(text: str) -> bool:
+    for match in _DAYPART_RE.finditer(text):
+        window_after = text[match.end() : min(len(text), match.end() + 18)]
+        if _DAYPART_COMMITMENT_RE.search(window_after):
+            return True
+    return False
+
+
+def _contains_vague_time_schedule(text: str) -> bool:
+    for match in _VAGUE_TIME_RE.finditer(text):
+        window = _nearby_text(text, match.start(), match.end(), after=20)
+        if _WAIT_INTENT_RE.search(window) or _has_schedule_action(window):
+            return True
+    return False
 
 
 def contains_time_keywords(text: str) -> bool:
-    """检查文本是否包含时间约定相关的关键词
+    """检查文本是否包含值得进一步分析的时间约定
 
-    这是一个轻量级预检，用于过滤不需要二次 LLM 调用的消息。
+    这是一个轻量级预检，用于过滤不需要二次 LLM 调用的消息。它刻意
+    偏向“时间 + 未来联系/提醒动作”的组合，避免“早上好”“再见”
+    这类日常表达把完整历史上下文带进调度分析。
 
     Args:
         text: AI 生成的消息文本
@@ -53,20 +145,13 @@ def contains_time_keywords(text: str) -> bool:
     if not text:
         return False
 
-    # 1. 正则匹配
-    if not _TIME_KEYWORDS_RE.search(text):
-        return False
-
-    # 2. 负向排除规则 (简单启发式)
-
-    # 排除 "有点"、"一点" (非时间用法)
-    # 正则中已经尝试排除，但"一点"作为时间点(1:00)和数量词很难区分
-    # 如果"一点"后面没有"钟"或"分"或"半"，且前面有"有"或"吃"等动词，则排除
-    # 例: "有点咸" -> 排除; "一点见" -> 保留
-    if re.search(r"(?:有|吃|喝|来)一点(?!钟|分|半|见|睡|去)", text):
-        return False
-
-    return True
+    return (
+        _contains_duration_schedule(text)
+        or _contains_clock_schedule(text)
+        or _contains_future_date_schedule(text)
+        or _contains_daypart_schedule(text)
+        or _contains_vague_time_schedule(text)
+    )
 
 
 def parse_schedule_response(response_text: str) -> Optional[dict]:

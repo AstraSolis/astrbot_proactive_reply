@@ -85,11 +85,13 @@ class FakeContext:
         self.send_result = send_result
         self.sent = []
         self.llm_calls = 0
+        self.provider_calls = 0
 
     def get_config(self):
         return {}
 
     async def get_current_chat_provider_id(self, umo=None):
+        self.provider_calls += 1
         return "provider"
 
     async def llm_generate(self, **kwargs):
@@ -118,8 +120,10 @@ class FakePromptBuilder:
 class FakeConversationManager:
     def __init__(self):
         self.history_records = []
+        self.history_requests = []
 
     async def get_conversation_history(self, session, count):
+        self.history_requests.append((session, count))
         return []
 
     async def add_message_to_conversation_history(self, session, message, **kwargs):
@@ -244,6 +248,63 @@ class TestMessageDelivery(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             runtime_data.session_last_proactive_message["session-1"], "你好"
         )
+
+    async def test_schedule_precheck_skips_provider_and_history_for_daily_message(self):
+        context = FakeContext(send_result=True)
+        conversation = FakeConversationManager()
+        generator = MessageGenerator(
+            {
+                "message_split": {"enabled": False},
+                "proactive_reply": {
+                    "include_history_enabled": True,
+                    "history_message_count": 50,
+                },
+                "ai_schedule": {
+                    "enabled": True,
+                    "analysis_prompt": "固定分析规则",
+                },
+            },
+            context,
+            FakePromptBuilder(),
+            conversation,
+            FakeUserInfoManager(),
+        )
+
+        result = await generator.analyze_message_for_schedule(
+            "session-1", "晚上好，再见"
+        )
+
+        self.assertIsNone(result)
+        self.assertEqual(context.provider_calls, 0)
+        self.assertEqual(context.llm_calls, 0)
+        self.assertEqual(conversation.history_requests, [])
+
+    async def test_schedule_analysis_caps_history_context(self):
+        context = FakeContext(send_result=True)
+        conversation = FakeConversationManager()
+        generator = MessageGenerator(
+            {
+                "message_split": {"enabled": False},
+                "proactive_reply": {
+                    "include_history_enabled": True,
+                    "history_message_count": 50,
+                },
+                "ai_schedule": {
+                    "enabled": True,
+                    "analysis_prompt": "固定分析规则",
+                },
+            },
+            context,
+            FakePromptBuilder(),
+            conversation,
+            FakeUserInfoManager(),
+        )
+
+        await generator.analyze_message_for_schedule("session-1", "明早8点再聊")
+
+        self.assertEqual(context.provider_calls, 1)
+        self.assertEqual(context.llm_calls, 1)
+        self.assertEqual(conversation.history_requests, [("session-1", 6)])
 
 
 class FakeRetryContext:

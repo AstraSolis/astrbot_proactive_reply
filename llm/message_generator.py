@@ -9,10 +9,14 @@ from datetime import datetime
 from astrbot.api import logger
 from astrbot.api.event import MessageChain
 
-from ..constants import MAX_HISTORY_MESSAGE_COUNT, MIN_HISTORY_MESSAGE_COUNT
+from ..constants import (
+    MAX_HISTORY_MESSAGE_COUNT,
+    MAX_SCHEDULE_ANALYSIS_HISTORY_COUNT,
+    MIN_HISTORY_MESSAGE_COUNT,
+)
 from ..core.runtime_data import runtime_data
 from ..utils.time_utils import get_tz
-from .ai_schedule_analyzer import analyze_for_schedule
+from .ai_schedule_analyzer import analyze_for_schedule, contains_time_keywords
 from .errors import (
     DuplicateMessageError,
     MessageDeliveryError,
@@ -359,6 +363,10 @@ class MessageGenerator:
         if not ai_schedule_config.get("enabled", False):
             return None
 
+        if not contains_time_keywords(message):
+            logger.debug("心念 | AI 消息未通过调度预检，跳过提供商和历史上下文获取")
+            return None
+
         provider_id = await self.get_provider_id(session)
         if not provider_id:
             return None
@@ -375,6 +383,7 @@ class MessageGenerator:
                 MIN_HISTORY_MESSAGE_COUNT,
                 min(MAX_HISTORY_MESSAGE_COUNT, history_count),
             )
+            history_count = min(history_count, MAX_SCHEDULE_ANALYSIS_HISTORY_COUNT)
             contexts = await self.conversation_manager.get_conversation_history(
                 session, history_count
             )
